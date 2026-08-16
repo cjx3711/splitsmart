@@ -84,6 +84,78 @@ export async function getPairwiseBalances(
   }));
 }
 
+export interface PairwiseGroupBalance {
+  otherUserId: number;
+  /** NULL for one-on-one expenses that belong to no group. */
+  groupId: number | null;
+  balances: CurrencyAmount[];
+}
+
+/**
+ * The same pairwise figures as `getPairwiseBalances`, but split out by which
+ * group each debt arose in.
+ *
+ * This is what lets the dashboard say "Grace owes you 74.02 USD for Non-group
+ * expenses and 6198 JPY for 2025 Kyushu Autumn" rather than one opaque net
+ * number. Summing a person's rows here reproduces `getPairwiseBalances`
+ * exactly — same source table, one extra GROUP BY column.
+ */
+export async function getPairwiseBalancesByGroup(
+  db: DB,
+  userId: number,
+): Promise<PairwiseGroupBalance[]> {
+  const rows = await sql<{
+    other_user_id: number;
+    group_id: number | null;
+    currency_code: string;
+    amount_minor: number;
+  }>`
+    SELECT other_user_id, group_id, currency_code, SUM(amount_minor) AS amount_minor
+    FROM (
+      SELECT r.to_user_id   AS other_user_id,
+             e.group_id,
+             e.currency_code,
+             -r.amount_minor AS amount_minor
+      FROM expense_repayments r
+      JOIN expenses e ON e.id = r.expense_id
+      WHERE r.from_user_id = ${userId} AND e.deleted_at IS NULL
+
+      UNION ALL
+
+      SELECT r.from_user_id AS other_user_id,
+             e.group_id,
+             e.currency_code,
+             r.amount_minor AS amount_minor
+      FROM expense_repayments r
+      JOIN expenses e ON e.id = r.expense_id
+      WHERE r.to_user_id = ${userId} AND e.deleted_at IS NULL
+    )
+    GROUP BY other_user_id, group_id, currency_code
+    HAVING SUM(amount_minor) <> 0
+    ORDER BY other_user_id, group_id, currency_code
+  `.execute(db);
+
+  // SQLite groups NULL group_ids together, so non-group expenses collapse into
+  // a single bucket per person rather than one bucket each.
+  const byPair = new Map<string, PairwiseGroupBalance>();
+
+  for (const row of rows.rows) {
+    const key = `${row.other_user_id}:${row.group_id ?? "none"}`;
+    const entry = byPair.get(key) ?? {
+      otherUserId: row.other_user_id,
+      groupId: row.group_id,
+      balances: [],
+    };
+    entry.balances.push({
+      currencyCode: row.currency_code,
+      amountMinor: row.amount_minor,
+    });
+    byPair.set(key, entry);
+  }
+
+  return [...byPair.values()];
+}
+
 /** Net balance between exactly two users, across all shared history. */
 export async function getBalanceBetween(
   db: DB,

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Standalone copy of the mark from src/Logo.tsx. Colours are literal here:
+       a favicon has no page CSS to inherit from. The dark plate keeps it legible
+       against both light and dark browser chrome. -->
+  <rect width="32" height="32" rx="7.5" fill="#0E1214"/>
+  <g transform="translate(16 16) scale(0.78) translate(-16 -16)">
+    <path d="M1.814 16.624 A14.2 14.2 0 0 1 25.956 5.876 Z" transform="translate(-0.529 -1.188)" fill="#5FE0B0"/>
+    <path d="M25.956 5.876 A14.2 14.2 0 1 1 1.814 16.624 Z" transform="translate(0.529 1.188)" fill="#1FA97C"/>
+  </g>
+</svg>

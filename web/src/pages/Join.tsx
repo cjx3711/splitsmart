@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
+import { Logo } from "../Logo.tsx";
 import { useAuth } from "../App.tsx";
 
 /**
@@ -54,7 +55,8 @@ export function Join() {
 
   if (joined) {
     return (
-      <>
+      <div className="auth stack">
+        <Logo size={30} />
         <h1>You're in</h1>
         <div className="notice stack">
           <strong>Save your recovery code</strong>
@@ -69,23 +71,25 @@ export function Join() {
             I've saved it — continue
           </button>
         </p>
-      </>
+      </div>
     );
   }
 
   if (error && !preview) {
     return (
-      <>
+      <div className="auth stack">
+        <Logo size={30} />
         <h1>Invite link</h1>
         <p className="error">{error}</p>
-      </>
+      </div>
     );
   }
 
   if (!preview) return <p className="muted">Loading…</p>;
 
   return (
-    <>
+    <div className="auth stack">
+      <Logo size={30} />
       <h1>Join {preview.name}</h1>
       <p className="muted">
         {preview.memberCount} member{preview.memberCount === 1 ? "" : "s"}
@@ -103,7 +107,7 @@ export function Join() {
             placeholder="Jordan"
             required
           />
-          <p className="muted">
+          <p className="field-hint">
             No email or password needed. You'll get a recovery code to save.
           </p>
         </div>
@@ -111,6 +115,6 @@ export function Join() {
           {busy ? "Joining…" : "Join group"}
         </button>
       </form>
-    </>
+    </div>
   );
 }

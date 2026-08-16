@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
+import { Logo } from "../Logo.tsx";
 import { useAuth } from "../App.tsx";
 
 /** Login, registration, and ghost recovery — three modes, one screen. */
@@ -42,7 +43,8 @@ export function Login() {
   }
 
   return (
-    <>
+    <div className="auth stack">
+      <Logo size={30} />
       <h1>
         {mode === "login" ? "Log in" : mode === "register" ? "Create account" : "Recover access"}
       </h1>
@@ -60,8 +62,8 @@ export function Login() {
               placeholder="K7M2-9QXR-4TWP"
               required
             />
-            <p className="muted">
-              The code you were shown when you joined a group from an invite link.
+            <p className="field-hint">
+              The code you were shown when you joined a group, or the one in a friend invite.
             </p>
           </div>
         ) : (
@@ -97,7 +99,7 @@ export function Login() {
                 minLength={8}
                 required
               />
-              {mode === "register" && <p className="muted">At least 8 characters.</p>}
+              {mode === "register" && <p className="field-hint">At least 8 characters.</p>}
             </div>
           </>
         )}
@@ -107,7 +109,7 @@ export function Login() {
         </button>
       </form>
 
-      <p className="stack" style={{ marginTop: "1rem" }}>
+      <div className="stack" style={{ marginTop: "0.5rem", alignItems: "flex-start" }}>
         {mode !== "register" && (
           <button className="link" onClick={() => setMode("register")}>
             Create an account
@@ -123,7 +125,7 @@ export function Login() {
             Use a recovery code
           </button>
         )}
-      </p>
-    </>
+      </div>
+    </div>
   );
 }

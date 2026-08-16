@@ -42,10 +42,7 @@ export function EmailVerificationBanner() {
   }
 
   return (
-    <div
-      className="notice"
-      style={{ margin: "0 1rem 1rem", display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}
-    >
+    <div className="notice banner">
       <span style={{ flex: "1 1 240px" }}>
         {message ?? (
           <>
@@ -55,8 +52,7 @@ export function EmailVerificationBanner() {
       </span>
       {status !== "sent" && (
         <button
-          className="secondary"
-          style={{ width: "auto" }}
+          className="secondary inline"
           onClick={handleResend}
           disabled={status === "sending"}
         >

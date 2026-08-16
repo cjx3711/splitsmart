@@ -57,6 +57,13 @@ A minor-unit integer is meaningless without its currency: `1000` is `10.00 USD`
 but `1000 JPY`. Always carry `currency_code` alongside, and get decimal places
 from the `currencies` table — never assume 2.
 
+This holds in the frontend too. `web/src/money.tsx` fetches the currencies table
+once and exposes `<Amount>`, `<Amounts>` and `useParseMoney()`; its
+`formatMoney(minor, decimalPlaces)` takes decimals as a **required** argument
+specifically so nothing can default to 2. Render money through those components
+or not at all. Use `<Amounts>` for several currencies on one line — rendered
+back to back, `34750 JPY 74.02 USD` reads as one number.
+
 `src/db/currencies.ts` holds 168 currencies — the full active ISO 4217 list plus
 11 legacy codes Splitwise still accepts. Exponents: 17 zero-decimal (JPY, KRW,
 VND, ISK, the CFA francs, BYR), 7 three-decimal (the Gulf dinars plus TND), 2
@@ -137,11 +144,17 @@ src/
     password.ts      scrypt hashing + token generation
     session.ts       Cookie sessions AND bearer API tokens
     middleware.ts    requireAuth / optionalAuth
+    friends.ts       Explicit vs derived friendships. ONE definition of "friend"
   routes/
     native/          Clean API at /api/v1 — used by web/
     compat/          Splitwise v3.0 shim. Wire format frozen.
   server.ts          Entry point
 web/                 React frontend (Vite)
+  src/
+    money.tsx        Currency-aware formatting. THE ONLY WAY TO RENDER MONEY
+    Logo.tsx         The mark (also copied literally into public/favicon.svg)
+    Sidebar.tsx      Owns the group/friend lists shown on every screen
+    ExpenseForm.tsx  Shared add-expense form (group + one-on-one)
 scripts/
   export-splitwise.ts    Raw API dump — RUN THIS FIRST, see below
   check-invariants.ts    Data integrity audit
@@ -194,9 +207,42 @@ by setting email + password and flipping the flag. Never create a new user and
 merge — keeping the row means every expense, share and repayment stays attached
 and no balance moves.
 
+**A ghost may carry an email.** `POST /api/v1/friends` creates one with the
+address you invited them at, so the invite has somewhere to go. This is safe
+because login rejects ghosts outright and `issueVerificationToken` returns
+`no_email` for them — an unverified address on a ghost can never become a
+working login. It is also why `/invite/claim` excludes the caller's own row when
+checking whether an address is taken: without that, the invitee's own pending
+address blocks them from claiming their own account. There is a test for it.
+
 Known trade-offs, accepted deliberately: anyone holding an invite link can join
 **and read every expense in that group**; rotating the token stops future joins
 but does not remove existing members.
+
+## Friends
+
+Two kinds, and the difference decides what the UI may offer:
+
+- **Explicit** — a row in `friendships`, stored canonically with
+  `user_a_id < user_b_id`. Removable.
+- **Derived** — someone you share a live group or an expense with. No row.
+  Not removable; they reappear on the next load.
+
+`listRelatedUserIds()` in `src/domain/friends.ts` returns the union and is the
+**only** definition of "who is my friend". Both `/api/v1/friends` and the compat
+layer's `get_friends` call it, so the two cannot drift. Do not hand-roll the
+UNION at a call site — the schema comment says so too.
+
+Removing a friendship touches nothing financial. `DELETE /api/v1/friends/:id`
+returns `stillVisible` so the UI can explain why someone is still listed rather
+than looking broken.
+
+**Friend invites do not use `email_tokens`.** The emailed link carries the
+ghost's recovery code and lands on `/accept/:code`, which is just
+`POST /invite/recover`. That was chosen over adding a `friend_invite` purpose
+because SQLite cannot ALTER a CHECK constraint without rebuilding the table, and
+because the recovery code still works when Postmark is unconfigured — the API
+returns it so the inviter can pass it on by hand.
 
 ## Email
 

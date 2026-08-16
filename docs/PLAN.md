@@ -41,14 +41,22 @@ Ordered by how much they matter for day-to-day use.
 - 🚧 **Expense editing** — server supports it (`updateExpense`), no UI yet
 - ⬜ **Split-type UI** — only equal split is exposed; exact/percent/shares/
       adjustment all work server-side already
-- ⬜ **Settle up in the UI** — `createPayment` and `/settle` suggestions exist,
-      no screen
-- ⬜ **One-on-one expenses** — schema supports `group_id = NULL`; needs a
-      friends screen and routes
-- ⬜ **Friend management** — the `friendships` table is unused; `get_friends`
-      currently derives relationships from shared groups and expenses
+- 🚧 **Settle up in the UI** — done on the friend screen
+      (`POST /api/v1/friends/:id/payments`). The group screen shows suggested
+      transfers but has no button to record one yet.
+- ✅ **One-on-one expenses** — `POST /api/v1/friends/:id/expenses`, group_id
+      NULL. Participants are restricted to the pair, because `createExpense`
+      skips its membership check when there is no group.
+- ✅ **Friend management** — `src/domain/friends.ts` + `src/routes/native/
+      friends.ts`. Explicit friendships live in `friendships`; derived ones come
+      from shared groups and expenses. `listRelatedUserIds` is the single
+      definition, shared with the compat layer's `get_friends`.
+- ✅ **Add a friend by email** — creates a ghost carrying that address and
+      emails an invite whose link is the ghost's recovery code. Works with
+      Postmark unconfigured: the code comes back in the response instead.
 - ⬜ Comments (table exists, no routes)
-- ⬜ Activity feed (table is written to, never read)
+- ✅ Activity feed — `GET /api/v1/activity`, scoped to groups you're in plus
+      expenses you're on
 - ⬜ Receipts / image attachments
 - ⬜ Recurring expenses
 - ⬜ Expense search and filters
@@ -102,7 +110,11 @@ the verification flow is completable locally with no mail provider.
 - ⬜ **Password reset** — `email_tokens.purpose` already permits
       `'reset_password'`, so this needs routes and a template, not a migration
 - ⬜ Change-email flow (re-verify the new address before it takes effect)
-- ⬜ Invite by email (as an alternative to the link)
+- ✅ **Invite by email** — friend invites (`POST /api/v1/friends` with an
+      `email`). Deliberately does NOT use `email_tokens`: the link carries the
+      ghost's recovery code, so the same flow works when Postmark is
+      unconfigured and no migration was needed to add a purpose.
+- ⬜ Group invite by email (today groups still share one link for everyone)
 - ⬜ Optional expense notifications
 - ⬜ Postmark webhook for bounces and spam complaints
 

@@ -1,0 +1,10 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "splitsmart",
+      "url": "http://localhost:5444",
+      "port": 5444
+    }
+  ]
+}

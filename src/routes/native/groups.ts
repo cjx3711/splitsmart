@@ -298,6 +298,56 @@ groupRoutes.post(
 export const expenseRoutes = new Hono<AppEnv>();
 expenseRoutes.use("*", requireAuth);
 
+/**
+ * Every expense the caller is a participant of, group and one-on-one alike.
+ *
+ * Backs the "All expenses" screen. Membership is decided by expense_users, not
+ * group membership, so leaving a group does not hide history you are part of.
+ */
+expenseRoutes.get("/", async (c) => {
+  const auth = c.get("user");
+  const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
+  const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
+
+  const expenses = await db
+    .selectFrom("expenses")
+    .innerJoin("expense_users", "expense_users.expense_id", "expenses.id")
+    .leftJoin("categories", "categories.id", "expenses.category_id")
+    .leftJoin("groups", "groups.id", "expenses.group_id")
+    .select([
+      "expenses.id", "expenses.description", "expenses.cost_minor",
+      "expenses.currency_code", "expenses.date", "expenses.is_payment",
+      "expenses.split_type", "expenses.group_id",
+      "categories.name as category_name", "groups.name as group_name",
+    ])
+    .where("expense_users.user_id", "=", auth.id)
+    .where("expenses.deleted_at", "is", null)
+    .orderBy("expenses.date", "desc")
+    .orderBy("expenses.id", "desc")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+
+  if (expenses.length === 0) return c.json({ expenses: [] });
+
+  const shares = await db
+    .selectFrom("expense_users")
+    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor"])
+    .where("expense_id", "in", expenses.map((e) => e.id))
+    .execute();
+
+  const byExpense = new Map<number, typeof shares>();
+  for (const s of shares) {
+    const list = byExpense.get(s.expense_id) ?? [];
+    list.push(s);
+    byExpense.set(s.expense_id, list);
+  }
+
+  return c.json({
+    expenses: expenses.map((e) => ({ ...e, shares: byExpense.get(e.id) ?? [] })),
+  });
+});
+
 expenseRoutes.delete("/:id", async (c) => {
   const auth = c.get("user");
   const expenseId = Number(c.req.param("id"));

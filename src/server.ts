@@ -19,6 +19,8 @@ import { purgeExpiredEmailTokens } from "./email/verification.ts";
 import { authRoutes } from "./routes/native/auth.ts";
 import { inviteRoutes } from "./routes/native/invite.ts";
 import { groupRoutes, expenseRoutes, categoryRoutes } from "./routes/native/groups.ts";
+import { friendRoutes } from "./routes/native/friends.ts";
+import { activityRoutes } from "./routes/native/activity.ts";
 import { compatV3 } from "./routes/compat/v3.ts";
 
 const app = new Hono<AppEnv>();
@@ -31,7 +33,9 @@ app.get("/health", (c) => c.json({ ok: true, version: "0.1.0" }));
 app.route("/api/v1/auth", authRoutes);
 app.route("/api/v1/invite", inviteRoutes);
 app.route("/api/v1/groups", groupRoutes);
+app.route("/api/v1/friends", friendRoutes);
 app.route("/api/v1/expenses", expenseRoutes);
+app.route("/api/v1/activity", activityRoutes);
 app.route("/api/v1/categories", categoryRoutes);
 
 // --- Splitwise-compatible API ----------------------------------------------

@@ -195,10 +195,14 @@ inviteRoutes.post(
 
     const { email, password } = c.req.valid("json");
 
+    // Excluding self is load-bearing. A ghost created by "add a friend" already
+    // carries the address it was invited at, so without this the invitee's own
+    // pending address would block them from claiming their own account.
     const taken = await db
       .selectFrom("users")
       .select("id")
       .where("email", "=", email)
+      .where("id", "!=", auth.id)
       .executeTakeFirst();
 
     if (taken) return c.json({ error: "An account with that email already exists" }, 409);

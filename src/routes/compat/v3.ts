@@ -14,10 +14,10 @@
  *      Splitwise never had — clients may validate strictly.
  */
 import { Hono } from "hono";
-import { sql } from "kysely";
 import { db } from "../../db/index.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { getPairwiseBalances, getBalanceBetween } from "../../domain/balances.ts";
+import { listRelatedUserIds } from "../../domain/friends.ts";
 import { createExpense } from "../../domain/expenses.ts";
 import { parseAmount } from "../../domain/money.ts";
 import {
@@ -83,30 +83,9 @@ compatV3.get("/get_friends", async (c) => {
   const auth = c.get("user");
   const decimals = await decimalPlaces();
 
-  const related = await sql<{ id: number }>`
-    SELECT DISTINCT id FROM (
-      SELECT CASE WHEN f.user_a_id = ${auth.id} THEN f.user_b_id ELSE f.user_a_id END AS id
-      FROM friendships f
-      WHERE f.user_a_id = ${auth.id} OR f.user_b_id = ${auth.id}
-
-      UNION
-
-      SELECT gm2.user_id AS id
-      FROM group_members gm1
-      JOIN group_members gm2 ON gm2.group_id = gm1.group_id
-      WHERE gm1.user_id = ${auth.id} AND gm1.left_at IS NULL AND gm2.left_at IS NULL
-
-      UNION
-
-      SELECT eu2.user_id AS id
-      FROM expense_users eu1
-      JOIN expense_users eu2 ON eu2.expense_id = eu1.expense_id
-      WHERE eu1.user_id = ${auth.id}
-    )
-    WHERE id <> ${auth.id}
-  `.execute(db);
-
-  const ids = related.rows.map((r) => r.id);
+  // Shared with the native friends list so the two can never disagree about
+  // who counts as a friend. The response shape below is still frozen.
+  const ids = await listRelatedUserIds(db, auth.id);
   if (ids.length === 0) return c.json({ friends: [] });
 
   const [users, balances] = await Promise.all([

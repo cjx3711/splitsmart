@@ -42,6 +42,26 @@ export interface GroupMember {
   joined_via: string;
 }
 
+/** One person's balance with you, attributed to the group it arose in. */
+export interface FriendBreakdown {
+  groupId: number | null;
+  /** NULL group means one-on-one expenses; the UI supplies the wording. */
+  groupName: string | null;
+  balances: CurrencyAmount[];
+}
+
+export interface Friend {
+  id: number;
+  email: string | null;
+  first_name: string;
+  last_name: string | null;
+  is_ghost: number;
+  /** Only explicit friendships can be removed. */
+  is_explicit: boolean | number;
+  balances: CurrencyAmount[];
+  breakdown: FriendBreakdown[];
+}
+
 export interface ExpenseSummary {
   id: number;
   description: string;
@@ -51,11 +71,34 @@ export interface ExpenseSummary {
   is_payment: number;
   split_type: string;
   category_name: string | null;
+  group_id?: number | null;
+  group_name?: string | null;
   shares: Array<{
     user_id: number;
     paid_share_minor: number;
     owed_share_minor: number;
   }>;
+}
+
+export interface ActivityEntry {
+  id: number;
+  action: string;
+  createdAt: string;
+  actor: { id: number; firstName: string; lastName: string | null } | null;
+  group: { id: number; name: string } | null;
+  expense: {
+    id: number;
+    description: string;
+    costMinor: number;
+    currencyCode: string;
+    deleted: boolean;
+  } | null;
+}
+
+export interface Currency {
+  code: string;
+  decimal_places: number;
+  symbol: string | null;
 }
 
 export class ApiError extends Error {
@@ -87,6 +130,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   return res.json() as Promise<T>;
+}
+
+export interface ExpenseInput {
+  description: string;
+  costMinor: number;
+  currencyCode: string;
+  date: string;
+  categoryId?: number | null;
+  splitType: "equal" | "exact" | "percent" | "shares" | "adjustment";
+  participants: Array<{ userId: number; paidMinor: number; input?: number }>;
 }
 
 export const api = {
@@ -158,34 +211,83 @@ export const api = {
       }>;
     }>(`/groups/${id}/settle`),
 
-  createExpense: (
+  createExpense: (groupId: number, input: ExpenseInput) =>
+    request<{ id: number }>(`/groups/${groupId}/expenses`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  createGroupPayment: (
     groupId: number,
     input: {
-      description: string;
-      costMinor: number;
+      fromUserId: number;
+      toUserId: number;
+      amountMinor: number;
       currencyCode: string;
-      date: string;
-      categoryId?: number | null;
-      splitType: "equal" | "exact" | "percent" | "shares" | "adjustment";
-      participants: Array<{ userId: number; paidMinor: number; input?: number }>;
+      date?: string;
     },
   ) =>
-    request<{ id: number }>(`/groups/${groupId}/expenses`, {
+    request<{ id: number }>(`/groups/${groupId}/payments`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
 
   deleteExpense: (id: number) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
 
+  listExpenses: () => request<{ expenses: ExpenseSummary[] }>("/expenses"),
+
+  listActivity: () => request<{ activity: ActivityEntry[] }>("/activity"),
+
+  // --- friends --------------------------------------------------------------
+
+  listFriends: () => request<{ friends: Friend[] }>("/friends"),
+
+  getFriend: (id: number) => request<{ friend: Friend }>(`/friends/${id}`),
+
+  addFriend: (input: { firstName: string; lastName?: string; email?: string }) =>
+    request<{
+      friend: Friend;
+      /** True when the address already belonged to a SplitSmart account. */
+      existingAccount: boolean;
+      emailDelivered: boolean;
+      /** Returned once for a newly created person. Never retrievable again. */
+      recoveryCode?: string;
+    }>("/friends", { method: "POST", body: JSON.stringify(input) }),
+
+  removeFriend: (id: number) =>
+    request<{ ok: boolean; stillVisible: boolean }>(`/friends/${id}`, { method: "DELETE" }),
+
+  getFriendExpenses: (id: number) =>
+    request<{ expenses: ExpenseSummary[] }>(`/friends/${id}/expenses`),
+
+  createFriendExpense: (friendId: number, input: ExpenseInput) =>
+    request<{ id: number }>(`/friends/${friendId}/expenses`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  createFriendPayment: (
+    friendId: number,
+    input: {
+      direction: "you_paid" | "they_paid";
+      amountMinor: number;
+      currencyCode: string;
+      date?: string;
+    },
+  ) =>
+    request<{ id: number }>(`/friends/${friendId}/payments`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  // --- reference data -------------------------------------------------------
+
   listCategories: () =>
     request<{ categories: Array<{ id: number; parent_id: number | null; name: string }> }>(
       "/categories",
     ),
 
-  listCurrencies: () =>
-    request<{ currencies: Array<{ code: string; decimal_places: number; symbol: string | null }> }>(
-      "/categories/currencies",
-    ),
+  listCurrencies: () => request<{ currencies: Currency[] }>("/categories/currencies"),
 
   previewInvite: (token: string) =>
     request<{ group: { name: string; type: string; memberCount: number; memberNames: string[] } }>(
@@ -204,27 +306,40 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ recoveryCode }),
     }),
+
+  claim: (email: string, password: string) =>
+    request<{ ok: boolean; verificationEmailSent: boolean }>("/invite/claim", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
 };
 
 // --- money formatting -------------------------------------------------------
 
 /**
- * Minor units -> display string. Mirrors src/domain/money.ts formatAmount;
- * decimal places must come from the currencies table, never assumed to be 2.
+ * Minor units -> display string. Mirrors src/domain/money.ts formatAmount.
+ *
+ * `decimalPlaces` is required rather than defaulting to 2, because defaulting
+ * is how JPY ends up displayed as one hundredth of its real value. Callers get
+ * it from the currencies table via useCurrencies() — never from a guess.
  */
-export function formatMoney(minor: number, decimalPlaces = 2): string {
+export function formatMoney(minor: number, decimalPlaces: number): string {
   const negative = minor < 0;
   const abs = Math.abs(minor);
-  if (decimalPlaces === 0) return `${negative ? "-" : ""}${abs}`;
-
-  const divisor = 10 ** decimalPlaces;
-  const whole = Math.floor(abs / divisor);
-  const fraction = String(abs % divisor).padStart(decimalPlaces, "0");
-  return `${negative ? "-" : ""}${whole}.${fraction}`;
+  const body =
+    decimalPlaces === 0
+      ? String(abs)
+      : (() => {
+          const divisor = 10 ** decimalPlaces;
+          const whole = Math.floor(abs / divisor);
+          const fraction = String(abs % divisor).padStart(decimalPlaces, "0");
+          return `${whole}.${fraction}`;
+        })();
+  return `${negative ? "-" : ""}${body}`;
 }
 
 /** Display string -> minor units. Throws on excess precision, like the server. */
-export function parseMoney(input: string, decimalPlaces = 2): number {
+export function parseMoney(input: string, decimalPlaces: number): number {
   const raw = input.trim();
   if (!/^-?\d*(\.\d*)?$/.test(raw) || raw === "" || raw === ".") {
     throw new Error(`Not a valid amount: ${input}`);
@@ -232,9 +347,16 @@ export function parseMoney(input: string, decimalPlaces = 2): number {
   const negative = raw.startsWith("-");
   const [whole = "0", fraction = ""] = (negative ? raw.slice(1) : raw).split(".");
   if (fraction.length > decimalPlaces) {
-    throw new Error(`Too many decimal places for this currency`);
+    throw new Error("Too many decimal places for this currency");
   }
   const minor =
     Number(whole) * 10 ** decimalPlaces + Number(fraction.padEnd(decimalPlaces, "0") || "0");
   return negative ? -minor : minor;
+}
+
+export function fullName(person: {
+  first_name: string;
+  last_name: string | null;
+}): string {
+  return [person.first_name, person.last_name].filter(Boolean).join(" ");
 }
