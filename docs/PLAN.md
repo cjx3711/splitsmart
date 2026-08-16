@@ -32,7 +32,7 @@ longer be free.
 - ✅ Ghost accounts via group invite links, with recovery codes
 - ✅ Compat API: the 6 endpoints `splitwise-to-toshl` uses, with tests
 - ✅ Minimal React frontend
-- ✅ `npm run db:check` integrity audit
+- ✅ `yarn db:check` integrity audit
 
 ## Phase 2 — Feature parity with Splitwise 🚧
 
@@ -97,7 +97,7 @@ the verification flow is completable locally with no mail provider.
         outstanding link
   - ✅ 60s resend cooldown
   - ✅ Advisory by default; `EMAIL_VERIFICATION_REQUIRED=true` blocks login
-  - ✅ `npm run verify:user` lockout escape hatch
+  - ✅ `yarn verify:user` lockout escape hatch
   - ✅ 20 tests
 - ⬜ **Password reset** — `email_tokens.purpose` already permits
       `'reset_password'`, so this needs routes and a template, not a migration
@@ -112,11 +112,15 @@ the verification flow is completable locally with no mail provider.
 - ⬜ **Preserve original IDs**: insert with `id = splitwise_id` on users, groups,
       expenses and categories so external references stay valid. Bump
       `sqlite_sequence` past the highest imported id afterwards.
-- ✅ `scripts/seed-from-splitwise.ts` re-seeds categories with Splitwise's own
-      ids (run before importing expenses; it refuses afterwards)
+- ✅ **Category id parity done** — `src/db/categories.ts` carries Splitwise's
+      real ids, captured from the live API and pinned against
+      `fixtures/splitwise/get_categories.json`. `yarn db:seed` is enough;
+      no extra step before import.
+- ✅ **Currency coverage done** — all 153 Splitwise codes present, including
+      demonetised ones (HRK, LTL, VEF) that historical expenses still use
 - ⬜ Map Splitwise users to local users; create ghosts for anyone unmatched
 - ⬜ Idempotent re-import (match on `splitwise_id`, update in place)
-- ⬜ Run `npm run db:check` after import and reconcile every balance against the
+- ⬜ Run `yarn db:check` after import and reconcile every balance against the
       Splitwise UI before trusting it
 
 ## Phase 6 — Type safety end to end ⬜

@@ -1,10 +1,16 @@
 /**
- * ISO 4217 active currency list.
+ * ISO 4217 active currency list, plus the legacy codes Splitwise still accepts.
  *
  * WHY THIS IS COMPLETE RATHER THAN "the ones we need": `expenses.currency_code`
  * is a foreign key into this table, so a missing currency does not degrade
  * gracefully — it rejects the expense outright. A partial list is a latent bug
  * that surfaces the first time someone travels somewhere unexpected.
+ *
+ * It also has to cover DEMONETISED currencies. Splitwise's live list (captured
+ * at fixtures/splitwise/get_currencies.json) includes HRK, LTL, VEF and others
+ * that no longer exist, because their users have historical expenses in them.
+ * Dropping those codes would make importing that history impossible — see
+ * LEGACY_CODES at the bottom of this file.
  *
  * `decimals` is the ISO 4217 minor-unit exponent and is LOAD-BEARING: it is the
  * only way to turn a minor-unit integer back into a display string. Getting it
@@ -191,9 +197,45 @@ const RAW: Array<[string, number, string | null, string]> = [
   ["ZWG", 2, "ZiG", "Zimbabwe Gold"],
 ];
 
-export const CURRENCIES: CurrencyDefinition[] = RAW.map(
+/**
+ * Codes Splitwise accepts that are NOT active ISO 4217 currencies.
+ *
+ * Almost all are demonetised — their users have historical expenses in them, so
+ * the API still lists them. We must too: `expenses.currency_code` is a foreign
+ * key, so omitting one makes importing that history impossible.
+ *
+ * Verified against fixtures/splitwise/get_currencies.json (153 codes). Symbols
+ * are Splitwise's own `unit` values so display matches theirs.
+ */
+const LEGACY_RAW: Array<[string, number, string | null, string]> = [
+  // Not a fiat currency; 8 decimals is the satoshi convention, which is why
+  // the decimal_places CHECK in migrations/001 allows up to 8.
+  ["BTC", 8, "฿", "Bitcoin"],
+  ["BYR", 0, "BYR", "Belarusian Ruble (pre-2016, redenominated to BYN)"],
+  // Not an ISO code and not attributable to any country — appears in
+  // Splitwise's list regardless. Included so imports never fail on it.
+  ["CMG", 2, "CMg", "Unrecognised Splitwise code"],
+  ["CUC", 2, "CUC$", "Cuban Convertible Peso (withdrawn 2021)"],
+  ["HRK", 2, "HRK", "Croatian Kuna (replaced by EUR, 2023)"],
+  ["LTL", 2, "Lt", "Lithuanian Litas (replaced by EUR, 2015)"],
+  ["SLL", 2, "SLL", "Sierra Leonean Leone (pre-2022, redenominated to SLE)"],
+  ["STD", 2, "Db", "São Tomé and Príncipe Dobra (pre-2018, now STN)"],
+  ["VEF", 2, "Bs", "Venezuelan Bolívar (pre-2018, now VES)"],
+  ["XCG", 2, "Cg", "Caribbean Guilder (successor to ANG)"],
+  ["ZWL", 2, "Z$", "Zimbabwe Dollar (pre-2024, now ZWG)"],
+];
+
+export const LEGACY_CURRENCIES: CurrencyDefinition[] = LEGACY_RAW.map(
   ([code, decimals, symbol, name]) => ({ code, decimals, symbol, name }),
 );
+
+/** Set of codes that are legacy rather than active ISO 4217. */
+export const LEGACY_CODES = new Set(LEGACY_CURRENCIES.map((c) => c.code));
+
+export const CURRENCIES: CurrencyDefinition[] = [
+  ...RAW.map(([code, decimals, symbol, name]) => ({ code, decimals, symbol, name })),
+  ...LEGACY_CURRENCIES,
+].sort((a, b) => a.code.localeCompare(b.code));
 
 /** Currencies whose exponent is not 2 — the ones that break naive x100 code. */
 export const NON_STANDARD_DECIMALS = CURRENCIES.filter((c) => c.decimals !== 2);

@@ -6,11 +6,17 @@
  * failing migration leaves the database on the last good version rather than
  * half-applied.
  *
+ * Note for future schema changes: SQLite cannot ALTER a CHECK constraint, so
+ * changing one means rebuilding the table — and if other tables have foreign
+ * keys into it you need `PRAGMA foreign_keys=OFF`, which is a NO-OP inside a
+ * transaction. Such a migration will need to opt out of the wrapper below and
+ * drive its own BEGIN/COMMIT.
+ *
  * There is intentionally no `down` migration. Rolling back schema changes
  * against real financial data is more dangerous than fixing forward, and a
  * personal app can afford to restore from backup in the rare case it matters.
  *
- * Usage:  npm run db:migrate
+ * Usage:  yarn db:migrate
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -56,6 +62,14 @@ export function migrate(databasePath: string = env.DATABASE_PATH): number {
 
     try {
       run();
+      // Catch a dangling reference here rather than at the next write.
+      const violations = db.pragma("foreign_key_check") as unknown[];
+      if (violations.length > 0) {
+        throw new Error(
+          `${file} left ${violations.length} foreign key violation(s): ` +
+            JSON.stringify(violations.slice(0, 3)),
+        );
+      }
       console.log(`  applied  ${file}`);
       count++;
     } catch (err) {

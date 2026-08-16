@@ -1,85 +1,94 @@
 /**
- * Seeds reference data: currencies and the category tree.
+ * Seeds reference data: currencies and Splitwise's category tree.
  *
- * Idempotent — safe to re-run. Uses INSERT OR IGNORE so existing rows (and any
- * splitwise_id values written by the importer) are left alone.
+ * Idempotent — safe to re-run.
  *
- * NOTE ON CATEGORY IDS: these are OUR ids, not Splitwise's. If you want real
- * Splitwise category-id parity, run the importer against a live
- * `get_categories` response — it fills in `splitwise_id` and remaps.
- * See docs/SPLITWISE_COMPAT.md.
+ * CATEGORY IDS ARE SPLITWISE'S REAL IDS, captured from the live API and kept at
+ * fixtures/splitwise/get_categories.json. That matters because `category_id`
+ * passes straight through the compat layer: an imported expense or a client
+ * carrying a Splitwise id has to land on the same category here. The ids are
+ * non-sequential and share one space between parents and children, so they are
+ * inserted explicitly rather than autoincremented.
  *
- * Usage:  npm run db:seed
+ * Usage:  yarn db:seed
  */
 import { openDatabase } from "./index.ts";
 import { env } from "../env.ts";
 import { CURRENCIES } from "./currencies.ts";
-
-/**
- * Mirrors Splitwise's two-level shape: only leaves are assignable.
- *
- * ⚠️ This tree is a RECONSTRUCTION of Splitwise's categories, not a copy — the
- * names and structure match, but the IDs are ours. For real ID parity, run
- * `npm run seed:splitwise` against an export dump; it rewrites these rows with
- * Splitwise's own ids and fills in splitwise_id. See docs/SPLITWISE_COMPAT.md.
- */
-const CATEGORIES: Array<[parent: string, children: string[]]> = [
-  ["Entertainment", ["Games", "Movies", "Music", "Sports", "Other"]],
-  ["Food and drink", ["Dining out", "Groceries", "Liquor", "Other"]],
-  ["Home", [
-    "Electronics", "Furniture", "Household supplies", "Maintenance",
-    "Mortgage", "Pets", "Rent", "Services", "Other",
-  ]],
-  ["Life", ["Childcare", "Clothing", "Education", "Gifts", "Insurance", "Medical expenses", "Taxes", "Other"]],
-  ["Transportation", ["Bicycle", "Bus/train", "Car", "Gas/fuel", "Hotel", "Parking", "Plane", "Taxi", "Other"]],
-  ["Utilities", ["Cleaning", "Electricity", "Heat/gas", "Trash", "TV/Phone/Internet", "Water", "Other"]],
-  ["Uncategorized", ["General"]],
-];
+import { CATEGORIES, DEFAULT_CATEGORY_ID, MAX_SPLITWISE_CATEGORY_ID } from "./categories.ts";
 
 export function seed(databasePath: string = env.DATABASE_PATH): void {
   const db = openDatabase(databasePath);
 
   const insertCurrency = db.prepare(
-    `INSERT OR IGNORE INTO currencies (code, decimal_places, symbol, name)
-     VALUES (?, ?, ?, ?)`,
+    `INSERT INTO currencies (code, decimal_places, symbol, name)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(code) DO UPDATE SET
+       decimal_places = excluded.decimal_places,
+       symbol = COALESCE(currencies.symbol, excluded.symbol),
+       name   = COALESCE(currencies.name, excluded.name)`,
   );
-  const insertParent = db.prepare(
-    `INSERT OR IGNORE INTO categories (parent_id, name, sort_order, is_default)
-     VALUES (NULL, ?, ?, 0)`,
-  );
-  const insertChild = db.prepare(
-    `INSERT OR IGNORE INTO categories (parent_id, name, sort_order, is_default)
-     VALUES (?, ?, ?, ?)`,
-  );
-  const findCategory = db.prepare(
-    `SELECT id FROM categories WHERE name = ? AND parent_id IS ?`,
+
+  const insertCategory = db.prepare(
+    `INSERT OR IGNORE INTO categories
+       (id, splitwise_id, parent_id, name, icon, sort_order, is_default)
+     VALUES (?, ?, ?, ?, NULL, ?, ?)`,
   );
 
   const run = db.transaction(() => {
     for (const currency of CURRENCIES) {
+      // decimal_places is force-updated rather than ignored: it is the one
+      // field where a stale value silently corrupts money, so the code here is
+      // always authoritative over whatever is in the database.
       insertCurrency.run(currency.code, currency.decimals, currency.symbol, currency.name);
     }
 
-    CATEGORIES.forEach(([parentName, children], parentIndex) => {
-      insertParent.run(parentName, parentIndex);
-      const parent = findCategory.get(parentName, null) as { id: number } | undefined;
-      if (!parent) throw new Error(`Failed to upsert category ${parentName}`);
+    CATEGORIES.forEach((parent, parentIndex) => {
+      insertCategory.run(parent.id, parent.id, null, parent.name, parentIndex, 0);
 
-      children.forEach((childName, childIndex) => {
-        // "Uncategorized > General" is the fallback the compat layer falls back
-        // to when an inbound expense has no usable category.
-        const isDefault = parentName === "Uncategorized" && childName === "General" ? 1 : 0;
-        insertChild.run(parent.id, childName, childIndex, isDefault);
+      parent.children.forEach((child, childIndex) => {
+        insertCategory.run(
+          child.id,
+          child.id,
+          parent.id,
+          child.name,
+          childIndex,
+          child.id === DEFAULT_CATEGORY_ID ? 1 : 0,
+        );
       });
     });
+
+    // No manual sqlite_sequence bump is needed: `id INTEGER PRIMARY KEY
+    // AUTOINCREMENT` makes SQLite raise the stored sequence to any explicit id
+    // we insert, so locally-created categories already start above Splitwise's
+    // range. Asserted below rather than assumed.
   });
 
   run();
 
-  const currencyCount = (db.prepare("SELECT COUNT(*) AS n FROM currencies").get() as { n: number }).n;
-  const categoryCount = (db.prepare("SELECT COUNT(*) AS n FROM categories").get() as { n: number }).n;
-  console.log(`  currencies: ${currencyCount}`);
-  console.log(`  categories: ${categoryCount}`);
+  const counts = db
+    .prepare(
+      `SELECT (SELECT COUNT(*) FROM currencies) AS currencies,
+              (SELECT COUNT(*) FROM categories WHERE parent_id IS NULL) AS parents,
+              (SELECT COUNT(*) FROM categories WHERE parent_id IS NOT NULL) AS leaves`,
+    )
+    .get() as Record<string, number>;
+
+  // A new category must never be handed an id that a future Splitwise import
+  // would want. Cheap to verify, expensive to discover later.
+  const sequence = db
+    .prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'categories'`)
+    .get() as { seq: number } | undefined;
+
+  if ((sequence?.seq ?? 0) < MAX_SPLITWISE_CATEGORY_ID) {
+    throw new Error(
+      `categories sequence is ${sequence?.seq ?? 0}, expected >= ${MAX_SPLITWISE_CATEGORY_ID}. ` +
+        `New categories could collide with Splitwise ids.`,
+    );
+  }
+
+  console.log(`  currencies: ${counts.currencies}`);
+  console.log(`  categories: ${counts.parents} parents, ${counts.leaves} leaves (Splitwise ids)`);
 
   db.close();
 }

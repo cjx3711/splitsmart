@@ -1,18 +1,19 @@
 /**
- * Re-seeds categories and currencies from a real Splitwise export.
+ * Refreshes categories and currencies from a Splitwise export.
  *
- * WHY THIS EXISTS: the built-in seed (`npm run db:seed`) is a faithful
- * reconstruction of Splitwise's category tree, but the IDs are OURS. Any client
- * that hardcodes a Splitwise category_id — or any expense imported with one —
- * would land on the wrong category.
+ * NOT normally needed. `yarn db:seed` already uses Splitwise's real category
+ * ids, captured from the live API and checked in at
+ * fixtures/splitwise/get_categories.json (with src/db/categories.test.ts
+ * diffing the two).
  *
- * This script fixes that by rewriting the categories table using Splitwise's
- * own ids, so `category_id` values are portable in both directions.
+ * This script exists for the case where Splitwise's tree has CHANGED since that
+ * capture and you have a newer export. For a first-time setup, just run
+ * `yarn db:seed`.
  *
  * Usage:
- *   npm run export:splitwise            # produces splitwise-export/<timestamp>/
- *   npm run seed:splitwise              # uses the most recent export
- *   npm run seed:splitwise -- <dir>     # or point at a specific one
+ *   yarn export:splitwise            # produces splitwise-export/<timestamp>/
+ *   yarn seed:splitwise              # uses the most recent export
+ *   yarn seed:splitwise -- <dir>     # or point at a specific one
  *
  * Safe to run before importing expenses. NOT safe to run after, if expenses
  * already reference the old category ids — the script refuses in that case.
@@ -37,13 +38,13 @@ interface SplitwiseCurrency {
 function findLatestExport(): string {
   const root = "splitwise-export";
   if (!existsSync(root)) {
-    console.error(`No ${root}/ directory. Run \`npm run export:splitwise\` first.`);
+    console.error(`No ${root}/ directory. Run \`yarn export:splitwise\` first.`);
     process.exit(1);
   }
   const dirs = readdirSync(root).sort();
   const latest = dirs[dirs.length - 1];
   if (!latest) {
-    console.error(`${root}/ is empty. Run \`npm run export:splitwise\` first.`);
+    console.error(`${root}/ is empty. Run \`yarn export:splitwise\` first.`);
     process.exit(1);
   }
   return join(root, latest);
@@ -120,12 +121,20 @@ function main(): void {
           `(using Splitwise ids)`,
       );
 
-      // Keep future locally-created categories clear of Splitwise's id range.
+      // No sqlite_sequence bump needed — AUTOINCREMENT raises the stored
+      // sequence to any explicit id inserted above. (sqlite_sequence has no
+      // UNIQUE constraint, so ON CONFLICT against it is not even valid SQL.)
       const maxId = db.prepare("SELECT MAX(id) AS m FROM categories").get() as { m: number };
-      db.prepare(
-        `INSERT INTO sqlite_sequence (name, seq) VALUES ('categories', ?)
-         ON CONFLICT(name) DO UPDATE SET seq = MAX(seq, excluded.seq)`,
-      ).run(maxId.m ?? 0);
+      const seq = db
+        .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'categories'")
+        .get() as { seq: number } | undefined;
+
+      if ((seq?.seq ?? 0) < (maxId.m ?? 0)) {
+        throw new Error(
+          `categories sequence is ${seq?.seq ?? 0}, expected >= ${maxId.m}. ` +
+            `New categories could collide with Splitwise ids.`,
+        );
+      }
     }
 
     if (currencyData?.currencies?.length) {

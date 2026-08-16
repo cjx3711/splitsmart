@@ -48,14 +48,19 @@ describe("decimal places", () => {
   ];
   const THREE_DECIMAL = ["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"];
 
+  // Demonetised codes Splitwise still lists. BYR is the pre-2016 Belarusian
+  // ruble (zero-decimal); BTC uses satoshi precision.
+  const LEGACY_ZERO_DECIMAL = ["BYR"];
+  const LEGACY_EIGHT_DECIMAL = ["BTC"];
+
   const byCode = new Map(CURRENCIES.map((c) => [c.code, c]));
 
   test("zero-decimal currencies are exactly the expected set", () => {
-    for (const code of ZERO_DECIMAL) {
+    for (const code of [...ZERO_DECIMAL, ...LEGACY_ZERO_DECIMAL]) {
       assert.equal(byCode.get(code)?.decimals, 0, `${code} should be 0`);
     }
     const actual = CURRENCIES.filter((c) => c.decimals === 0).map((c) => c.code).sort();
-    assert.deepEqual(actual, [...ZERO_DECIMAL].sort());
+    assert.deepEqual(actual, [...ZERO_DECIMAL, ...LEGACY_ZERO_DECIMAL].sort());
   });
 
   test("three-decimal currencies are exactly the expected set", () => {
@@ -67,9 +72,10 @@ describe("decimal places", () => {
   });
 
   test("every exponent is within the schema's CHECK range", () => {
+    // migrations/001 sets this CHECK to 0..8 to accommodate BTC.
     for (const c of CURRENCIES) {
       assert.ok(
-        c.decimals >= 0 && c.decimals <= 4,
+        c.decimals >= 0 && c.decimals <= 8,
         `${c.code} has out-of-range decimals: ${c.decimals}`,
       );
     }
@@ -99,6 +105,18 @@ describe("decimal places", () => {
   });
 
   test("non-standard currencies are surfaced for test coverage", () => {
-    assert.equal(NON_STANDARD_DECIMALS.length, ZERO_DECIMAL.length + THREE_DECIMAL.length + 2);
+    assert.equal(
+      NON_STANDARD_DECIMALS.length,
+      ZERO_DECIMAL.length +
+        THREE_DECIMAL.length +
+        LEGACY_ZERO_DECIMAL.length +
+        LEGACY_EIGHT_DECIMAL.length +
+        2, // CLF and UYW, the four-decimal accounting units
+    );
+  });
+
+  test("BTC round-trips at satoshi precision", () => {
+    assert.equal(formatAmount(100_000_000, 8), "1.00000000");
+    assert.equal(parseAmount("0.00000001", 8), 1);
   });
 });

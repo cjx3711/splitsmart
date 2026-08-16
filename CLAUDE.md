@@ -32,15 +32,15 @@ The long-term goal is full API parity. See `docs/PLAN.md` for the roadmap and
 ## Commands
 
 ```bash
-npm install
+yarn install
 cp .env.example .env        # then set SESSION_SECRET
-npm run db:migrate          # apply migrations
-npm run db:seed             # currencies + categories (idempotent)
-npm run dev                 # API on :5545, Vite on :5173
-npm test                    # all tests
-npm run typecheck           # server + web
-npm run db:check            # AUDIT DATA INTEGRITY — run after any expense change
-npm run db:reset            # wipe and rebuild the local database
+yarn db:migrate             # apply migrations
+yarn db:seed                # currencies + categories (idempotent)
+yarn dev                    # API on :5545, Vite on :5173
+yarn test                   # all tests
+yarn typecheck              # server + web
+yarn db:check               # AUDIT DATA INTEGRITY — run after any expense change
+yarn db:reset                # wipe and rebuild the local database
 ```
 
 ## The five rules
@@ -57,13 +57,17 @@ A minor-unit integer is meaningless without its currency: `1000` is `10.00 USD`
 but `1000 JPY`. Always carry `currency_code` alongside, and get decimal places
 from the `currencies` table — never assume 2.
 
-`src/db/currencies.ts` holds the full ISO 4217 list (157 entries): 16 are
-zero-decimal (JPY, KRW, VND, ISK, the CFA francs), 7 are three-decimal (the Gulf
-dinars plus TND), 2 are four-decimal accounting units. `currencies.test.ts` pins
-those sets exactly — if you change an exponent, that test should stop you.
+`src/db/currencies.ts` holds 168 currencies — the full active ISO 4217 list plus
+11 legacy codes Splitwise still accepts. Exponents: 17 zero-decimal (JPY, KRW,
+VND, ISK, the CFA francs, BYR), 7 three-decimal (the Gulf dinars plus TND), 2
+four-decimal accounting units, and BTC at 8. `currencies.test.ts` pins those
+sets exactly — if you change an exponent, that test should stop you.
 
 The list is complete on purpose: `expenses.currency_code` is a foreign key, so a
-missing currency rejects the expense rather than degrading gracefully.
+missing currency rejects the expense rather than degrading gracefully. That is
+also why demonetised codes (HRK, LTL, VEF…) are present — Splitwise still lists
+them because users have historical expenses in them, and dropping one would make
+that history unimportable.
 
 ### 2. Currencies are never converted
 
@@ -84,7 +88,7 @@ SUM(expense_users.owed_share_minor) == expenses.cost_minor
 ```
 
 SQLite cannot express this — it spans rows — so it is enforced in application
-code inside a transaction, and audited by `npm run db:check`. If you add a code
+code inside a transaction, and audited by `yarn db:check`. If you add a code
 path that touches these tables directly, you have created a bug that will not
 surface until someone's balance is wrong.
 
@@ -94,7 +98,7 @@ It stores the derived who-owes-whom for each expense so balance queries stay a
 plain `SUM ... GROUP BY` instead of re-deriving creditor/debtor matching on
 every page load. It is rebuilt from scratch on every expense write by
 `deriveRepayments()`. If it ever disagrees with `expense_users`, `expense_users`
-wins. `npm run db:check` verifies the two agree.
+wins. `yarn db:check` verifies the two agree.
 
 ### 5. The compat layer's wire format is frozen
 
@@ -119,9 +123,11 @@ src/
   env.ts             Zod-validated environment, frozen at import
   db/
     index.ts         Connection + pragmas + transaction()
-    types.ts         Kysely types — regenerate with `npm run db:codegen`
+    types.ts         Kysely types — regenerate with `yarn db:codegen`
     migrate.ts       Migration runner
-    seed.ts          Currencies + category tree (idempotent)
+    currencies.ts    ISO 4217 + Splitwise's legacy codes
+    categories.ts    Splitwise's REAL category tree, with their ids
+    seed.ts          Loads both (idempotent)
   domain/            PURE business logic — no I/O except expenses.ts
     money.ts         parse/format/split helpers
     split.ts         The split engine. Pure. Heavily tested.
@@ -140,7 +146,24 @@ scripts/
   export-splitwise.ts    Raw API dump — RUN THIS FIRST, see below
   check-invariants.ts    Data integrity audit
 docs/                Plan, data model, compat reference
+fixtures/splitwise/  REAL API responses, captured while the API is free.
+                     Treat as read-only ground truth — categories.test.ts diffs
+                     our data against them. Cannot be re-fetched once Splitwise
+                     paywalls the API.
 ```
+
+## Category IDs are Splitwise's real IDs
+
+`src/db/categories.ts` is not a reconstruction — it was captured from the live
+API. This matters because `category_id` passes straight through the compat
+layer, so an imported expense or a third-party client carrying a Splitwise id
+has to resolve to the same category here.
+
+The ids are **non-sequential**, and parents and children share **one** id space:
+parents are 1, 2, 19, 25, 27, 31, 40 while children run 3–50. `Dining out` is
+13, `Uncategorized > General` is 18 (the default). Do not renumber them, and do
+not "sort" the tree — `src/db/categories.test.ts` diffs it against
+`fixtures/splitwise/get_categories.json` on every run and will fail.
 
 ## Auth model
 
@@ -201,7 +224,7 @@ Two details that look optional and are not:
 Enforcement is advisory by default: unverified users log in fine and see a
 banner. `EMAIL_VERIFICATION_REQUIRED=true` blocks login instead — and if you
 enable it on a box where Postmark is broken, nobody can get in. The way out is
-`npm run verify:user -- you@example.com`, which needs only filesystem access.
+`yarn verify:user -- you@example.com`, which needs only filesystem access.
 
 Ghosts have no address. `needsEmailVerification` is always false for them, and
 `issueVerificationToken` returns `no_email` — never nag a guest to confirm an
@@ -226,7 +249,7 @@ untrusted bytes — so it needs an explicit decision, not an incidental one.
   `process.env.DATABASE_PATH` *before* importing anything that reaches it — see
   the dynamic-import pattern at the top of `src/routes/compat/v3.test.ts`.
 - **`src/db/types.ts` is checked in but generated.** After a migration, run
-  `npm run db:migrate && npm run db:codegen`. Hand-editing it without a matching
+  `yarn db:migrate && yarn db:codegen`. Hand-editing it without a matching
   migration gives you types that lie.
 - **Rounding must be deterministic.** `splitEvenly` gives leftover minor units to
   the earliest participants, and participants are sorted by `userId` before
@@ -240,7 +263,7 @@ untrusted bytes — so it needs an explicit decision, not an incidental one.
 ## Before you commit
 
 ```bash
-npm run typecheck && npm test && npm run db:check
+yarn typecheck && yarn test && yarn db:check
 ```
 
 If you touched anything under `src/domain/` or `src/routes/compat/`, the tests
@@ -255,7 +278,7 @@ development, and a raw snapshot makes re-import free and repeatable instead of
 requiring another round-trip to an API that may no longer be free.
 
 ```bash
-SPLITWISE_API_KEY=... npm run export:splitwise
+SPLITWISE_API_KEY=... yarn export:splitwise
 ```
 
 The output is gitignored — it contains personal financial data. Back it up

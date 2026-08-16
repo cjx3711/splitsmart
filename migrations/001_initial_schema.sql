@@ -33,6 +33,11 @@ PRAGMA foreign_keys = ON;
 -- decimal_places is load-bearing: it is the ONLY way to turn a minor-unit
 -- integer back into a display string. JPY/KRW are 0, most are 2, KWD/BHD are 3.
 -- Getting this wrong silently multiplies people's money by 100.
+--
+-- The upper bound is 8 rather than 4 because Splitwise's live currency list
+-- includes BTC, which uses satoshi (1e-8) precision. Since currency_code is a
+-- foreign key, a currency we cannot represent does not degrade gracefully — it
+-- rejects the expense outright. 8 digits stays well inside MAX_SAFE_INTEGER.
 CREATE TABLE currencies (
   code           TEXT    PRIMARY KEY,          -- ISO 4217, uppercase
   decimal_places INTEGER NOT NULL DEFAULT 2,
@@ -40,7 +45,7 @@ CREATE TABLE currencies (
   name           TEXT,
   CHECK (code = UPPER(code)),
   CHECK (LENGTH(code) = 3),
-  CHECK (decimal_places BETWEEN 0 AND 4)
+  CHECK (decimal_places BETWEEN 0 AND 8)
 ) STRICT;
 
 -- ---------------------------------------------------------------------------

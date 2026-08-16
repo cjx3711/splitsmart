@@ -53,31 +53,47 @@ Same shape, wrapped in `{ "friend": … }`.
 Two levels. Clients flatten to subcategories and use **only subcategory IDs** as
 `category_id`.
 
-⚠️ **Seeded category IDs are ours, not Splitwise's.** The default seed is a
-faithful reconstruction of Splitwise's tree — 7 parents, 43 leaves, matching
-names — but the IDs differ, so a client that hardcodes a Splitwise `category_id`
-lands on the wrong category.
+✅ **Category IDs are Splitwise's real IDs.** Captured from the live API and
+checked in at `fixtures/splitwise/get_categories.json`; `yarn db:seed` uses
+them directly, so `category_id` is portable in both directions with no extra
+step.
 
-To get real ID parity:
+The ids could not have been guessed — they are non-sequential and parents and
+children share **one** id space:
 
-```bash
-npm run export:splitwise     # captures the live get_categories response
-npm run seed:splitwise       # rewrites categories using Splitwise's own ids
-```
+| Parent | ID | Example leaf | ID |
+|---|---|---|---|
+| Utilities | 1 | Electricity | 5 |
+| Uncategorized | 2 | General | **18** (the default) |
+| Entertainment | 19 | Games | 20 |
+| Food and drink | 25 | Dining out | 13 |
+| Home | 27 | Household supplies | 14 |
+| Transportation | 31 | Bus/train | 32 |
+| Life | 40 | Childcare | 50 |
 
-`scripts/seed-from-splitwise.ts` refuses to run if any expense already
-references a category id, since remapping would silently recategorise them. Run
-it on a fresh database, before importing expenses.
+7 parents, 43 leaves, ids 1–50. `src/db/categories.test.ts` diffs
+`src/db/categories.ts` against the fixture on every run, so any rename or
+renumber fails the build.
+
+`yarn seed:splitwise` is only for refreshing from a **newer** export if
+Splitwise ever changes the tree. It refuses to run once expenses reference
+categories, since remapping would silently recategorise them.
 
 ### Currencies
 
-157 currencies are seeded from ISO 4217, which is broader than Splitwise's own
-list. This is deliberate: `expenses.currency_code` is a foreign key, so a
-missing currency does not degrade gracefully — it rejects the expense.
+168 currencies are seeded: the full active ISO 4217 list **plus** all 153 codes
+Splitwise's live `get_currencies` returns. This is deliberate —
+`expenses.currency_code` is a foreign key, so a missing currency does not
+degrade gracefully, it rejects the expense.
 
-`decimal_places` comes from ISO 4217 and is **never** overwritten by import.
-Splitwise's `get_currencies` does not report exponents, so anything it adds that
-we did not already have is assumed to be 2 and logged for manual review.
+That includes 11 codes Splitwise lists which are not active ISO 4217 currencies,
+mostly demonetised ones its users still have history in: BYR, CUC, HRK, LTL,
+SLL, STD, VEF, XCG, ZWL, plus BTC and the non-standard CMG. Omitting any of them
+would make importing an expense denominated in it impossible.
+
+`decimal_places` comes from ISO 4217 and is **never** taken from Splitwise —
+their `get_currencies` returns only `currency_code` and `unit`, with no exponent
+at all. BTC is the reason `migrations/001` allows up to 8 decimal places.
 
 ### `GET /get_expenses`
 
