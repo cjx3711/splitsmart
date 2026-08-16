@@ -1,0 +1,204 @@
+/**
+ * Data integrity audit.
+ *
+ * SQLite cannot express the constraints this data model depends on — they span
+ * rows and tables — so they are enforced in application code and verified here.
+ * Run after imports, after schema changes, and any time balances look wrong:
+ *
+ *   npm run db:check
+ *
+ * Exits non-zero if anything fails, so it can gate a deploy or run from cron.
+ */
+import { openDatabase } from "../src/db/index.ts";
+import { env } from "../src/env.ts";
+
+interface Check {
+  name: string;
+  description: string;
+  sql: string;
+}
+
+const CHECKS: Check[] = [
+  {
+    name: "paid_shares_sum_to_cost",
+    description: "Each expense's paid shares must add up to its total",
+    sql: `
+      SELECT e.id, e.description, e.cost_minor,
+             COALESCE(SUM(eu.paid_share_minor), 0) AS actual
+      FROM expenses e
+      LEFT JOIN expense_users eu ON eu.expense_id = e.id
+      WHERE e.deleted_at IS NULL
+      GROUP BY e.id
+      HAVING actual <> e.cost_minor
+    `,
+  },
+  {
+    name: "owed_shares_sum_to_cost",
+    description: "Each expense's owed shares must add up to its total",
+    sql: `
+      SELECT e.id, e.description, e.cost_minor,
+             COALESCE(SUM(eu.owed_share_minor), 0) AS actual
+      FROM expenses e
+      LEFT JOIN expense_users eu ON eu.expense_id = e.id
+      WHERE e.deleted_at IS NULL
+      GROUP BY e.id
+      HAVING actual <> e.cost_minor
+    `,
+  },
+  {
+    name: "repayments_match_net_positions",
+    description:
+      "expense_repayments must be a faithful derivation of expense_users (it is a cache)",
+    sql: `
+      WITH net AS (
+        SELECT eu.expense_id, eu.user_id,
+               eu.paid_share_minor - eu.owed_share_minor AS net_minor
+        FROM expense_users eu
+        JOIN expenses e ON e.id = eu.expense_id
+        WHERE e.deleted_at IS NULL
+      ),
+      derived AS (
+        SELECT expense_id, user_id, SUM(amount) AS amount FROM (
+          SELECT expense_id, to_user_id   AS user_id,  amount_minor AS amount
+          FROM expense_repayments
+          UNION ALL
+          SELECT expense_id, from_user_id AS user_id, -amount_minor AS amount
+          FROM expense_repayments
+        ) GROUP BY expense_id, user_id
+      )
+      SELECT n.expense_id, n.user_id, n.net_minor,
+             COALESCE(d.amount, 0) AS derived_minor
+      FROM net n
+      LEFT JOIN derived d ON d.expense_id = n.expense_id AND d.user_id = n.user_id
+      WHERE n.net_minor <> COALESCE(d.amount, 0)
+    `,
+  },
+  {
+    name: "repayments_net_to_zero",
+    description: "Every expense's repayments must net to zero overall",
+    sql: `
+      SELECT expense_id, SUM(amount_minor) AS total
+      FROM expense_repayments
+      GROUP BY expense_id
+      HAVING SUM(amount_minor) <> (
+        SELECT SUM(amount_minor) FROM expense_repayments r2
+        WHERE r2.expense_id = expense_repayments.expense_id
+      )
+    `,
+  },
+  {
+    name: "group_balances_net_to_zero",
+    description: "Within a group and currency, all balances must cancel out",
+    sql: `
+      SELECT e.group_id, e.currency_code, SUM(x.amount) AS total FROM (
+        SELECT r.expense_id, r.to_user_id AS user_id,  r.amount_minor AS amount
+        FROM expense_repayments r
+        UNION ALL
+        SELECT r.expense_id, r.from_user_id AS user_id, -r.amount_minor AS amount
+        FROM expense_repayments r
+      ) x
+      JOIN expenses e ON e.id = x.expense_id
+      WHERE e.deleted_at IS NULL AND e.group_id IS NOT NULL
+      GROUP BY e.group_id, e.currency_code
+      HAVING SUM(x.amount) <> 0
+    `,
+  },
+  {
+    name: "no_orphan_expense_users",
+    description: "expense_users rows must reference a live expense",
+    sql: `
+      SELECT eu.expense_id, eu.user_id
+      FROM expense_users eu
+      LEFT JOIN expenses e ON e.id = eu.expense_id
+      WHERE e.id IS NULL
+    `,
+  },
+  {
+    name: "expenses_have_participants",
+    description: "Every live expense must have at least one participant",
+    sql: `
+      SELECT e.id, e.description
+      FROM expenses e
+      LEFT JOIN expense_users eu ON eu.expense_id = e.id
+      WHERE e.deleted_at IS NULL AND eu.expense_id IS NULL
+    `,
+  },
+  {
+    name: "real_users_can_authenticate",
+    description: "Non-ghost users must have both an email and a password hash",
+    sql: `
+      SELECT id, first_name FROM users
+      WHERE is_ghost = 0 AND (email IS NULL OR password_hash IS NULL)
+    `,
+  },
+  {
+    name: "ghosts_have_no_password",
+    description: "Ghost accounts must not carry credentials they cannot use",
+    sql: `SELECT id, first_name FROM users WHERE is_ghost = 1 AND password_hash IS NOT NULL`,
+  },
+  {
+    name: "known_currencies_only",
+    description: "Every expense currency must exist in the currencies table",
+    sql: `
+      SELECT DISTINCT e.currency_code
+      FROM expenses e
+      LEFT JOIN currencies c ON c.code = e.currency_code
+      WHERE c.code IS NULL
+    `,
+  },
+];
+
+function main(): void {
+  const db = openDatabase(env.DATABASE_PATH);
+  console.log(`Checking ${env.DATABASE_PATH}\n`);
+
+  let failures = 0;
+
+  for (const check of CHECKS) {
+    let rows: unknown[];
+    try {
+      rows = db.prepare(check.sql).all();
+    } catch (err) {
+      console.log(`  ERROR  ${check.name}`);
+      console.log(`         query failed: ${err instanceof Error ? err.message : String(err)}`);
+      failures++;
+      continue;
+    }
+
+    if (rows.length === 0) {
+      console.log(`  ok     ${check.name}`);
+    } else {
+      failures++;
+      console.log(`  FAIL   ${check.name}`);
+      console.log(`         ${check.description}`);
+      console.log(`         ${rows.length} offending row(s):`);
+      for (const row of rows.slice(0, 5)) {
+        console.log(`           ${JSON.stringify(row)}`);
+      }
+      if (rows.length > 5) console.log(`           ... and ${rows.length - 5} more`);
+    }
+  }
+
+  const counts = db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM users)    AS users,
+         (SELECT COUNT(*) FROM groups)   AS groups,
+         (SELECT COUNT(*) FROM expenses WHERE deleted_at IS NULL) AS expenses`,
+    )
+    .get() as Record<string, number>;
+
+  console.log(
+    `\n${counts.users} users, ${counts.groups} groups, ${counts.expenses} live expenses`,
+  );
+
+  db.close();
+
+  if (failures > 0) {
+    console.error(`\n${failures} check(s) FAILED.`);
+    process.exit(1);
+  }
+  console.log("All checks passed.");
+}
+
+main();

@@ -1,0 +1,338 @@
+/**
+ * Native group and expense routes.
+ *
+ * These speak the clean internal model: integer minor units, nested objects,
+ * camelCase. The Splitwise wire format is confined to src/routes/compat/.
+ */
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
+import { db, transaction } from "../../db/index.ts";
+import { env } from "../../env.ts";
+import { generateToken } from "../../auth/password.ts";
+import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
+import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
+import { createExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
+
+export const groupRoutes = new Hono<AppEnv>();
+groupRoutes.use("*", requireAuth);
+
+/** Throws a 403-shaped result if the caller isn't in the group. */
+async function assertMember(groupId: number, userId: number) {
+  const membership = await db
+    .selectFrom("group_members")
+    .select(["role"])
+    .where("group_id", "=", groupId)
+    .where("user_id", "=", userId)
+    .where("left_at", "is", null)
+    .executeTakeFirst();
+  return membership ?? null;
+}
+
+groupRoutes.get("/", async (c) => {
+  const auth = c.get("user");
+
+  const groups = await db
+    .selectFrom("groups")
+    .innerJoin("group_members", "group_members.group_id", "groups.id")
+    .select([
+      "groups.id", "groups.name", "groups.group_type",
+      "groups.default_currency", "groups.simplify_by_default",
+    ])
+    .where("group_members.user_id", "=", auth.id)
+    .where("group_members.left_at", "is", null)
+    .where("groups.deleted_at", "is", null)
+    .orderBy("groups.name")
+    .execute();
+
+  return c.json({ groups, totalBalance: await getTotalBalance(db, auth.id) });
+});
+
+groupRoutes.post(
+  "/",
+  zValidator(
+    "json",
+    z.object({
+      name: z.string().min(1).max(200),
+      groupType: z.enum(["home", "trip", "couple", "event", "project", "other"]).default("other"),
+      defaultCurrency: z.string().length(3).toUpperCase().default("USD"),
+      simplifyByDefault: z.boolean().default(false),
+    }),
+  ),
+  async (c) => {
+    const auth = c.get("user");
+    const input = c.req.valid("json");
+    const inviteToken = generateToken(24);
+
+    const group = await transaction(async (trx) => {
+      const created = await trx
+        .insertInto("groups")
+        .values({
+          name: input.name,
+          group_type: input.groupType,
+          default_currency: input.defaultCurrency,
+          simplify_by_default: input.simplifyByDefault ? 1 : 0,
+          invite_token: inviteToken,
+          created_by: auth.id,
+        })
+        .returning(["id", "name", "group_type", "default_currency"])
+        .executeTakeFirstOrThrow();
+
+      await trx
+        .insertInto("group_members")
+        .values({ group_id: created.id, user_id: auth.id, role: "owner", joined_via: "creator" })
+        .execute();
+
+      return created;
+    });
+
+    return c.json(
+      { group, inviteUrl: `${env.APP_ORIGIN}/join/${inviteToken}` },
+      201,
+    );
+  },
+);
+
+groupRoutes.get("/:id", async (c) => {
+  const auth = c.get("user");
+  const groupId = Number(c.req.param("id"));
+
+  if (!(await assertMember(groupId, auth.id))) {
+    return c.json({ error: "Not a member of this group" }, 403);
+  }
+
+  const group = await db
+    .selectFrom("groups")
+    .select([
+      "id", "name", "group_type", "default_currency",
+      "simplify_by_default", "invite_token",
+    ])
+    .where("id", "=", groupId)
+    .where("deleted_at", "is", null)
+    .executeTakeFirst();
+
+  if (!group) return c.json({ error: "Group not found" }, 404);
+
+  const members = await db
+    .selectFrom("group_members")
+    .innerJoin("users", "users.id", "group_members.user_id")
+    .select([
+      "users.id", "users.first_name", "users.last_name",
+      "users.is_ghost", "group_members.role", "group_members.joined_via",
+    ])
+    .where("group_members.group_id", "=", groupId)
+    .where("group_members.left_at", "is", null)
+    .execute();
+
+  const balances = await getGroupBalances(db, groupId);
+
+  return c.json({
+    group: {
+      ...group,
+      invite_token: undefined,
+      inviteUrl: group.invite_token ? `${env.APP_ORIGIN}/join/${group.invite_token}` : null,
+    },
+    members,
+    balances,
+  });
+});
+
+/** Suggested settle-up transfers, per currency. Presentational only. */
+groupRoutes.get("/:id/settle", async (c) => {
+  const auth = c.get("user");
+  const groupId = Number(c.req.param("id"));
+
+  if (!(await assertMember(groupId, auth.id))) {
+    return c.json({ error: "Not a member of this group" }, 403);
+  }
+
+  const balances = await getGroupBalances(db, groupId);
+  const byCurrency = new Map<string, Array<{ userId: number; amountMinor: number }>>();
+
+  for (const member of balances) {
+    for (const b of member.balances) {
+      const list = byCurrency.get(b.currencyCode) ?? [];
+      list.push({ userId: member.userId, amountMinor: b.amountMinor });
+      byCurrency.set(b.currencyCode, list);
+    }
+  }
+
+  const suggestions = [...byCurrency.entries()].map(([currencyCode, entries]) => ({
+    currencyCode,
+    transfers: simplifyDebts(entries),
+  }));
+
+  return c.json({ suggestions });
+});
+
+groupRoutes.get("/:id/expenses", async (c) => {
+  const auth = c.get("user");
+  const groupId = Number(c.req.param("id"));
+
+  if (!(await assertMember(groupId, auth.id))) {
+    return c.json({ error: "Not a member of this group" }, 403);
+  }
+
+  const limit = Math.min(Number(c.req.query("limit") ?? 50) || 50, 500);
+  const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
+
+  const expenses = await db
+    .selectFrom("expenses")
+    .leftJoin("categories", "categories.id", "expenses.category_id")
+    .select([
+      "expenses.id", "expenses.description", "expenses.cost_minor",
+      "expenses.currency_code", "expenses.date", "expenses.is_payment",
+      "expenses.split_type", "categories.name as category_name",
+    ])
+    .where("expenses.group_id", "=", groupId)
+    .where("expenses.deleted_at", "is", null)
+    .orderBy("expenses.date", "desc")
+    .orderBy("expenses.id", "desc")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+
+  if (expenses.length === 0) return c.json({ expenses: [] });
+
+  const shares = await db
+    .selectFrom("expense_users")
+    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor"])
+    .where("expense_id", "in", expenses.map((e) => e.id))
+    .execute();
+
+  const sharesByExpense = new Map<number, typeof shares>();
+  for (const s of shares) {
+    const list = sharesByExpense.get(s.expense_id) ?? [];
+    list.push(s);
+    sharesByExpense.set(s.expense_id, list);
+  }
+
+  return c.json({
+    expenses: expenses.map((e) => ({ ...e, shares: sharesByExpense.get(e.id) ?? [] })),
+  });
+});
+
+const participantSchema = z.object({
+  userId: z.number().int().positive(),
+  paidMinor: z.number().int().min(0),
+  input: z.number().optional(),
+});
+
+groupRoutes.post(
+  "/:id/expenses",
+  zValidator(
+    "json",
+    z.object({
+      description: z.string().min(1).max(500),
+      details: z.string().max(5000).optional(),
+      costMinor: z.number().int().min(0),
+      currencyCode: z.string().length(3).toUpperCase(),
+      date: z.string(),
+      categoryId: z.number().int().positive().nullable().optional(),
+      splitType: z.enum(["equal", "exact", "percent", "shares", "adjustment"]),
+      participants: z.array(participantSchema).min(1),
+    }),
+  ),
+  async (c) => {
+    const auth = c.get("user");
+    const groupId = Number(c.req.param("id"));
+
+    if (!(await assertMember(groupId, auth.id))) {
+      return c.json({ error: "Not a member of this group" }, 403);
+    }
+
+    const input = c.req.valid("json");
+
+    try {
+      const expenseId = await createExpense({
+        ...input,
+        groupId,
+        details: input.details ?? null,
+        categoryId: input.categoryId ?? null,
+        createdBy: auth.id,
+      });
+      return c.json({ id: expenseId }, 201);
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Could not create expense" },
+        400,
+      );
+    }
+  },
+);
+
+groupRoutes.post(
+  "/:id/payments",
+  zValidator(
+    "json",
+    z.object({
+      fromUserId: z.number().int().positive(),
+      toUserId: z.number().int().positive(),
+      amountMinor: z.number().int().positive(),
+      currencyCode: z.string().length(3).toUpperCase(),
+      date: z.string().optional(),
+    }),
+  ),
+  async (c) => {
+    const auth = c.get("user");
+    const groupId = Number(c.req.param("id"));
+
+    if (!(await assertMember(groupId, auth.id))) {
+      return c.json({ error: "Not a member of this group" }, 403);
+    }
+
+    const input = c.req.valid("json");
+
+    try {
+      const id = await createPayment({ ...input, groupId, createdBy: auth.id });
+      return c.json({ id }, 201);
+    } catch (err) {
+      return c.json(
+        { error: err instanceof Error ? err.message : "Could not record payment" },
+        400,
+      );
+    }
+  },
+);
+
+export const expenseRoutes = new Hono<AppEnv>();
+expenseRoutes.use("*", requireAuth);
+
+expenseRoutes.delete("/:id", async (c) => {
+  const auth = c.get("user");
+  const expenseId = Number(c.req.param("id"));
+
+  // Only a participant may delete an expense.
+  const participant = await db
+    .selectFrom("expense_users")
+    .select("user_id")
+    .where("expense_id", "=", expenseId)
+    .where("user_id", "=", auth.id)
+    .executeTakeFirst();
+
+  if (!participant) return c.json({ error: "Not found" }, 404);
+
+  await deleteExpense(expenseId, auth.id);
+  return c.json({ ok: true });
+});
+
+export const categoryRoutes = new Hono<AppEnv>();
+
+categoryRoutes.get("/", async (c) => {
+  const categories = await db
+    .selectFrom("categories")
+    .select(["id", "parent_id", "name", "icon", "is_default"])
+    .orderBy("sort_order")
+    .orderBy("id")
+    .execute();
+  return c.json({ categories });
+});
+
+categoryRoutes.get("/currencies", async (c) => {
+  const currencies = await db
+    .selectFrom("currencies")
+    .select(["code", "decimal_places", "symbol", "name"])
+    .orderBy("code")
+    .execute();
+  return c.json({ currencies });
+});

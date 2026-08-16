@@ -1,0 +1,49 @@
+{
+  "name": "splitsmart",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch --experimental-strip-types src/server.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build": "npm run build:web && npm run build:api",
+    "build:api": "tsc -p tsconfig.json",
+    "build:web": "vite build --config web/vite.config.ts",
+    "start": "node dist/server.js",
+    "db:migrate": "node --experimental-strip-types src/db/migrate.ts",
+    "db:seed": "node --experimental-strip-types src/db/seed.ts",
+    "db:codegen": "kysely-codegen --dialect sqlite --url ./data/splitsmart.db --out-file src/db/types.ts",
+    "db:check": "node --experimental-strip-types scripts/check-invariants.ts",
+    "db:reset": "rm -f data/splitsmart.db data/splitsmart.db-wal data/splitsmart.db-shm && npm run db:migrate && npm run db:seed",
+    "export:splitwise": "node --experimental-strip-types scripts/export-splitwise.ts",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "lint": "eslint src web/src scripts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.1",
+    "better-sqlite3": "^13.0.3",
+    "hono": "^4.6.14",
+    "kysely": "^0.27.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "kysely-codegen": "^0.17.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.1.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}
