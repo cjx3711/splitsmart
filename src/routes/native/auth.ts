@@ -137,7 +137,7 @@ authRoutes.post(
 
     // Optional hard gate. Off by default so a misconfigured Postmark cannot
     // lock you out of a self-hosted server — see EMAIL_VERIFICATION_REQUIRED
-    // in src/env.ts and the `npm run verify:user` escape hatch.
+    // in src/env.ts and the `yarn verify:user` escape hatch.
     if (env.EMAIL_VERIFICATION_REQUIRED && !user.email_verified_at) {
       return c.json(
         {

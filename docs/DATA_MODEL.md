@@ -44,7 +44,7 @@ the first says the money was actually paid, the second says it was fully
 allocated.
 
 SQLite cannot express a cross-row CHECK, so this is enforced in
-`src/domain/expenses.ts` inside a transaction and audited by `npm run db:check`.
+`src/domain/expenses.ts` inside a transaction and audited by `yarn db:check`.
 
 ## Why `expense_repayments` exists
 
@@ -55,7 +55,7 @@ debtors — cheap for one expense, wasteful on every page load.
 So it is computed once at write time by `deriveRepayments()` and stored. Balance
 queries become a plain `SUM ... GROUP BY`.
 
-It is a **cache**. `expense_users` is the source of truth. `npm run db:check`
+It is a **cache**. `expense_users` is the source of truth. `yarn db:check`
 verifies the two agree.
 
 ## Rounding

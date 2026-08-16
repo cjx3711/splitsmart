@@ -20,7 +20,11 @@ const schema = z.object({
   // to a console log (see src/email/postmark.ts), which is also how you complete
   // the verification flow locally without a mail provider.
   POSTMARK_SERVER_TOKEN: z.string().optional(),
-  POSTMARK_FROM_ADDRESS: z.string().email().optional(),
+  POSTMARK_FROM_ADDRESS: z
+    .string()
+    .email()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   // Transactional mail must not go out on a broadcast stream.
   POSTMARK_MESSAGE_STREAM: z.string().default("outbound"),
 
@@ -31,7 +35,7 @@ const schema = z.object({
    * When true, login is blocked until the address is confirmed. Defaulting to
    * false is deliberate for self-hosted use — combined with a misconfigured
    * Postmark it would otherwise lock you out of your own server. The escape
-   * hatch is `npm run verify:user <email>`.
+   * hatch is `yarn verify:user <email>`.
    */
   EMAIL_VERIFICATION_REQUIRED: z
     .enum(["true", "false"])

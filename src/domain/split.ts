@@ -191,7 +191,7 @@ function requireInput(p: SplitParticipant, type: SplitType): number {
  *
  * This is computed once at write time and stored in expense_repayments so that
  * balance queries stay a plain SUM. It is a cache derived from expense_users —
- * if the two ever disagree, expense_users wins. `npm run db:check` verifies it.
+ * if the two ever disagree, expense_users wins. `yarn db:check` verifies it.
  */
 export function deriveRepayments(shares: SplitResult[]): Repayment[] {
   const creditors: Array<{ userId: number; amount: number }> = [];

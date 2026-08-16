@@ -5,7 +5,7 @@
  * rows and tables — so they are enforced in application code and verified here.
  * Run after imports, after schema changes, and any time balances look wrong:
  *
- *   npm run db:check
+ *   yarn db:check
  *
  * Exits non-zero if anything fails, so it can gate a deploy or run from cron.
  */

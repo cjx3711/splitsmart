@@ -5,7 +5,7 @@
  * without a database present, but they are not hand-maintained in the long run:
  * after adding a migration, run
  *
- *   npm run db:migrate && npm run db:codegen
+ *   yarn db:migrate && yarn db:codegen
  *
  * which regenerates this file from the real schema. If you edit it by hand and
  * forget the migration, you get types that lie — which is worse than no types.

@@ -98,7 +98,7 @@ export async function getBalanceBetween(
  * Each member's net position within a single group.
  *
  * Sums to zero per currency by construction. If it does not, something has
- * written expense_repayments directly — run `npm run db:check`.
+ * written expense_repayments directly — run `yarn db:check`.
  */
 export async function getGroupBalances(
   db: DB,

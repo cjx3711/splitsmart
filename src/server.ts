@@ -58,7 +58,7 @@ if (env.NODE_ENV === "production") {
       const html = await readFile("./web/dist/index.html", "utf8");
       return c.html(html);
     } catch {
-      return c.text("Frontend not built. Run `npm run build:web`.", 503);
+      return c.text("Frontend not built. Run `yarn build:web`.", 503);
     }
   });
 }

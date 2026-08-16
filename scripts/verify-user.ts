@@ -7,8 +7,8 @@
  * filesystem access to the database, which you have on a self-hosted box.
  *
  * Usage:
- *   npm run verify:user -- alice@example.com
- *   npm run verify:user -- --list          # show unverified accounts
+ *   yarn verify:user -- alice@example.com
+ *   yarn verify:user -- --list          # show unverified accounts
  */
 import { openDatabase } from "../src/db/index.ts";
 import { env } from "../src/env.ts";
@@ -17,8 +17,8 @@ function main(): void {
   const arg = process.argv[2];
 
   if (!arg) {
-    console.error("Usage: npm run verify:user -- <email>");
-    console.error("       npm run verify:user -- --list");
+    console.error("Usage: yarn verify:user -- <email>");
+    console.error("       yarn verify:user -- --list");
     process.exit(1);
   }
 

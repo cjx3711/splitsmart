@@ -13,12 +13,12 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    port: 5173,
+    port: 5444,
     // In dev the API runs as a separate process; in production the same Node
     // server serves both, so the frontend always talks to a same-origin /api.
     proxy: {
       "/api": {
-        target: "http://localhost:5545",
+        target: "http://localhost:5445",
         changeOrigin: true,
       },
     },

@@ -8,13 +8,14 @@ WORKDIR /app
 # better-sqlite3 compiles from source when no prebuild matches the platform.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable
 
-COPY package*.json ./
-RUN npm ci
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 COPY . .
-RUN npm run build:web && npm run build:api
+RUN yarn build:web && yarn build:api
 
 # ---------------------------------------------------------------------------
 
@@ -25,10 +26,11 @@ ENV NODE_ENV=production
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable
 
-COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production && yarn cache clean
 
 RUN apt-get purge -y python3 make g++ && apt-get autoremove -y
 

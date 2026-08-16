@@ -10,7 +10,7 @@
  * free. A raw snapshot makes re-import free and repeatable forever.
  *
  * Usage:
- *   SPLITWISE_API_KEY=... npm run export:splitwise
+ *   SPLITWISE_API_KEY=... yarn export:splitwise
  *
  * Output: splitwise-export/<timestamp>/*.json  (gitignored — contains personal
  * financial data; back it up somewhere private.)

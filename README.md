@@ -18,7 +18,7 @@ Two differences from Splitwise, both deliberate:
 ## Quick start
 
 ```bash
-npm install
+yarn install
 cp .env.example .env
 ```
 
@@ -31,8 +31,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 Then:
 
 ```bash
-npm run db:migrate && npm run db:seed
-npm run dev
+yarn db:migrate && yarn db:seed
+yarn dev
 ```
 
 API on `http://localhost:5545`, frontend on `http://localhost:5173`.
@@ -44,7 +44,7 @@ This is the one step with a deadline. It writes raw, untransformed JSON to
 after a schema change never needs another API call.
 
 ```bash
-SPLITWISE_API_KEY=... npm run export:splitwise
+SPLITWISE_API_KEY=... yarn export:splitwise
 ```
 
 Get a key from [secure.splitwise.com/apps](https://secure.splitwise.com/apps).
@@ -67,12 +67,12 @@ All six endpoints that app uses are implemented and tested. See
 ## Commands
 
 ```bash
-npm run dev          # API + frontend with reload
-npm test             # split engine, money, auth, compat API
-npm run typecheck    # server + web
-npm run db:check     # audit data integrity
-npm run db:reset     # wipe and rebuild locally
-npm run build        # production build
+yarn dev             # API + frontend with reload
+yarn test            # split engine, money, auth, compat API
+yarn typecheck       # server + web
+yarn db:check        # audit data integrity
+yarn db:reset        # wipe and rebuild locally
+yarn build           # production build
 ```
 
 ## Documentation
