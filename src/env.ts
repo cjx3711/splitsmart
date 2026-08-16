@@ -16,10 +16,27 @@ const schema = z.object({
 
   SPLITWISE_API_KEY: z.string().optional(),
 
-  // Email is not wired up yet (docs/PLAN.md phase 4). Absence must be a no-op,
-  // never a boot failure — that is why these are optional.
+  // Postmark. Absence must be a no-op, never a boot failure — sending degrades
+  // to a console log (see src/email/postmark.ts), which is also how you complete
+  // the verification flow locally without a mail provider.
   POSTMARK_SERVER_TOKEN: z.string().optional(),
   POSTMARK_FROM_ADDRESS: z.string().email().optional(),
+  // Transactional mail must not go out on a broadcast stream.
+  POSTMARK_MESSAGE_STREAM: z.string().default("outbound"),
+
+  /**
+   * When false (the default), verification is ADVISORY: unverified users can
+   * log in and use everything, and the UI shows a banner.
+   *
+   * When true, login is blocked until the address is confirmed. Defaulting to
+   * false is deliberate for self-hosted use — combined with a misconfigured
+   * Postmark it would otherwise lock you out of your own server. The escape
+   * hatch is `npm run verify:user <email>`.
+   */
+  EMAIL_VERIFICATION_REQUIRED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 function load() {

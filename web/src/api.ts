@@ -15,6 +15,9 @@ export interface ApiUser {
   lastName: string | null;
   isGhost: boolean;
   defaultCurrency: string;
+  emailVerified?: boolean;
+  /** False for ghosts, who have no address to confirm. */
+  needsEmailVerification?: boolean;
 }
 
 export interface Group {
@@ -102,6 +105,16 @@ export const api = {
     }),
 
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+
+  /** Unauthenticated — the link is often opened in a different browser. */
+  verifyEmail: (token: string) =>
+    request<{ ok: boolean; status: string }>(`/auth/verify/${token}`, { method: "POST" }),
+
+  resendVerification: () =>
+    request<{ ok: boolean; delivered?: boolean; alreadyVerified?: boolean }>(
+      "/auth/verify/resend",
+      { method: "POST" },
+    ),
 
   me: () => request<{ user: ApiUser }>("/auth/me"),
 

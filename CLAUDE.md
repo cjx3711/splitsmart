@@ -175,6 +175,51 @@ Known trade-offs, accepted deliberately: anyone holding an invite link can join
 **and read every expense in that group**; rotating the token stops future joins
 but does not remove existing members.
 
+## Email
+
+`src/email/` — Postmark transport, templates, and the verification flow.
+Migration 002 adds `email_tokens`.
+
+**`sendEmail()` never throws and never blocks boot.** With Postmark
+unconfigured it logs the message — link included — to the console. That is the
+documented unconfigured path, not a failure: it is how you complete verification
+locally, and it means a mail outage cannot turn a successful registration into a
+500. Callers check `result.delivered` rather than catching.
+
+Verification tokens are single-use, expire in 24h, stored hash-only, and issuing
+a new one supersedes any outstanding ones.
+
+Two details that look optional and are not:
+
+- **`email_tokens.email` is a snapshot** of the address at issue time.
+  Consuming compares it against `users.email` and refuses on mismatch —
+  otherwise a pending link would verify an address it was never issued for.
+- **`/verify/resend` must stay registered BEFORE `/verify/:token`.** Hono matches
+  in order; reverse them and "resend" is captured as a token and the endpoint
+  becomes unreachable. There is a regression test for this.
+
+Enforcement is advisory by default: unverified users log in fine and see a
+banner. `EMAIL_VERIFICATION_REQUIRED=true` blocks login instead — and if you
+enable it on a box where Postmark is broken, nobody can get in. The way out is
+`npm run verify:user -- you@example.com`, which needs only filesystem access.
+
+Ghosts have no address. `needsEmailVerification` is always false for them, and
+`issueVerificationToken` returns `no_email` — never nag a guest to confirm an
+address they do not have.
+
+## No file uploads
+
+There is no upload endpoint, no multipart parsing, no image handling, and no
+object storage anywhere in this codebase. This is intentional.
+
+The only trace is `receipt: { large: null, original: null }` in
+`src/routes/compat/serializers.ts`, which is a hardcoded null so Splitwise
+clients see the key they expect instead of `undefined`. It is not a feature stub.
+
+If you are asked to add receipts, that is a real feature with real
+consequences — storage, MIME sniffing, size limits, EXIF stripping, and serving
+untrusted bytes — so it needs an explicit decision, not an incidental one.
+
 ## Things that will bite you
 
 - **`src/db/index.ts` opens a connection at import time.** Tests must set

@@ -29,6 +29,7 @@ import {
 } from "../../auth/password.ts";
 import { createSession, SESSION_COOKIE } from "../../auth/session.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
+import { issueVerificationToken } from "../../email/verification.ts";
 
 export const inviteRoutes = new Hono<AppEnv>();
 
@@ -213,7 +214,16 @@ inviteRoutes.post(
       .where("id", "=", auth.id)
       .execute();
 
-    return c.json({ ok: true, user: { id: auth.id, email, isGhost: false } });
+    // A freshly claimed account is a brand-new address that nobody has proved
+    // control of, so it enters the same verification flow as registration.
+    const verification = await issueVerificationToken(auth.id);
+
+    return c.json({
+      ok: true,
+      user: { id: auth.id, email, isGhost: false },
+      emailVerified: false,
+      verificationEmailSent: verification.status === "sent" && verification.delivered,
+    });
   },
 );
 

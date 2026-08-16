@@ -83,17 +83,28 @@ Extend it for every endpoint added. Where possible, diff responses against real
 Splitwise output captured **while the API is still free** — capturing those
 fixtures now is worth more than any amount of guessing later.
 
-## Phase 4 — Email ⬜
+## Phase 4 — Email 🚧
 
 Wired to Postmark via `POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`.
 
-**Absence of those vars must silently disable sending, never crash at boot** —
-`emailEnabled` in `src/env.ts` already models this.
+**Absence of those vars silently disables sending, never crashes at boot.**
+`sendEmail()` logs the message (including the link) to the console instead, so
+the verification flow is completable locally with no mail provider.
 
-- ⬜ Email verification for new accounts
-- ⬜ Password reset
+- ✅ **Email verification for new accounts** — `src/email/`, migration 002
+  - ✅ Single-use, 24h, hash-only storage, supersedes previous tokens
+  - ✅ Address snapshot on the token so a changed email can't be verified by an
+        outstanding link
+  - ✅ 60s resend cooldown
+  - ✅ Advisory by default; `EMAIL_VERIFICATION_REQUIRED=true` blocks login
+  - ✅ `npm run verify:user` lockout escape hatch
+  - ✅ 20 tests
+- ⬜ **Password reset** — `email_tokens.purpose` already permits
+      `'reset_password'`, so this needs routes and a template, not a migration
+- ⬜ Change-email flow (re-verify the new address before it takes effect)
 - ⬜ Invite by email (as an alternative to the link)
 - ⬜ Optional expense notifications
+- ⬜ Postmark webhook for bounces and spam complaints
 
 ## Phase 5 — Import from Splitwise ⬜
 

@@ -19,6 +19,7 @@
     "seed:splitwise": "node --experimental-strip-types scripts/seed-from-splitwise.ts",
     "db:codegen": "kysely-codegen --dialect sqlite --url ./data/splitsmart.db --out-file src/db/types.ts",
     "db:check": "node --experimental-strip-types scripts/check-invariants.ts",
+    "verify:user": "node --experimental-strip-types scripts/verify-user.ts",
     "db:reset": "rm -f data/splitsmart.db data/splitsmart.db-wal data/splitsmart.db-shm && npm run db:migrate && npm run db:seed",
     "export:splitwise": "node --experimental-strip-types scripts/export-splitwise.ts",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",

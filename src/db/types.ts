@@ -144,6 +144,18 @@ export interface CommentsTable {
   deleted_at: string | null;
 }
 
+export interface EmailTokensTable {
+  id: string;
+  token_hash: string;
+  user_id: number;
+  purpose: string;
+  /** Snapshot of the address at issue time — see migrations/002. */
+  email: string;
+  created_at: Generated<string>;
+  expires_at: string;
+  used_at: string | null;
+}
+
 export interface ActivityTable {
   id: Generated<number>;
   user_id: number | null;
@@ -168,6 +180,7 @@ export interface Database {
   expense_repayments: ExpenseRepaymentsTable;
   comments: CommentsTable;
   activity: ActivityTable;
+  email_tokens: EmailTokensTable;
 }
 
 export type User = Selectable<UsersTable>;

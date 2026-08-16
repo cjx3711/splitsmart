@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import { env } from "./env.ts";
 import type { AppEnv } from "./auth/middleware.ts";
 import { purgeExpiredSessions } from "./auth/session.ts";
+import { purgeExpiredEmailTokens } from "./email/verification.ts";
 import { authRoutes } from "./routes/native/auth.ts";
 import { inviteRoutes } from "./routes/native/invite.ts";
 import { groupRoutes, expenseRoutes, categoryRoutes } from "./routes/native/groups.ts";
@@ -64,8 +65,12 @@ if (env.NODE_ENV === "production") {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   // Best-effort cleanup on boot and daily thereafter.
-  void purgeExpiredSessions().catch(() => {});
-  setInterval(() => void purgeExpiredSessions().catch(() => {}), 86_400_000).unref();
+  const purge = () => {
+    void purgeExpiredSessions().catch(() => {});
+    void purgeExpiredEmailTokens().catch(() => {});
+  };
+  purge();
+  setInterval(purge, 86_400_000).unref();
 
   serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log(`SplitSmart listening on http://localhost:${info.port}`);

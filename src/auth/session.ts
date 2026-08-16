@@ -23,6 +23,11 @@ export interface AuthenticatedUser {
   email: string | null;
   isGhost: boolean;
   defaultCurrency: string;
+  /**
+   * Null when unconfirmed. Ghosts have no email, so this is always null for
+   * them — check `isGhost` before treating it as "needs verification".
+   */
+  emailVerifiedAt: string | null;
 }
 
 export async function createSession(
@@ -57,6 +62,7 @@ export async function resolveSession(token: string): Promise<AuthenticatedUser |
       "users.email as email",
       "users.is_ghost as isGhost",
       "users.default_currency as defaultCurrency",
+      "users.email_verified_at as emailVerifiedAt",
       "sessions.id as sessionId",
       "sessions.expires_at as expiresAt",
     ])
@@ -86,6 +92,7 @@ export async function resolveSession(token: string): Promise<AuthenticatedUser |
     email: row.email,
     isGhost: row.isGhost === 1,
     defaultCurrency: row.defaultCurrency,
+    emailVerifiedAt: row.emailVerifiedAt,
   };
 }
 
@@ -136,6 +143,7 @@ export async function resolveApiToken(token: string): Promise<AuthenticatedUser 
       "users.email as email",
       "users.is_ghost as isGhost",
       "users.default_currency as defaultCurrency",
+      "users.email_verified_at as emailVerifiedAt",
       "api_tokens.id as tokenId",
       "api_tokens.revoked_at as revokedAt",
       "api_tokens.expires_at as expiresAt",
@@ -162,6 +170,7 @@ export async function resolveApiToken(token: string): Promise<AuthenticatedUser 
     email: row.email,
     isGhost: row.isGhost === 1,
     defaultCurrency: row.defaultCurrency,
+    emailVerifiedAt: row.emailVerifiedAt,
   };
 }
 

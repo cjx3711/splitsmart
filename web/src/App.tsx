@@ -6,6 +6,8 @@ import { Groups } from "./pages/Groups.tsx";
 import { GroupDetail } from "./pages/GroupDetail.tsx";
 import { Join } from "./pages/Join.tsx";
 import { Settings } from "./pages/Settings.tsx";
+import { Verify } from "./pages/Verify.tsx";
+import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 
 interface AuthContextValue {
   user: ApiUser | null;
@@ -38,10 +40,13 @@ export function App() {
   return (
     <AuthContext.Provider value={{ user, setUser, loading }}>
       <Header />
+      <EmailVerificationBanner />
       <div className="container">
         <Routes>
           {/* Public: an invite link must work before you have an account. */}
           <Route path="/join/:token" element={<Join />} />
+          {/* Public: the link is often opened in a different browser. */}
+          <Route path="/verify/:token" element={<Verify />} />
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<Protected><Groups /></Protected>} />
           <Route path="/groups/:id" element={<Protected><GroupDetail /></Protected>} />

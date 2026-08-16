@@ -19,6 +19,10 @@ import {
   SESSION_COOKIE,
 } from "../../auth/session.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
+import {
+  issueVerificationToken,
+  consumeVerificationToken,
+} from "../../email/verification.ts";
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -78,10 +82,23 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     .returning(["id", "email", "first_name", "last_name", "default_currency"])
     .executeTakeFirstOrThrow();
 
+  // Fire-and-forget: a mail outage must not turn a successful registration into
+  // an error. sendEmail never throws, and the user can request another link.
+  const verification = await issueVerificationToken(user.id);
+
   const { token, expiresAt } = await createSession(user.id, c.req.header("User-Agent"));
   setCookie(c, SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
 
-  return c.json({ user: toPublicUser(user) }, 201);
+  return c.json(
+    {
+      user: toPublicUser(user),
+      emailVerified: false,
+      // Lets the UI say "check your inbox" vs "email isn't configured on this
+      // server" instead of claiming a message was sent when it wasn't.
+      verificationEmailSent: verification.status === "sent" && verification.delivered,
+    },
+    201,
+  );
 });
 
 authRoutes.post(
@@ -94,7 +111,7 @@ authRoutes.post(
       .selectFrom("users")
       .select([
         "id", "email", "password_hash", "first_name", "last_name",
-        "default_currency", "is_ghost",
+        "default_currency", "is_ghost", "email_verified_at",
       ])
       .where("email", "=", email)
       .where("deleted_at", "is", null)
@@ -118,10 +135,105 @@ authRoutes.post(
         .execute();
     }
 
+    // Optional hard gate. Off by default so a misconfigured Postmark cannot
+    // lock you out of a self-hosted server — see EMAIL_VERIFICATION_REQUIRED
+    // in src/env.ts and the `npm run verify:user` escape hatch.
+    if (env.EMAIL_VERIFICATION_REQUIRED && !user.email_verified_at) {
+      return c.json(
+        {
+          error: "Confirm your email address before logging in.",
+          code: "email_not_verified",
+        },
+        403,
+      );
+    }
+
     const { token, expiresAt } = await createSession(user.id, c.req.header("User-Agent"));
     setCookie(c, SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
 
-    return c.json({ user: toPublicUser(user) });
+    return c.json({
+      user: toPublicUser(user),
+      emailVerified: user.email_verified_at !== null,
+    });
+  },
+);
+
+// --- Email verification -----------------------------------------------------
+//
+// ORDER MATTERS. Hono matches in registration order, so /verify/resend must be
+// declared BEFORE /verify/:token — otherwise "resend" is captured as a token
+// and the resend endpoint becomes unreachable.
+
+/** Re-sends the verification email to the signed-in user. */
+authRoutes.post("/verify/resend", requireAuth, async (c) => {
+  const auth = c.get("user");
+
+  if (auth.isGhost) {
+    return c.json({ error: "Guest accounts have no email address to verify." }, 400);
+  }
+
+  const result = await issueVerificationToken(auth.id);
+
+  switch (result.status) {
+    case "sent":
+      return c.json({ ok: true, delivered: result.delivered });
+    case "already_verified":
+      return c.json({ ok: true, alreadyVerified: true });
+    case "cooldown":
+      return c.json(
+        {
+          error: `Please wait ${result.retryAfterSeconds}s before requesting another email.`,
+          retryAfterSeconds: result.retryAfterSeconds,
+        },
+        429,
+        { "Retry-After": String(result.retryAfterSeconds) },
+      );
+    default:
+      return c.json({ error: "This account has no email address." }, 400);
+  }
+});
+
+/**
+ * Confirms an address from an emailed link.
+ *
+ * Unauthenticated on purpose: the link often gets opened in a different browser
+ * from the one that registered, and holding the token is the proof.
+ */
+authRoutes.post(
+  "/verify/:token",
+  zValidator("param", z.object({ token: z.string().min(16) })),
+  async (c) => {
+    const { token } = c.req.valid("param");
+    const result = await consumeVerificationToken(token);
+
+    switch (result.status) {
+      case "verified":
+        return c.json({ ok: true, status: "verified" });
+      case "expired":
+        return c.json(
+          { ok: false, status: "expired", error: "That link has expired. Request a new one." },
+          410,
+        );
+      case "already_used":
+        return c.json(
+          { ok: false, status: "already_used", error: "That link has already been used." },
+          410,
+        );
+      case "email_changed":
+        return c.json(
+          {
+            ok: false,
+            status: "email_changed",
+            error: "Your email address changed after this link was sent. Request a new one.",
+          },
+          409,
+        );
+      default:
+        return c.json(
+          { ok: false, status: "invalid", error: "That link is not valid." },
+          404,
+        );
+    }
   },
 );
 
@@ -142,6 +254,9 @@ authRoutes.get("/me", requireAuth, async (c) => {
       lastName: auth.lastName,
       isGhost: auth.isGhost,
       defaultCurrency: auth.defaultCurrency,
+      emailVerified: auth.emailVerifiedAt !== null,
+      // Ghosts have no address, so they must never be nagged to confirm one.
+      needsEmailVerification: !auth.isGhost && auth.emailVerifiedAt === null,
     },
   });
 });
