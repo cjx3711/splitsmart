@@ -55,8 +55,15 @@ Conversion happens **only** at the edges via `src/domain/money.ts`:
 
 A minor-unit integer is meaningless without its currency: `1000` is `10.00 USD`
 but `1000 JPY`. Always carry `currency_code` alongside, and get decimal places
-from the `currencies` table — never assume 2. JPY and KRW are 0; KWD, BHD and
-OMR are 3.
+from the `currencies` table — never assume 2.
+
+`src/db/currencies.ts` holds the full ISO 4217 list (157 entries): 16 are
+zero-decimal (JPY, KRW, VND, ISK, the CFA francs), 7 are three-decimal (the Gulf
+dinars plus TND), 2 are four-decimal accounting units. `currencies.test.ts` pins
+those sets exactly — if you change an exponent, that test should stop you.
+
+The list is complete on purpose: `expenses.currency_code` is a foreign key, so a
+missing currency rejects the expense rather than degrading gracefully.
 
 ### 2. Currencies are never converted
 

@@ -53,8 +53,31 @@ Same shape, wrapped in `{ "friend": … }`.
 Two levels. Clients flatten to subcategories and use **only subcategory IDs** as
 `category_id`.
 
-⚠️ Seeded category IDs are **ours**, not Splitwise's. For real ID parity, re-seed
-from a live `get_categories` response during import (Phase 5).
+⚠️ **Seeded category IDs are ours, not Splitwise's.** The default seed is a
+faithful reconstruction of Splitwise's tree — 7 parents, 43 leaves, matching
+names — but the IDs differ, so a client that hardcodes a Splitwise `category_id`
+lands on the wrong category.
+
+To get real ID parity:
+
+```bash
+npm run export:splitwise     # captures the live get_categories response
+npm run seed:splitwise       # rewrites categories using Splitwise's own ids
+```
+
+`scripts/seed-from-splitwise.ts` refuses to run if any expense already
+references a category id, since remapping would silently recategorise them. Run
+it on a fresh database, before importing expenses.
+
+### Currencies
+
+157 currencies are seeded from ISO 4217, which is broader than Splitwise's own
+list. This is deliberate: `expenses.currency_code` is a foreign key, so a
+missing currency does not degrade gracefully — it rejects the expense.
+
+`decimal_places` comes from ISO 4217 and is **never** overwritten by import.
+Splitwise's `get_currencies` does not report exponents, so anything it adds that
+we did not already have is assumed to be 2 and logged for manual review.
 
 ### `GET /get_expenses`
 

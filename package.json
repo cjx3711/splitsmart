@@ -16,6 +16,7 @@
     "start": "node dist/server.js",
     "db:migrate": "node --experimental-strip-types src/db/migrate.ts",
     "db:seed": "node --experimental-strip-types src/db/seed.ts",
+    "seed:splitwise": "node --experimental-strip-types scripts/seed-from-splitwise.ts",
     "db:codegen": "kysely-codegen --dialect sqlite --url ./data/splitsmart.db --out-file src/db/types.ts",
     "db:check": "node --experimental-strip-types scripts/check-invariants.ts",
     "db:reset": "rm -f data/splitsmart.db data/splitsmart.db-wal data/splitsmart.db-shm && npm run db:migrate && npm run db:seed",

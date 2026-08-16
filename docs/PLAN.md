@@ -101,8 +101,8 @@ Wired to Postmark via `POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`.
 - ⬜ **Preserve original IDs**: insert with `id = splitwise_id` on users, groups,
       expenses and categories so external references stay valid. Bump
       `sqlite_sequence` past the highest imported id afterwards.
-- ⬜ Re-seed categories from the real `get_categories` response so category IDs
-      match Splitwise's, not ours
+- ✅ `scripts/seed-from-splitwise.ts` re-seeds categories with Splitwise's own
+      ids (run before importing expenses; it refuses afterwards)
 - ⬜ Map Splitwise users to local users; create ghosts for anyone unmatched
 - ⬜ Idempotent re-import (match on `splitwise_id`, update in place)
 - ⬜ Run `npm run db:check` after import and reconcile every balance against the

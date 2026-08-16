@@ -13,43 +13,16 @@
  */
 import { openDatabase } from "./index.ts";
 import { env } from "../env.ts";
+import { CURRENCIES } from "./currencies.ts";
 
-/** decimal_places is the load-bearing field here — see src/domain/money.ts. */
-const CURRENCIES: Array<[code: string, decimals: number, symbol: string, name: string]> = [
-  ["USD", 2, "$", "US Dollar"],
-  ["EUR", 2, "€", "Euro"],
-  ["GBP", 2, "£", "British Pound"],
-  ["SGD", 2, "S$", "Singapore Dollar"],
-  ["AUD", 2, "A$", "Australian Dollar"],
-  ["CAD", 2, "C$", "Canadian Dollar"],
-  ["NZD", 2, "NZ$", "New Zealand Dollar"],
-  ["CHF", 2, "Fr", "Swiss Franc"],
-  ["CNY", 2, "¥", "Chinese Yuan"],
-  ["HKD", 2, "HK$", "Hong Kong Dollar"],
-  ["INR", 2, "₹", "Indian Rupee"],
-  ["MYR", 2, "RM", "Malaysian Ringgit"],
-  ["THB", 2, "฿", "Thai Baht"],
-  ["IDR", 2, "Rp", "Indonesian Rupiah"],
-  ["PHP", 2, "₱", "Philippine Peso"],
-  ["VND", 0, "₫", "Vietnamese Dong"],
-  ["TWD", 2, "NT$", "New Taiwan Dollar"],
-  ["KRW", 0, "₩", "South Korean Won"],
-  ["JPY", 0, "¥", "Japanese Yen"],
-  ["SEK", 2, "kr", "Swedish Krona"],
-  ["NOK", 2, "kr", "Norwegian Krone"],
-  ["DKK", 2, "kr", "Danish Krone"],
-  ["ZAR", 2, "R", "South African Rand"],
-  ["BRL", 2, "R$", "Brazilian Real"],
-  ["MXN", 2, "$", "Mexican Peso"],
-  ["AED", 2, "د.إ", "UAE Dirham"],
-  // Three-decimal currencies. These exist specifically to break naive
-  // amount * 100 code — keep at least one seeded so tests can catch it.
-  ["KWD", 3, "د.ك", "Kuwaiti Dinar"],
-  ["BHD", 3, ".د.ب", "Bahraini Dinar"],
-  ["OMR", 3, "ر.ع.", "Omani Rial"],
-];
-
-/** Mirrors Splitwise's two-level shape: only leaves are assignable. */
+/**
+ * Mirrors Splitwise's two-level shape: only leaves are assignable.
+ *
+ * ⚠️ This tree is a RECONSTRUCTION of Splitwise's categories, not a copy — the
+ * names and structure match, but the IDs are ours. For real ID parity, run
+ * `npm run seed:splitwise` against an export dump; it rewrites these rows with
+ * Splitwise's own ids and fills in splitwise_id. See docs/SPLITWISE_COMPAT.md.
+ */
 const CATEGORIES: Array<[parent: string, children: string[]]> = [
   ["Entertainment", ["Games", "Movies", "Music", "Sports", "Other"]],
   ["Food and drink", ["Dining out", "Groceries", "Liquor", "Other"]],
@@ -83,8 +56,8 @@ export function seed(databasePath: string = env.DATABASE_PATH): void {
   );
 
   const run = db.transaction(() => {
-    for (const [code, decimals, symbol, name] of CURRENCIES) {
-      insertCurrency.run(code, decimals, symbol, name);
+    for (const currency of CURRENCIES) {
+      insertCurrency.run(currency.code, currency.decimals, currency.symbol, currency.name);
     }
 
     CATEGORIES.forEach(([parentName, children], parentIndex) => {
