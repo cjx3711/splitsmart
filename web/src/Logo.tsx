@@ -1,37 +1,29 @@
 /**
- * The SplitSmart mark.
- *
- * A disc cut by an off-centre diagonal and pulled apart along the cut. The two
- * pieces are deliberately UNEQUAL — this app splits by exact amounts, percents,
- * shares and adjustments, not just down the middle, and a 50/50 mark would say
- * the opposite.
- *
- * Geometry is hand-computed rather than clipped so the component carries no
- * element ids: it can be rendered many times on a page without colliding.
- * Colours come from CSS variables (see styles.css) so the mark tracks the
- * light/dark theme instead of fighting it.
+ * The SplitSmart mark — a disc split along an off-centre cut, with the pieces
+ * pulled apart. Colours come from CSS variables (see styles.css) so the mark
+ * tracks the light/dark theme.
  */
 export function LogoMark({ size = 26 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="0 0 200 200"
       role="img"
       aria-label="SplitSmart"
       focusable="false"
     >
-      {/* Minor segment — the smaller share, lifted up and to the left. */}
       <path
-        d="M1.814 16.624 A14.2 14.2 0 0 1 25.956 5.876 Z"
-        transform="translate(-0.529 -1.188)"
+        d="M176.706 132.159C164.072 169.564 125.48 192.884 85.588 185.319C66.1606 181.635 49.7007 171.248 38.1499 157.006L176.706 132.159Z"
         fill="var(--logo-bright)"
       />
-      {/* Major segment. */}
       <path
-        d="M25.956 5.876 A14.2 14.2 0 1 1 1.814 16.624 Z"
-        transform="translate(0.529 1.188)"
+        d="M177.266 77.4246C180.794 89.3118 181.617 102.195 179.148 115.217C178.491 118.68 177.62 122.048 176.554 125.311L25.8112 130.829C20.0619 116.891 18.1614 101.18 21.1799 85.2622C21.6269 82.9052 22.1732 80.5922 22.8124 78.3261L177.266 77.4246Z"
         fill="var(--logo-deep)"
+      />
+      <path
+        d="M116.765 14.9607C139.236 19.2218 157.736 32.4516 169.262 50.242L24.7196 71.0486C36.2866 31.9415 75.8419 7.20066 116.765 14.9607Z"
+        fill="var(--logo-bright)"
       />
     </svg>
   );
