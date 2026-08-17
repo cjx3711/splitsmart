@@ -31,6 +31,7 @@ import {
   listRelatedUserIds,
 } from "../../domain/friends.ts";
 import { createExpense, createPayment } from "../../domain/expenses.ts";
+import { expenseBodySchema } from "./expense-schema.ts";
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
 
@@ -280,7 +281,7 @@ friendRoutes.get("/:id/expenses", async (c) => {
     .select([
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
-      "expenses.split_type", "expenses.group_id",
+      "expenses.split_type", "expenses.split_meta", "expenses.group_id",
       "categories.name as category_name", "groups.name as group_name",
     ])
     .where("expenses.deleted_at", "is", null)
@@ -311,7 +312,7 @@ friendRoutes.get("/:id/expenses", async (c) => {
 
   const shares = await db
     .selectFrom("expense_users")
-    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor"])
+    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor", "split_input"])
     .where("expense_id", "in", expenses.map((e) => e.id))
     .execute();
 
@@ -327,12 +328,6 @@ friendRoutes.get("/:id/expenses", async (c) => {
   });
 });
 
-const participantSchema = z.object({
-  userId: z.number().int().positive(),
-  paidMinor: z.number().int().min(0),
-  input: z.number().optional(),
-});
-
 /**
  * A one-on-one expense: group_id stays NULL.
  *
@@ -343,19 +338,7 @@ const participantSchema = z.object({
  */
 friendRoutes.post(
   "/:id/expenses",
-  zValidator(
-    "json",
-    z.object({
-      description: z.string().min(1).max(500),
-      details: z.string().max(5000).optional(),
-      costMinor: z.number().int().min(0),
-      currencyCode: z.string().length(3).toUpperCase(),
-      date: z.string(),
-      categoryId: z.number().int().positive().nullable().optional(),
-      splitType: z.enum(["equal", "exact", "percent", "shares", "adjustment"]),
-      participants: z.array(participantSchema).min(1).max(2),
-    }),
-  ),
+  zValidator("json", expenseBodySchema),
   async (c) => {
     const auth = c.get("user");
     const friendId = Number(c.req.param("id"));

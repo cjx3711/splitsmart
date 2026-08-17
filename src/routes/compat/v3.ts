@@ -1,5 +1,5 @@
 /**
- * Splitwise-compatible API, mounted at /api/v3.0.
+ * Splitwise-compatible API, mounted at /api/sw/v3.0.
  *
  * GOAL: a client written against Splitwise should work against SplitSmart by
  * changing only its base URL. Today this implements the six endpoints that

@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth } from "../App.tsx";
 
@@ -54,10 +55,18 @@ export function Settings() {
         <div className="muted">{user?.email ?? "Guest account (no email)"}</div>
       </div>
 
+      <h2>Import from Splitwise</h2>
+      <p className="muted">
+        Bring your groups, friends and expense history across. You supply your own Splitwise API
+        key; it is used for that import only and never stored. People are matched to existing
+        accounts by email address, and you see exactly who matched before anything is written.
+      </p>
+      <Link to="/import">Start an import</Link>
+
       <h2>API tokens</h2>
       <p className="muted">
         Use a token as the bearer credential for the Splitwise-compatible API at{" "}
-        <code>/api/v3.0</code>.
+        <code>/api/sw/v3.0</code>.
       </p>
 
       {error && <p className="error">{error}</p>}

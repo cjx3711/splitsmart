@@ -9,8 +9,22 @@
  * Note for future schema changes: SQLite cannot ALTER a CHECK constraint, so
  * changing one means rebuilding the table — and if other tables have foreign
  * keys into it you need `PRAGMA foreign_keys=OFF`, which is a NO-OP inside a
- * transaction. Such a migration will need to opt out of the wrapper below and
- * drive its own BEGIN/COMMIT.
+ * transaction. Such a migration opts out of the wrapper below by putting
+ *
+ *   -- migrate:no-transaction
+ *
+ * on a line of its own, and then drives its own PRAGMA / BEGIN / COMMIT. The
+ * only thing left outside that file's transaction is the schema_migrations
+ * bookkeeping row, so a crash in the gap between its COMMIT and that INSERT
+ * re-runs the file on next boot and fails loudly rather than corrupting
+ * anything.
+ *
+ * There is currently only one migration file: this app has never been
+ * deployed, so schema changes get folded back into
+ * 001_initial_schema.sql instead of layered on top of it. Once a real
+ * database exists somewhere, that stops being safe and new schema changes
+ * become new numbered files, applied forward from whatever is already out
+ * there.
  *
  * There is intentionally no `down` migration. Rolling back schema changes
  * against real financial data is more dangerous than fixing forward, and a
@@ -55,10 +69,17 @@ export function migrate(databasePath: string = env.DATABASE_PATH): number {
     if (applied.has(file)) continue;
 
     const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
-    const run = db.transaction(() => {
-      db.exec(sql);
-      db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
-    });
+    const selfManaged = /^\s*--\s*migrate:no-transaction\s*$/m.test(sql);
+
+    const run = selfManaged
+      ? () => {
+          db.exec(sql);
+          db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
+        }
+      : db.transaction(() => {
+          db.exec(sql);
+          db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
+        });
 
     try {
       run();

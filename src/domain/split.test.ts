@@ -197,6 +197,132 @@ describe("computeSplit", () => {
   });
 });
 
+describe("computeSplit — itemized", () => {
+  // Three people, a bill where each line is shared by a different subset.
+  const paidByOne = (total: number) => [
+    { userId: 1, paidMinor: total },
+    { userId: 2, paidMinor: 0 },
+    { userId: 3, paidMinor: 0 },
+  ];
+  const people = paidByOne(5000);
+
+  test("charges each line only to the people who shared it", () => {
+    const result = computeSplit(5000, "itemized", people, {
+      items: [
+        { label: "Steak", amountMinor: 3000, participantIds: [1] },
+        { label: "Salad", amountMinor: 1000, participantIds: [2] },
+        { label: "Wine", amountMinor: 1000, participantIds: [1, 2, 3] },
+      ],
+    });
+
+    assert.deepEqual(
+      result.map((r) => r.owedMinor),
+      [3000 + 334, 1000 + 333, 333],
+    );
+    assert.equal(sum(result.map((r) => r.owedMinor)), 5000);
+  });
+
+  test("spreads unitemised tax and tip in proportion to what each person ordered", () => {
+    // 4000 of items, 1000 of service charge. User 1 ordered 3/4 of the food, so
+    // they carry 3/4 of the charge — the whole point of proportional tax.
+    const result = computeSplit(5000, "itemized", people, {
+      items: [
+        { label: "Steak", amountMinor: 3000, participantIds: [1] },
+        { label: "Salad", amountMinor: 1000, participantIds: [2] },
+      ],
+    });
+
+    assert.deepEqual(
+      result.map((r) => r.owedMinor),
+      [3750, 1250, 0],
+    );
+    assert.equal(sum(result.map((r) => r.owedMinor)), 5000);
+  });
+
+  test("falls back to an even split when there is nothing to be proportional to", () => {
+    // A bill that is pure service charge: every line is zero, so there are no
+    // weights. splitByWeights would throw here; the fallback must not.
+    const result = computeSplit(1000, "itemized", paidByOne(1000), {
+      items: [{ label: "Cover charge", amountMinor: 0, participantIds: [1, 2, 3] }],
+    });
+
+    assert.deepEqual(
+      result.map((r) => r.owedMinor),
+      [334, 333, 333],
+    );
+  });
+
+  test("allocates a line's odd minor unit deterministically, whatever the input order", () => {
+    const forwards = computeSplit(1000, "itemized", paidByOne(1000), {
+      items: [{ amountMinor: 1000, participantIds: [1, 2, 3] }],
+    });
+    const backwards = computeSplit(1000, "itemized", paidByOne(1000), {
+      items: [{ amountMinor: 1000, participantIds: [3, 2, 1] }],
+    });
+
+    assert.deepEqual(forwards, backwards);
+    assert.deepEqual(
+      forwards.map((r) => r.owedMinor),
+      [334, 333, 333],
+    );
+  });
+
+  test("rejects items that exceed the expense total", () => {
+    assert.throws(
+      () =>
+        computeSplit(1000, "itemized", people, {
+          items: [{ label: "Steak", amountMinor: 9000, participantIds: [1] }],
+        }),
+      SplitError,
+    );
+  });
+
+  test("rejects a line charged to someone who is not on the expense", () => {
+    assert.throws(
+      () =>
+        computeSplit(5000, "itemized", people, {
+          items: [{ amountMinor: 5000, participantIds: [99] }],
+        }),
+      SplitError,
+    );
+  });
+
+  test("rejects a line with nobody on it", () => {
+    assert.throws(
+      () =>
+        computeSplit(5000, "itemized", people, {
+          items: [{ amountMinor: 5000, participantIds: [] }],
+        }),
+      SplitError,
+    );
+  });
+
+  test("rejects a line that names the same person twice", () => {
+    // Silently deduping would halve that person's share of the line.
+    assert.throws(
+      () =>
+        computeSplit(5000, "itemized", people, {
+          items: [{ amountMinor: 5000, participantIds: [1, 1] }],
+        }),
+      SplitError,
+    );
+  });
+
+  test("rejects an itemized split with no items at all", () => {
+    assert.throws(() => computeSplit(5000, "itemized", people), SplitError);
+  });
+
+  test("rejects items passed to a split type that cannot use them", () => {
+    assert.throws(
+      () =>
+        computeSplit(5000, "equal", people, {
+          items: [{ amountMinor: 5000, participantIds: [1] }],
+        }),
+      SplitError,
+    );
+  });
+});
+
 describe("deriveRepayments", () => {
   test("single payer produces one debt per other participant", () => {
     const shares = simpleEqualSplit(3000, 1, [1, 2, 3]);

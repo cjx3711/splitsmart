@@ -2,9 +2,9 @@
  * SplitSmart server entry point.
  *
  * One Node process serves three things:
- *   /api/v1/*    — native API (clean model, used by the React frontend)
- *   /api/v3.0/*  — Splitwise-compatible API (used by external tools)
- *   /*           — the built React app (production only; Vite handles dev)
+ *   /api/v1/*       — native API (clean model, used by the React frontend)
+ *   /api/sw/v3.0/*  — Splitwise-compatible API (used by external tools)
+ *   /*              — the built React app (production only; Vite handles dev)
  */
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -21,6 +21,7 @@ import { inviteRoutes } from "./routes/native/invite.ts";
 import { groupRoutes, expenseRoutes, categoryRoutes } from "./routes/native/groups.ts";
 import { friendRoutes } from "./routes/native/friends.ts";
 import { activityRoutes } from "./routes/native/activity.ts";
+import { importRoutes } from "./routes/native/import.ts";
 import { compatV3 } from "./routes/compat/v3.ts";
 
 const app = new Hono<AppEnv>();
@@ -37,13 +38,14 @@ app.route("/api/v1/friends", friendRoutes);
 app.route("/api/v1/expenses", expenseRoutes);
 app.route("/api/v1/activity", activityRoutes);
 app.route("/api/v1/categories", categoryRoutes);
+app.route("/api/v1/import", importRoutes);
 
 // --- Splitwise-compatible API ----------------------------------------------
-// Mounted at BOTH paths on purpose: Splitwise's real base URL is
-// https://secure.splitwise.com/api/v3.0, and clients that proxy (like
-// splitwise-to-toshl) may or may not preserve the /api prefix.
-app.route("/api/v3.0", compatV3);
-app.route("/v3.0", compatV3);
+// Mounted at /api/sw/v3.0 — distinct from Splitwise's own base URL
+// (https://secure.splitwise.com/api/v3.0) so it's clear this is a compat
+// shim, not the real thing. External clients (like splitwise-to-toshl) are
+// pointed at this base URL explicitly, so there is no dual mount.
+app.route("/api/sw/v3.0", compatV3);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -79,7 +81,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log(`SplitSmart listening on http://localhost:${info.port}`);
     console.log(`  native API   /api/v1`);
-    console.log(`  compat API   /api/v3.0`);
+    console.log(`  compat API   /api/sw/v3.0`);
   });
 }
 

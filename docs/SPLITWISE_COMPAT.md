@@ -1,7 +1,7 @@
 # Splitwise API compatibility
 
-The compat layer lives in `src/routes/compat/` and is mounted at both
-`/api/v3.0` and `/v3.0`. Its wire format is **frozen** — see CLAUDE.md rule 5.
+The compat layer lives in `src/routes/compat/` and is mounted at
+`/api/sw/v3.0`. Its wire format is **frozen** — see CLAUDE.md rule 5.
 
 Auth is `Authorization: Bearer <token>`, where the token is minted in Settings →
 API tokens. Splitwise's own personal API keys work the same way, which is why no
@@ -136,6 +136,14 @@ Body uses Splitwise's flattened participant keys:
 
 Indices need not be contiguous or ordered. Because explicit owed shares are
 always supplied, this maps to the `exact` split type.
+
+The compat layer has no notion of a split *type*, in either direction — the wire
+format only ever carries per-person `paid_share` / `owed_share`, which is exactly
+what SplitSmart stores in `expense_users`. So a native expense split by percent,
+shares or an itemized bill serialises out here as ordinary owed shares and reads
+correctly in any Splitwise client. Nothing needs adding, and per the frozen-wire
+rule, nothing should be: do not surface `split_type` or `split_meta` on
+`/api/sw/v3.0`, because real Splitwise never did.
 
 Response: `{ "expenses": [ … ], "errors": {} }`.
 

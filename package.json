@@ -45,6 +45,7 @@
     "kysely-codegen": "^0.17.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-icons": "^5.7.0",
     "react-router-dom": "^7.1.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"

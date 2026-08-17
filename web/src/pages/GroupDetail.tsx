@@ -9,7 +9,7 @@ import {
   type CurrencyAmount,
 } from "../api.ts";
 import { Amount, useFormatMoney } from "../money.tsx";
-import { ExpenseForm } from "../ExpenseForm.tsx";
+import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
@@ -99,23 +99,13 @@ export function GroupDetail() {
         </div>
       </div>
 
-      <Modal
+      <AddExpenseDialog
         open={openDialog === "expense"}
         title={`Add an expense to ${group.name}`}
+        initialGroupId={groupId}
         onClose={() => setOpenDialog(null)}
-      >
-        <ExpenseForm
-          className="stack"
-          people={people}
-          currentUserId={user.id}
-          defaultCurrency={group.default_currency}
-          onSubmit={async (input) => {
-            await api.createExpense(groupId, input);
-            setOpenDialog(null);
-            await load();
-          }}
-        />
-      </Modal>
+        onCreated={load}
+      />
 
       <Modal
         open={openDialog === "settle"}

@@ -13,6 +13,8 @@ import { generateToken } from "../../auth/password.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
 import { createExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
+import { listRelatedUserIds } from "../../domain/friends.ts";
+import { expenseBodySchema, genericExpenseBodySchema } from "./expense-schema.ts";
 
 export const groupRoutes = new Hono<AppEnv>();
 groupRoutes.use("*", requireAuth);
@@ -182,7 +184,7 @@ groupRoutes.get("/:id/expenses", async (c) => {
     .select([
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
-      "expenses.split_type", "categories.name as category_name",
+      "expenses.split_type", "expenses.split_meta", "categories.name as category_name",
     ])
     .where("expenses.group_id", "=", groupId)
     .where("expenses.deleted_at", "is", null)
@@ -196,7 +198,7 @@ groupRoutes.get("/:id/expenses", async (c) => {
 
   const shares = await db
     .selectFrom("expense_users")
-    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor"])
+    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor", "split_input"])
     .where("expense_id", "in", expenses.map((e) => e.id))
     .execute();
 
@@ -212,27 +214,9 @@ groupRoutes.get("/:id/expenses", async (c) => {
   });
 });
 
-const participantSchema = z.object({
-  userId: z.number().int().positive(),
-  paidMinor: z.number().int().min(0),
-  input: z.number().optional(),
-});
-
 groupRoutes.post(
   "/:id/expenses",
-  zValidator(
-    "json",
-    z.object({
-      description: z.string().min(1).max(500),
-      details: z.string().max(5000).optional(),
-      costMinor: z.number().int().min(0),
-      currencyCode: z.string().length(3).toUpperCase(),
-      date: z.string(),
-      categoryId: z.number().int().positive().nullable().optional(),
-      splitType: z.enum(["equal", "exact", "percent", "shares", "adjustment"]),
-      participants: z.array(participantSchema).min(1),
-    }),
-  ),
+  zValidator("json", expenseBodySchema),
   async (c) => {
     const auth = c.get("user");
     const groupId = Number(c.req.param("id"));
@@ -304,6 +288,61 @@ expenseRoutes.use("*", requireAuth);
  * Backs the "All expenses" screen. Membership is decided by expense_users, not
  * group membership, so leaving a group does not hide history you are part of.
  */
+/**
+ * Create an expense anywhere: in a group, or in no group at all.
+ *
+ * The group-scoped and friend-scoped endpoints stay as they are — they are what
+ * the compat layer and existing clients use — but neither can express the one
+ * shape the add-expense dialog needs: several people, chosen freely, possibly
+ * with no group. This is that endpoint, and it is the one the web UI posts to.
+ *
+ * Who may appear on the expense:
+ *
+ *   in a group — its current members, enforced by createExpense itself
+ *   no group   — you, plus anyone you already share money history with
+ *                (src/domain/friends.ts is the ONE definition of that)
+ *
+ * The caller must be on the expense either way. A non-group expense between two
+ * other people would create a balance neither of them can see and this app has
+ * no screen for.
+ */
+expenseRoutes.post("/", zValidator("json", genericExpenseBodySchema), async (c) => {
+  const auth = c.get("user");
+  const { groupId = null, ...input } = c.req.valid("json");
+
+  if (!input.participants.some((p) => p.userId === auth.id)) {
+    return c.json({ error: "You have to be one of the people on this expense." }, 400);
+  }
+
+  if (groupId !== null) {
+    if (!(await assertMember(groupId, auth.id))) {
+      return c.json({ error: "Not a member of this group" }, 403);
+    }
+  } else {
+    const allowed = new Set([auth.id, ...(await listRelatedUserIds(db, auth.id))]);
+    const strangers = input.participants.filter((p) => !allowed.has(p.userId));
+    if (strangers.length > 0) {
+      return c.json(
+        { error: "A non-group expense can only involve you and people you share history with." },
+        400,
+      );
+    }
+  }
+
+  try {
+    const expenseId = await createExpense({
+      ...input,
+      groupId,
+      details: input.details ?? null,
+      categoryId: input.categoryId ?? null,
+      createdBy: auth.id,
+    });
+    return c.json({ id: expenseId }, 201);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Could not create expense" }, 400);
+  }
+});
+
 expenseRoutes.get("/", async (c) => {
   const auth = c.get("user");
   const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
@@ -317,7 +356,7 @@ expenseRoutes.get("/", async (c) => {
     .select([
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
-      "expenses.split_type", "expenses.group_id",
+      "expenses.split_type", "expenses.split_meta", "expenses.group_id",
       "categories.name as category_name", "groups.name as group_name",
     ])
     .where("expense_users.user_id", "=", auth.id)
@@ -332,7 +371,7 @@ expenseRoutes.get("/", async (c) => {
 
   const shares = await db
     .selectFrom("expense_users")
-    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor"])
+    .select(["expense_id", "user_id", "paid_share_minor", "owed_share_minor", "split_input"])
     .where("expense_id", "in", expenses.map((e) => e.id))
     .execute();
 
@@ -346,6 +385,32 @@ expenseRoutes.get("/", async (c) => {
   return c.json({
     expenses: expenses.map((e) => ({ ...e, shares: byExpense.get(e.id) ?? [] })),
   });
+});
+
+/**
+ * Currencies this user has actually used, most-used first.
+ *
+ * Backs the "Popular" section of the currency picker — a static top-10 list is
+ * a poor default for someone whose expenses are mostly in a currency it
+ * doesn't include. Deleted expenses are excluded so removing a one-off mistake
+ * in a rare currency doesn't keep it pinned at the top forever.
+ */
+expenseRoutes.get("/currencies/frequent", async (c) => {
+  const auth = c.get("user");
+
+  const rows = await db
+    .selectFrom("expenses")
+    .innerJoin("expense_users", "expense_users.expense_id", "expenses.id")
+    .select("expenses.currency_code")
+    .select((eb) => eb.fn.countAll().as("count"))
+    .where("expense_users.user_id", "=", auth.id)
+    .where("expenses.deleted_at", "is", null)
+    .groupBy("expenses.currency_code")
+    .orderBy("count", "desc")
+    .limit(10)
+    .execute();
+
+  return c.json({ codes: rows.map((r) => r.currency_code) });
 });
 
 expenseRoutes.delete("/:id", async (c) => {

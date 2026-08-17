@@ -124,6 +124,25 @@ a {
   font-size: 0.875rem;
 }
 
+.topbar-add-short {
+  display: none;
+}
+
+/* On a phone the full label pushes "Log out" off the bar. */
+@media (max-width: 620px) {
+  .topbar-add-long {
+    display: none;
+  }
+
+  .topbar-add-short {
+    display: inline;
+  }
+
+  .topbar-add {
+    padding: 0.4rem 0.6rem;
+  }
+}
+
 .shell {
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
@@ -537,6 +556,118 @@ button {
   cursor: pointer;
 }
 
+/* --- currency select -------------------------------------------------------- */
+
+.currency-select {
+  position: relative;
+}
+
+.currency-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-weight: 400;
+  text-align: left;
+}
+
+.currency-select-caret {
+  color: var(--muted);
+  font-size: 0.75em;
+}
+
+.currency-select-menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  overflow: hidden;
+}
+
+.currency-select-search {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+}
+
+.currency-select-search:focus-visible {
+  outline: none;
+}
+
+.currency-select-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  max-height: 280px;
+}
+
+.currency-select-group-label {
+  padding: 0.3rem 0.6rem 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.currency-select-divider {
+  margin: 0.25rem 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
+.currency-select-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+}
+
+.currency-select-option.highlighted,
+.currency-select-option:hover {
+  background: var(--surface-2);
+}
+
+.currency-select-option.selected {
+  font-weight: 650;
+}
+
+.currency-select-code {
+  flex: none;
+}
+
+.currency-select-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.currency-select-empty {
+  padding: 0.5rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 button:hover:not(:disabled) {
   filter: brightness(1.08);
 }
@@ -602,20 +733,451 @@ button.icon:hover:not(:disabled) {
   }
 }
 
-.participant {
+/* --- split editor --------------------------------------------------------- */
+
+/* The six ways to divide an expense. See web/src/SplitEditor.tsx.
+ *
+ * The per-person rows are a 4-column grid — checkbox, name, input, amount — so
+ * that the owed amounts form a single right-aligned column no matter how long
+ * the names are. Amounts in a ledger have to line up; that is the whole reason
+ * this is a grid and not a flex row. */
+
+.stack-tight {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.3rem 0;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
-.participant input[type="checkbox"] {
+.split-editor {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.split-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.split-mode {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   width: auto;
 }
 
-.participant label {
+.split-mode:hover:not(:disabled) {
+  color: var(--text);
+  filter: none;
+}
+
+.split-mode.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.split-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Not `.error`: an unbalanced split is the normal state of a form being filled
+   in, so it reads as guidance rather than as something having gone wrong. */
+.split-problem {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--negative);
+}
+
+.split-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* Name, per-mode input, computed amount. Who is ON the expense is decided by
+   the people picker at the top of the form, not here — see SplitEditor.tsx. */
+.split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.split-row-name {
   margin: 0;
   font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-row-input {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.split-row-input input {
+  width: 6.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-row-unit {
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-width: 1.5rem;
+}
+
+/* Fixed width so the computed amounts align down the column even while the
+   numbers above them are still being typed. */
+.split-row-owed {
+  min-width: 7.5rem;
+  text-align: right;
+  font-size: 0.88rem;
+}
+
+/* --- itemized editor ------------------------------------------------------ */
+
+.split-item {
+  padding: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.split-item-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.split-item-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-item-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.chip {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  width: auto;
+}
+
+.chip:hover:not(:disabled) {
+  color: var(--text);
+  filter: none;
+}
+
+.chip.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.split-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Subtotal / tax / tip / grand total. The grand total IS the expense amount in
+   itemized mode — the amount box up top is read-only and mirrors this. */
+.split-totals {
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.split-total-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8rem;
+  align-items: center;
+  gap: 0.5rem;
+  justify-items: end;
+}
+
+.split-total-row > :first-child {
+  justify-self: start;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.split-total-row input {
+  width: 8rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-total-row.is-total > :first-child {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* --- one-sided presets ---------------------------------------------------- */
+
+/* "You owe the full amount" and its mirror. They set shares weights rather
+   than fixed amounts, so changing the total afterwards keeps them true. */
+.split-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+/* --- people picker -------------------------------------------------------- */
+
+/* An email-style To: field. The chips are the expense's participants; the
+   split editor below renders one row per chip. */
+.people-picker {
+  position: relative;
+}
+
+.people-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: text;
+}
+
+.person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.83rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.person-chip.is-locked {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  padding-left: 0.1rem;
+}
+
+.person-chip-remove {
+  width: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.person-chip-remove:hover:not(:disabled) {
+  color: var(--negative);
+  filter: none;
+}
+
+.people-input {
+  flex: 1;
+  min-width: 8rem;
+  border: none;
+  background: none;
+  padding: 0.15rem 0.2rem;
+}
+
+.people-input:focus {
+  outline: none;
+}
+
+.people-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 14px 32px rgb(0 0 0 / 0.35);
+}
+
+.people-option {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.people-option.highlighted {
+  background: var(--surface-2);
+  filter: none;
+}
+
+.people-empty {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+/* --- paid by -------------------------------------------------------------- */
+
+/* A button that reads as a select, because what it opens is a dialog rather
+   than a list of options — several people can have paid. */
+.field-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-weight: 500;
+}
+
+.field-button-caret {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.payer-option {
+  text-align: left;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.payer-option.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+/* --- category ------------------------------------------------------------- */
+
+/* The big square to the left of the description, where Splitwise puts a
+   receipt glyph. Ours shows the chosen category — see web/src/categories.tsx. */
+.expense-headline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.category-button {
+  flex: none;
+  width: 3.25rem;
+  height: 3.25rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  margin-top: 1.35rem;
+}
+
+.category-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  filter: none;
+}
+
+.category-grid-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.category-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.35rem;
+}
+
+.category-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.55rem;
+}
+
+.category-option.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+@media (max-width: 560px) {
+  .split-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  /* The owed amount moves under the name rather than shrinking the inputs. */
+  .split-row-owed {
+    grid-column: 2 / -1;
+    text-align: left;
+    min-width: 0;
+  }
+
+  .split-item-head {
+    grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+  }
 }
 
 /* --- modal ---------------------------------------------------------------- */

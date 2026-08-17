@@ -2,8 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "splitsmart",
-      "url": "http://localhost:5444",
+      "name": "web",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["dev:web"],
+      "port": 5444
+    },
+    {
+      "name": "dev",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["dev"],
       "port": 5444
     }
   ]

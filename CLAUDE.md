@@ -10,7 +10,7 @@ endpoints Splitwise clients actually use. Two consumers matter:
 
 1. The React frontend in `web/` — talks to the native API at `/api/v1`.
 2. External tools (notably `splitwise-to-toshl`) — talk to the compat API at
-   `/api/v3.0`, which mimics Splitwise's v3.0 wire format exactly.
+   `/api/sw/v3.0`, which mimics Splitwise's v3.0 wire format exactly.
 
 The long-term goal is full API parity. See `docs/PLAN.md` for the roadmap and
 `docs/SPLITWISE_COMPAT.md` for the endpoint-by-endpoint status.
@@ -120,7 +120,7 @@ parts that are ugly:
 Wrong-but-compatible beats right-but-broken. **Do not "improve" a response
 shape.** `src/routes/compat/v3.test.ts` asserts on these field names and string
 formats specifically to catch well-intentioned cleanups. New features get native
-routes under `/api/v1` — never extend `/api/v3.0` with fields Splitwise never had.
+routes under `/api/v1` — never extend `/api/sw/v3.0` with fields Splitwise never had.
 
 ## Layout
 
@@ -137,14 +137,19 @@ src/
     seed.ts          Loads both (idempotent)
   domain/            PURE business logic — no I/O except expenses.ts
     money.ts         parse/format/split helpers
-    split.ts         The split engine. Pure. Heavily tested.
+    split.ts         The split engine. Pure. Heavily tested. Also imported by
+                     the frontend — see "Split types" below.
     balances.ts      Balance queries + simplifyDebts
     expenses.ts      The ONLY writer of expense tables
+    friends.ts       Explicit vs derived friendships. ONE definition of "friend"
+    import.ts        Splitwise import: people -> groups -> expenses
+  splitwise/
+    client.ts        READ-ONLY client for the real Splitwise API. Nothing else
+                     may talk to secure.splitwise.com.
   auth/
     password.ts      scrypt hashing + token generation
     session.ts       Cookie sessions AND bearer API tokens
     middleware.ts    requireAuth / optionalAuth
-    friends.ts       Explicit vs derived friendships. ONE definition of "friend"
   routes/
     native/          Clean API at /api/v1 — used by web/
     compat/          Splitwise v3.0 shim. Wire format frozen.
@@ -154,7 +159,12 @@ web/                 React frontend (Vite)
     money.tsx        Currency-aware formatting. THE ONLY WAY TO RENDER MONEY
     Logo.tsx         The mark (also copied literally into public/favicon.svg)
     Sidebar.tsx      Owns the group/friend lists shown on every screen
-    ExpenseForm.tsx  Shared add-expense form (group + one-on-one)
+    ExpenseForm.tsx      The one add-expense form (group, friend, or neither)
+    AddExpenseDialog.tsx Loads the people/groups it offers; the only entry point
+    PeoplePicker.tsx     Who is on the expense — an email-style To: field
+    PaidBy.tsx           Who put the money in. NOT how it is split
+    SplitEditor.tsx      How it is split, previewed with the real engine
+    categories.tsx       Category icons (react-icons/lucide) + the picker
 scripts/
   export-splitwise.ts    Raw API dump — RUN THIS FIRST, see below
   check-invariants.ts    Data integrity audit
@@ -219,6 +229,86 @@ Known trade-offs, accepted deliberately: anyone holding an invite link can join
 **and read every expense in that group**; rotating the token stops future joins
 but does not remove existing members.
 
+## Split types
+
+Six, all in `src/domain/split.ts`: `equal`, `exact`, `percent`, `shares`,
+`adjustment`, `itemized`. Five of them are one number per person, carried in
+`expense_users.split_input` — which exists only so the editor can reopen the
+form, and is **never** used to compute a balance.
+
+**The frontend imports the split engine.** `src/domain/split.ts` is pure — no
+database, no Node built-ins — so `web/src/SplitEditor.tsx` runs the real
+`computeSplit()` to preview a split as you type. This is deliberate and worth
+preserving: the alternative is a second implementation of the rounding in the
+browser, which would drift, and the first symptom of drift is a preview that
+disagrees with the stored expense by a cent. Keep that module free of I/O.
+The server still recomputes on submit and stays authoritative.
+
+Itemization is the one that does not fit one-number-per-person: a bill has
+several lines, each shared by a different subset of the table. So:
+
+- **Lines are computed, then thrown into `expenses.split_meta` as JSON.** Each
+  line splits evenly among its own sharers; whatever the lines do not cover —
+  tax, tip, service charge — is spread in **proportion** to what each person
+  already owes, because that is what proportional tax means. If every line is
+  zero there are no weights, so it falls back to an even split rather than
+  throwing.
+- **`split_meta` is presentation detail, not ledger data.** Nothing queries it,
+  sums it, or joins on it; it is read back whole by the editor and nothing else.
+  Delete every byte of it and all balances in the app are unchanged. The derived
+  shares in `expense_users` remain the only thing balance queries read, so the
+  invariant is untouched.
+- Two CHECKs enforce that: `split_meta` must be valid JSON, and it must be NULL
+  unless `split_type = 'itemized'`. So editing an itemized expense into a
+  percent one has to **clear** the blob — `updateExpense` always writes the
+  column rather than leaving it alone, and there is a test for it.
+- **`taxMinor` / `tipMinor` live in that same blob and are captions, not
+  maths.** They name part of the gap the engine already spreads, so sending
+  them changes no share. `createExpense` refuses a pair that does not equal
+  `cost - sum(items)` exactly: a stored tip that contradicts the ledger under
+  it is worse than no tip at all. The form never lets that happen, because in
+  itemized mode the amount box is **derived** — lines + tax + tip — rather than
+  typed.
+
+Adding a seventh split type means touching a Zod enum, a DB CHECK constraint,
+and the engine. The enum lives in `src/routes/native/expense-schema.ts`, shared
+by the group and friend routes so it cannot be added to one and forgotten on the
+other. The CHECK means a table rebuild — see below.
+
+## Paying is not splitting
+
+`expense_users.paid_share_minor` is per person and always has been: several
+people can each have fronted part of one bill, and the split engine takes them
+as given (it only insists they sum to the cost). The add-expense form exposes
+that as three shapes — one payer, stated amounts per payer, or "everyone paid
+their own share", which is resolved by computing the split first and then
+setting each person's payment to what they owe.
+
+Keep the two axes apart in the UI as well as the model. `web/src/PaidBy.tsx`
+edits payments and nothing else; `web/src/SplitEditor.tsx` decides who owes
+what and never touches a payment.
+
+## Where an expense can be created
+
+Three endpoints write expenses, and the newest one is what the web UI uses:
+
+| Route | Who may be on it |
+|---|---|
+| `POST /api/v1/expenses` | a group's members, or you + anyone you share history with |
+| `POST /api/v1/groups/:id/expenses` | that group's members |
+| `POST /api/v1/friends/:id/expenses` | exactly the two of you |
+
+The narrow two are unchanged and still used; the generic one exists because the
+add-expense dialog can name several people with no group at all, which neither
+of the others can express. It requires the caller to be a participant — a
+non-group expense between two other people creates a balance neither of them can
+see and there is no screen for it.
+
+On the client, `web/src/AddExpenseDialog.tsx` is the only place that knows where
+people come from (a group's members, or your friends). `ExpenseForm` takes the
+pool as a prop, so the group screen, the friend screen and the top bar all open
+the same form.
+
 ## Friends
 
 Two kinds, and the difference decides what the UI may offer:
@@ -276,6 +366,58 @@ Ghosts have no address. `needsEmailVerification` is always false for them, and
 `issueVerificationToken` returns `no_email` — never nag a guest to confirm an
 address they do not have.
 
+## Splitwise import
+
+Per-user and in-app, not a server-side script. `src/domain/import.ts` does the
+work, `src/routes/native/import.ts` exposes it, `web/src/pages/Import.tsx` is a
+thin wizard over those endpoints.
+
+**The API key is the user's, and is never stored.** There is no
+`SPLITWISE_API_KEY` in `src/env.ts` on purpose. The key arrives in the body of
+each import request, is used for that request, and is dropped. A database dump
+of this app therefore contains no credential to anyone else's Splitwise account.
+Do not add a column, a cache, or a background job that would keep it — that
+decision is the reason this is a sequence of short requests rather than one long
+one.
+
+**One step per request, in dependency order**, because expenses reference groups
+and groups reference people:
+
+```
+GET  /api/v1/import/status     what is already here (no key needed)
+POST /api/v1/import/preview    dry run — reads Splitwise, writes nothing
+POST /api/v1/import/friends    step 1
+POST /api/v1/import/groups     step 2
+POST /api/v1/import/expenses   step 3, one page per call, resumable
+POST /api/v1/import/run        all three server-side, for small accounts
+```
+
+That shape exists so the whole flow is drivable by curl or by a test with no
+browser. `SPLITWISE_API_BASE` completes the picture: point it at a fake
+Splitwise on localhost and `src/routes/native/import.test.ts` runs the real
+client, the real routes and the real expense writer end to end.
+
+Four things this must keep doing:
+
+- **Identity is `splitwise_id` first, email second.** Every imported row carries
+  the id it came from, so a second run matches instead of duplicating. Email is
+  the *only* heuristic, used just to link a Splitwise contact to a SplitSmart
+  account that already exists — and the preview names every person it applies to
+  before anything is written, because a wrong match merges two people's money.
+- **Splitwise's own `owed_share` is imported as an `exact` split.** Never
+  re-derive an equal split from the total: the two disagree by a cent on
+  three-way splits, and a cent is a balance.
+- **Group 0 is not a group.** It is Splitwise's "Non-group expenses" bucket and
+  maps to `group_id = NULL`.
+- **A row that cannot be imported exactly is skipped with a reason**, never
+  fudged. Unknown currency, missing group, shares that do not add up — each
+  comes back in `skipped[]` and writes nothing.
+
+Two smaller deliberate choices: imported expenses pass `recordActivity: false`
+to `createExpense` (one summary feed entry per run, not one per expense), and an
+imported group gets **no** `invite_token` — importing a group is not deciding to
+share it.
+
 ## No file uploads
 
 There is no upload endpoint, no multipart parsing, no image handling, and no
@@ -296,7 +438,19 @@ untrusted bytes — so it needs an explicit decision, not an incidental one.
   the dynamic-import pattern at the top of `src/routes/compat/v3.test.ts`.
 - **`src/db/types.ts` is checked in but generated.** After a migration, run
   `yarn db:migrate && yarn db:codegen`. Hand-editing it without a matching
-  migration gives you types that lie.
+  migration gives you types that lie. Note that the checked-in file predates the
+  current `kysely-codegen` naming (it uses `*Table` interfaces and exports
+  `Database`); running codegen renames all of them and breaks `src/db/index.ts`,
+  so either fix up the output or add the column by hand alongside its migration.
+- **Changing a CHECK constraint means rebuilding the table.** SQLite cannot
+  ALTER one, and the rebuild needs `PRAGMA foreign_keys=OFF` — a no-op inside a
+  transaction, which is what the migration runner normally wraps each file in.
+  Put `-- migrate:no-transaction` on its own line to opt out and drive your own
+  BEGIN/COMMIT (see `src/db/migrate.ts` for the mechanics). Get the pragma
+  wrong and `ALTER TABLE ... RENAME` silently repoints every other table's
+  foreign keys at your temporary table. Not needed today — there is only one
+  migration, and it creates the tables fresh — but it will be the day a second
+  one exists.
 - **Rounding must be deterministic.** `splitEvenly` gives leftover minor units to
   the earliest participants, and participants are sorted by `userId` before
   allocation. Change that ordering and re-saving an expense shuffles whose cent

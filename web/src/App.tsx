@@ -22,8 +22,10 @@ import { Activity } from "./pages/Activity.tsx";
 import { Join } from "./pages/Join.tsx";
 import { Accept } from "./pages/Accept.tsx";
 import { Settings } from "./pages/Settings.tsx";
+import { Import } from "./pages/Import.tsx";
 import { Verify } from "./pages/Verify.tsx";
 import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
+import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 
 interface AuthContextValue {
   user: ApiUser | null;
@@ -112,6 +114,7 @@ function Shell() {
       <Route path="/expenses" element={<Protected><AllExpenses /></Protected>} />
       <Route path="/activity" element={<Protected><Activity /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
+      <Route path="/import" element={<Protected><Import /></Protected>} />
       <Route path="*" element={<p className="muted">Not found.</p>} />
     </Routes>
   );
@@ -144,6 +147,7 @@ function Protected({ children }: { children: ReactNode }) {
 function TopBar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggleMenu: () => void }) {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
+  const [adding, setAdding] = useState(false);
 
   async function handleLogout() {
     await api.logout().catch(() => {});
@@ -171,6 +175,21 @@ function TopBar({ menuOpen, onToggleMenu }: { menuOpen: boolean; onToggleMenu: (
 
       {user && (
         <div className="topbar-right">
+          {/* Adding an expense is the thing this app is for; it should not
+              require navigating to a group first. */}
+          <button
+            className="inline topbar-add"
+            onClick={() => setAdding(true)}
+            aria-label="Add an expense"
+          >
+            {/* The full label would push "Log out" off a phone; the short one
+                is decorative, so the button keeps its real name above. */}
+            <span className="topbar-add-long">Add an expense</span>
+            <span className="topbar-add-short" aria-hidden="true">
+              + Add
+            </span>
+          </button>
+          <AddExpenseDialog open={adding} onClose={() => setAdding(false)} />
           <Link to="/settings" className="muted" style={{ textDecoration: "none" }}>
             {user.firstName}
             {user.isGhost ? " (guest)" : ""}

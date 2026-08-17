@@ -25,7 +25,8 @@ longer be free.
 
 - ✅ Schema with the expense invariant documented (`migrations/001`)
 - ✅ Integer minor units + per-currency decimal places
-- ✅ Split engine: equal, exact, percent, shares, adjustment — pure and tested
+- ✅ Split engine: equal, exact, percent, shares, adjustment, itemized — pure
+      and tested
 - ✅ Derived pairwise repayments (`deriveRepayments`)
 - ✅ Balance queries: pairwise, group, total, simplify-debts
 - ✅ Auth: scrypt passwords, cookie sessions, bearer API tokens
@@ -39,8 +40,17 @@ longer be free.
 Ordered by how much they matter for day-to-day use.
 
 - 🚧 **Expense editing** — server supports it (`updateExpense`), no UI yet
-- ⬜ **Split-type UI** — only equal split is exposed; exact/percent/shares/
-      adjustment all work server-side already
+- ✅ **Split-type UI** — all six types in `web/src/SplitEditor.tsx`: equal,
+      exact, percent, shares, adjustment, itemized. The editor imports the
+      server's own `computeSplit` from `src/domain/split.ts` (it is pure, so the
+      browser can run it) and previews per-person amounts live, which means
+      there is no second implementation of the rounding to drift and the
+      validation messages the user sees are the server's own.
+- ✅ **Itemized splits** — a line-item bill where each line is shared by a
+      different subset, with unitemised tax/tip spread in proportion to what
+      each person ordered. Lines live in `expenses.split_meta` (JSON) purely so
+      the editor can reopen them; the ledger numbers are still the derived
+      shares in `expense_users`.
 - ✅ **Settle up in the UI** — on both the friend and group screens, as a dialog
       off the page header. The group one opens prefilled from the largest
       suggested transfer, so `/settle` finally leads somewhere.
@@ -99,7 +109,7 @@ Wired to Postmark via `POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`.
 `sendEmail()` logs the message (including the link) to the console instead, so
 the verification flow is completable locally with no mail provider.
 
-- ✅ **Email verification for new accounts** — `src/email/`, migration 002
+- ✅ **Email verification for new accounts** — `src/email/`, `email_tokens` table
   - ✅ Single-use, 24h, hash-only storage, supersedes previous tokens
   - ✅ Address snapshot on the token so a changed email can't be verified by an
         outstanding link
@@ -118,22 +128,38 @@ the verification flow is completable locally with no mail provider.
 - ⬜ Optional expense notifications
 - ⬜ Postmark webhook for bounces and spam complaints
 
-## Phase 5 — Import from Splitwise ⬜
+## Phase 5 — Import from Splitwise ✅ (in-app)
 
-- ⬜ `scripts/import-splitwise.ts` reading the Phase 0 dump
-- ⬜ **Preserve original IDs**: insert with `id = splitwise_id` on users, groups,
-      expenses and categories so external references stay valid. Bump
-      `sqlite_sequence` past the highest imported id afterwards.
-- ✅ **Category id parity done** — `src/db/categories.ts` carries Splitwise's
-      real ids, captured from the live API and pinned against
-      `fixtures/splitwise/get_categories.json`. `yarn db:seed` is enough;
-      no extra step before import.
-- ✅ **Currency coverage done** — all 153 Splitwise codes present, including
-      demonetised ones (HRK, LTL, VEF) that historical expenses still use
-- ⬜ Map Splitwise users to local users; create ghosts for anyone unmatched
-- ⬜ Idempotent re-import (match on `splitwise_id`, update in place)
+Importing is a **per-user, in-app** flow, not a server-side script with a
+server-wide key. The user pastes their own Splitwise API key into the wizard at
+`/import`; it is used for that request and never persisted. See
+`src/routes/native/import.ts` for the endpoint contract and the reasoning.
+
+- ✅ `POST /api/v1/import/{preview,friends,groups,expenses,run}` +
+      `GET /api/v1/import/status`. One step per request, so the whole flow is
+      drivable by curl, by a test, or by an agent — no browser needed.
+- ✅ **Testable end to end without Splitwise** — `SPLITWISE_API_BASE` points the
+      importer at a fake; `src/routes/native/import.test.ts` runs one over HTTP.
+- ✅ Map Splitwise users to local users by `splitwise_id`, then by **email**;
+      create ghosts for anyone unmatched. The wizard names the email matches
+      before writing anything.
+- ✅ Idempotent re-import (match on `splitwise_id`; a second run is a no-op)
+- ✅ Splitwise's own `owed_share` allocation imported as an `exact` split, so no
+      cent moves in translation
+- ✅ **Category id parity** — `src/db/categories.ts` carries Splitwise's real
+      ids, captured from the live API and pinned against
+      `fixtures/splitwise/get_categories.json`. `yarn db:seed` is enough.
+- ✅ **Currency coverage** — all Splitwise codes present, including demonetised
+      ones (HRK, LTL, VEF) that historical expenses still use
+- ⬜ Re-import as **update in place** (today an already-imported expense edited
+      in Splitwise is left alone rather than refreshed)
+- ⬜ Import comments and expense attachments (there is no upload story — see
+      CLAUDE.md, "No file uploads")
 - ⬜ Run `yarn db:check` after import and reconcile every balance against the
       Splitwise UI before trusting it
+
+`scripts/export-splitwise.ts` stays as an independent raw-JSON backup, unrelated
+to this flow. It still takes `SPLITWISE_API_KEY` from the shell.
 
 ## Phase 6 — Type safety end to end ⬜
 

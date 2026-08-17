@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, fullName, type Friend, type ExpenseSummary } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
-import { ExpenseForm } from "../ExpenseForm.tsx";
+import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
@@ -94,23 +94,13 @@ export function FriendDetail() {
         </div>
       </div>
 
-      <Modal
+      <AddExpenseDialog
         open={openDialog === "expense"}
         title={`Add an expense with ${name}`}
+        initialFriendId={friendId}
         onClose={() => setOpenDialog(null)}
-      >
-        <ExpenseForm
-          className="stack"
-          people={people}
-          currentUserId={user.id}
-          defaultCurrency={user.defaultCurrency}
-          onSubmit={async (input) => {
-            await api.createFriendExpense(friendId, input);
-            setOpenDialog(null);
-            await load();
-          }}
-        />
-      </Modal>
+        onCreated={load}
+      />
 
       <Modal
         open={openDialog === "settle"}

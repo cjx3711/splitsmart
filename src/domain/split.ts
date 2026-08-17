@@ -11,7 +11,13 @@
  */
 import { MoneyError, splitEvenly, splitByWeights } from "./money.ts";
 
-export type SplitType = "equal" | "exact" | "percent" | "shares" | "adjustment";
+export type SplitType =
+  | "equal"
+  | "exact"
+  | "percent"
+  | "shares"
+  | "adjustment"
+  | "itemized";
 
 export interface SplitParticipant {
   userId: number;
@@ -24,8 +30,32 @@ export interface SplitParticipant {
    *   percent    — percentage of the total (0-100)
    *   shares     — number of shares (any positive number)
    *   adjustment — fixed amount, in minor units, applied before the even split
+   *   itemized   — ignored; the line items carry the detail
    */
   input?: number;
+}
+
+/**
+ * One line of an itemized bill.
+ *
+ * Unlike the other split types, itemization cannot be expressed as one number
+ * per person: the same expense has several lines, each shared by a different
+ * subset of the table. So it travels alongside the participants rather than
+ * inside them, and is persisted as JSON in `expenses.split_meta` — the derived
+ * per-person totals still land in `expense_users` like every other split, so
+ * balances never have to know itemization exists.
+ */
+export interface SplitItem {
+  /** Free text for the UI ("Ramen", "Bottle of wine"). Never used in maths. */
+  label?: string | null;
+  amountMinor: number;
+  /** Who shared this line. Must be a subset of the expense's participants. */
+  participantIds: number[];
+}
+
+export interface SplitOptions {
+  /** Required for `itemized`, rejected for every other type. */
+  items?: SplitItem[];
 }
 
 export interface SplitResult {
@@ -58,6 +88,7 @@ export function computeSplit(
   totalMinor: number,
   splitType: SplitType,
   participants: SplitParticipant[],
+  options: SplitOptions = {},
 ): SplitResult[] {
   if (participants.length === 0) {
     throw new SplitError("An expense needs at least one participant");
@@ -83,7 +114,22 @@ export function computeSplit(
     );
   }
 
-  const owed = computeOwedShares(totalMinor, splitType, sorted);
+  if (splitType !== "itemized" && options.items !== undefined) {
+    throw new SplitError(`Line items are only meaningful for an itemized split`);
+  }
+
+  const owed = computeOwedShares(totalMinor, splitType, sorted, options);
+
+  // `expense_users.owed_share_minor` has a CHECK (>= 0), so a negative share
+  // would fail at INSERT time with an opaque constraint error. A negative
+  // adjustment large enough to overshoot an even share is the realistic way to
+  // get here, and the person who typed it deserves to be told which one.
+  const negative = owed.findIndex((o) => o < 0);
+  if (negative !== -1) {
+    throw new SplitError(
+      `This split leaves user ${sorted[negative]?.userId} owing a negative amount`,
+    );
+  }
 
   const owedTotal = owed.reduce((a, b) => a + b, 0);
   if (owedTotal !== totalMinor) {
@@ -106,6 +152,7 @@ function computeOwedShares(
   totalMinor: number,
   splitType: SplitType,
   sorted: SplitParticipant[],
+  options: SplitOptions,
 ): number[] {
   switch (splitType) {
     case "equal":
@@ -164,11 +211,94 @@ function computeOwedShares(
       return adjustments.map((a, i) => a + (even[i] ?? 0));
     }
 
+    case "itemized":
+      return computeItemizedShares(totalMinor, sorted, options.items);
+
     default: {
       const exhaustive: never = splitType;
       throw new SplitError(`Unknown split type: ${String(exhaustive)}`);
     }
   }
+}
+
+/**
+ * Splits an itemized bill.
+ *
+ * Two passes:
+ *
+ *   1. Each line is split evenly among the people who shared it. This uses the
+ *      same `splitEvenly` as an equal split, over the line's participants in
+ *      userId order, so a line's odd cent always lands on the same person.
+ *
+ *   2. Whatever the lines do not account for — tax, tip, service charge, the
+ *      cover you did not itemise — is shared in proportion to what each person
+ *      already owes from step 1. That is what proportional tax actually means:
+ *      the person who ordered the lobster pays more of the 10% service charge
+ *      than the person who had soup.
+ *
+ * The fallback matters: if every line is zero (or the whole bill is nothing but
+ * a service charge), there are no weights to be proportional to, so the extra
+ * splits evenly rather than throwing.
+ *
+ * The lines are allowed to under-shoot the total but never to overshoot — a
+ * bill whose items exceed the amount charged is a data-entry error, and
+ * silently scaling it down would hide that.
+ */
+function computeItemizedShares(
+  totalMinor: number,
+  sorted: SplitParticipant[],
+  items: SplitItem[] | undefined,
+): number[] {
+  if (!items || items.length === 0) {
+    throw new SplitError("An itemized split needs at least one line item");
+  }
+
+  const indexOf = new Map(sorted.map((p, i) => [p.userId, i]));
+  const owed = new Array<number>(sorted.length).fill(0);
+  let itemTotal = 0;
+
+  for (const [n, item] of items.entries()) {
+    const where = `Item ${n + 1}${item.label ? ` (${item.label})` : ""}`;
+
+    if (!Number.isInteger(item.amountMinor) || item.amountMinor < 0) {
+      throw new SplitError(`${where} must be a non-negative whole minor unit amount`);
+    }
+    if (item.participantIds.length === 0) {
+      throw new SplitError(`${where} has nobody sharing it`);
+    }
+
+    // Sorted so the leftover minor unit is allocated deterministically, and
+    // deduped so listing someone twice cannot quietly double their share.
+    const sharers = [...new Set(item.participantIds)].sort((a, b) => a - b);
+    if (sharers.length !== item.participantIds.length) {
+      throw new SplitError(`${where} lists the same person more than once`);
+    }
+
+    const portions = splitEvenly(item.amountMinor, sharers.length);
+    for (const [k, userId] of sharers.entries()) {
+      const at = indexOf.get(userId);
+      if (at === undefined) {
+        throw new SplitError(`${where} includes user ${userId}, who is not on this expense`);
+      }
+      owed[at] = (owed[at] ?? 0) + (portions[k] ?? 0);
+    }
+
+    itemTotal += item.amountMinor;
+  }
+
+  const extra = totalMinor - itemTotal;
+  if (extra < 0) {
+    throw new SplitError(
+      `Line items add up to ${itemTotal}, which is more than the expense total (${totalMinor})`,
+    );
+  }
+  if (extra === 0) return owed;
+
+  const spread = owed.some((o) => o > 0)
+    ? splitByWeights(extra, owed)
+    : splitEvenly(extra, sorted.length);
+
+  return owed.map((o, i) => o + (spread[i] ?? 0));
 }
 
 function requireInput(p: SplitParticipant, type: SplitType): number {

@@ -6,7 +6,16 @@
  *
  * When the RPC migration in docs/PLAN.md lands, this file is replaced by Hono's
  * `hc<AppType>()` client and these hand-written types go away.
+ *
+ * The split types come from the server's own split engine rather than being
+ * retyped here. src/domain/split.ts is pure — no database, no Node built-ins —
+ * so the browser can import it, and the add-expense form runs the real
+ * computeSplit() to preview a split instead of reimplementing its rounding.
+ * See web/src/SplitEditor.tsx.
  */
+import type { SplitItem, SplitType } from "../../src/domain/split.ts";
+
+export type { SplitItem, SplitType };
 
 export interface ApiUser {
   id: number;
@@ -99,6 +108,60 @@ export interface Currency {
   code: string;
   decimal_places: number;
   symbol: string | null;
+  name: string;
+}
+
+// --- Splitwise import -------------------------------------------------------
+
+/** How a Splitwise contact was resolved to a local account. */
+export interface ImportPerson {
+  splitwiseId: number;
+  localUserId: number;
+  name: string;
+  email: string | null;
+  matchedBy: "splitwise_id" | "email" | "self" | "created";
+  /** Shown once for newly created placeholders; the only way in for them. */
+  recoveryCode?: string;
+}
+
+export interface ImportFootprint {
+  groups: number;
+  friends: number;
+  expenses: number;
+  previouslyImported: number;
+}
+
+export interface ImportStatus {
+  local: ImportFootprint;
+  hasData: boolean;
+  previouslyImported: boolean;
+  /** Server-owned wording, so the API and the wizard cannot disagree. */
+  matchingRule: string;
+}
+
+export interface ImportPreview {
+  splitwiseAccount: { id: number; name: string; email: string | null };
+  counts: { groups: number; friends: number; expenses: number; expensesCapped: boolean };
+  people: ImportPerson[];
+  groups: Array<{ splitwiseId: number; name: string; members: number; alreadyImported: boolean }>;
+  local: ImportFootprint;
+  warnings: string[];
+}
+
+export interface ImportSkip {
+  splitwiseId: number;
+  description: string;
+  reason: string;
+}
+
+export interface ImportExpensePage {
+  offset: number;
+  fetched: number;
+  imported: number;
+  alreadyPresent: number;
+  skipped: ImportSkip[];
+  nextOffset: number | null;
+  done: boolean;
 }
 
 export class ApiError extends Error {
@@ -134,12 +197,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export interface ExpenseInput {
   description: string;
+  /** Free-text notes. There is no image upload and there will not be one. */
+  details?: string;
   costMinor: number;
   currencyCode: string;
   date: string;
   categoryId?: number | null;
-  splitType: "equal" | "exact" | "percent" | "shares" | "adjustment";
+  splitType: SplitType;
   participants: Array<{ userId: number; paidMinor: number; input?: number }>;
+  /** Itemized splits only. Rejected by the server for any other split type. */
+  items?: SplitItem[];
+  /**
+   * Itemized only, and only as a caption: the engine spreads whatever the lines
+   * do not cover in proportion to what each person ordered whether or not these
+   * are sent. The server rejects a pair that disagrees with that gap.
+   */
+  taxMinor?: number;
+  tipMinor?: number;
 }
 
 export const api = {
@@ -232,6 +306,13 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  /**
+   * The one the add-expense dialog uses: any set of people, group or no group.
+   * The group- and friend-scoped creates above stay for the narrower callers.
+   */
+  createAnyExpense: (input: ExpenseInput & { groupId: number | null }) =>
+    request<{ id: number }>("/expenses", { method: "POST", body: JSON.stringify(input) }),
+
   deleteExpense: (id: number) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
 
   listExpenses: () => request<{ expenses: ExpenseSummary[] }>("/expenses"),
@@ -280,6 +361,37 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
+  // --- Splitwise import -----------------------------------------------------
+  //
+  // The API key is passed on every call and never stored, server-side or here.
+  // Keep it in component state only — never localStorage.
+
+  importStatus: () => request<ImportStatus>("/import/status"),
+
+  importPreview: (apiKey: string) =>
+    request<ImportPreview>("/import/preview", { method: "POST", body: JSON.stringify({ apiKey }) }),
+
+  importFriends: (apiKey: string) =>
+    request<{ people: ImportPerson[]; created: number; matched: number }>("/import/friends", {
+      method: "POST",
+      body: JSON.stringify({ apiKey }),
+    }),
+
+  importGroups: (apiKey: string) =>
+    request<{
+      groups: Array<{ splitwiseId: number; localGroupId: number; name: string; created: boolean }>;
+      people: ImportPerson[];
+      created: number;
+      matched: number;
+    }>("/import/groups", { method: "POST", body: JSON.stringify({ apiKey }) }),
+
+  /** One page. Feed `nextOffset` back in until `done`. */
+  importExpenses: (apiKey: string, offset = 0) =>
+    request<ImportExpensePage>("/import/expenses", {
+      method: "POST",
+      body: JSON.stringify({ apiKey, offset }),
+    }),
+
   // --- reference data -------------------------------------------------------
 
   listCategories: () =>
@@ -288,6 +400,9 @@ export const api = {
     ),
 
   listCurrencies: () => request<{ currencies: Currency[] }>("/categories/currencies"),
+
+  /** Currencies the caller has actually used, most-used first. */
+  frequentCurrencies: () => request<{ codes: string[] }>("/expenses/currencies/frequent"),
 
   previewInvite: (token: string) =>
     request<{ group: { name: string; type: string; memberCount: number; memberNames: string[] } }>(

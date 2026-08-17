@@ -24,6 +24,12 @@
 --    API carry a nullable `splitwise_id`. The importer inserts rows with
 --    `id = splitwise_id` so external references stay valid forever.
 --    See docs/SPLITWISE_COMPAT.md.
+--
+-- This app has never been deployed, so there is exactly one migration: schema
+-- changes during development are folded back into this file rather than
+-- layered as forward-only steps. Once a real database exists somewhere, that
+-- stops being true — see src/db/migrate.ts for the forward-only runner this
+-- file is written to run under from that point on.
 
 PRAGMA foreign_keys = ON;
 
@@ -129,6 +135,40 @@ CREATE TABLE api_tokens (
 ) STRICT;
 
 CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
+
+-- ---------------------------------------------------------------------------
+-- email_tokens — single-use, expiring tokens sent by email
+-- ---------------------------------------------------------------------------
+-- `purpose` exists so password reset (docs/PLAN.md phase 4) can reuse this
+-- table rather than needing a schema change. Only 'verify_email' is
+-- implemented today; the CHECK constraint already permits 'reset_password'.
+--
+-- As everywhere else in this codebase, only the token HASH is stored. A leaked
+-- database must not hand out working verification links.
+CREATE TABLE email_tokens (
+  id         TEXT    PRIMARY KEY,
+  token_hash TEXT    NOT NULL UNIQUE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose    TEXT    NOT NULL,
+
+  -- SNAPSHOT of the address this token was issued for.
+  --
+  -- Load-bearing: if a user requests verification, then changes their email,
+  -- the outstanding token must NOT verify the new address. Consuming a token
+  -- compares this against users.email and refuses on mismatch. Without it,
+  -- someone could verify an address they no longer control — or worse, have a
+  -- pending token silently validate an attacker-supplied address.
+  email      TEXT    NOT NULL,
+
+  created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT    NOT NULL,
+  used_at    TEXT,
+
+  CHECK (purpose IN ('verify_email', 'reset_password'))
+) STRICT;
+
+CREATE INDEX idx_email_tokens_user_purpose ON email_tokens(user_id, purpose);
+CREATE INDEX idx_email_tokens_expires_at ON email_tokens(expires_at);
 
 -- ---------------------------------------------------------------------------
 -- groups
@@ -248,6 +288,20 @@ CREATE TABLE expenses (
   -- exist so the UI can reopen an expense in the same editor the user used.
   split_type     TEXT    NOT NULL DEFAULT 'equal',
 
+  -- JSON, or NULL. Presentation detail for the editor — never ledger data.
+  -- Only 'itemized' populates it: a line-item bill where each line is shared by
+  -- a different subset of participants doesn't fit the one-row-per-participant
+  -- shape of expense_users, so the lines are kept here purely so the editor can
+  -- reopen them. They are never summed, joined, or filtered on by the server —
+  -- read back verbatim by exactly one consumer, the expense editor. The ledger
+  -- numbers are still the derived shares in expense_users; if split_meta were
+  -- dropped entirely, every balance in the app would be unchanged. Deliberately
+  -- untyped so a future split type doesn't need a schema change.
+  --
+  -- Shape, for split_type = 'itemized':
+  --   {"items":[{"label":"Ramen","amountMinor":1200,"participantIds":[1,2]}]}
+  split_meta     TEXT,
+
   is_payment     INTEGER NOT NULL DEFAULT 0,
   payment_method TEXT,
 
@@ -261,7 +315,14 @@ CREATE TABLE expenses (
 
   CHECK (cost_minor >= 0),
   CHECK (is_payment IN (0, 1)),
-  CHECK (split_type IN ('equal', 'exact', 'percent', 'shares', 'adjustment'))
+  CHECK (split_type IN ('equal', 'exact', 'percent', 'shares', 'adjustment', 'itemized')),
+  -- Cheap guard against a non-JSON string being written here. json_valid() is
+  -- built in, so this costs nothing and stops a malformed blob from reaching
+  -- the editor as a parse error at read time.
+  CHECK (split_meta IS NULL OR json_valid(split_meta)),
+  -- Only itemized expenses carry line items. Keeps a stale blob from surviving
+  -- an edit that switched the expense to a different split type.
+  CHECK (split_meta IS NULL OR split_type = 'itemized')
 ) STRICT;
 
 CREATE INDEX idx_expenses_group_id ON expenses(group_id);

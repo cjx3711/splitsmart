@@ -149,8 +149,9 @@ export async function consumeVerificationToken(token: string): Promise<ConsumeOu
   if (row.usedAt) return { status: "already_used" };
   if (new Date(row.expiresAt) < new Date()) return { status: "expired" };
 
-  // The address changed after this token was issued — see migrations/002 for
-  // why this check exists.
+  // The address changed after this token was issued — see the email_tokens
+  // table comment in migrations/001_initial_schema.sql for why this check
+  // exists.
   if (row.tokenEmail !== row.currentEmail) return { status: "email_changed" };
 
   await db.transaction().execute(async (trx) => {

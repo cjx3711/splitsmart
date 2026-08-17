@@ -109,6 +109,8 @@ export interface ExpensesTable {
   date: string;
   category_id: number | null;
   split_type: Generated<string>;
+  /** JSON blob, or NULL. Line items for an itemized split — see migrations/001_initial_schema.sql. */
+  split_meta: string | null;
   is_payment: Generated<number>;
   payment_method: string | null;
   created_by: number | null;
@@ -149,7 +151,7 @@ export interface EmailTokensTable {
   token_hash: string;
   user_id: number;
   purpose: string;
-  /** Snapshot of the address at issue time — see migrations/002. */
+  /** Snapshot of the address at issue time — see migrations/001_initial_schema.sql. */
   email: string;
   created_at: Generated<string>;
   expires_at: string;

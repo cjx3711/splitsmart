@@ -202,7 +202,7 @@ describe("consuming a token", () => {
     const user = await registerUser();
     const token = await issueAndCapture(user.id);
 
-    // The security case from migrations/002: an outstanding link must not
+    // The security case email_tokens exists for: an outstanding link must not
     // validate an address it was not issued for.
     await db
       .updateTable("users")

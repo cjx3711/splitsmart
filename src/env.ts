@@ -14,7 +14,16 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be >= 32 chars"),
   APP_ORIGIN: z.string().url().default("http://localhost:5545"),
 
-  SPLITWISE_API_KEY: z.string().optional(),
+  /**
+   * Base URL of the Splitwise API the importer reads from.
+   *
+   * There is deliberately NO SPLITWISE_API_KEY here. An import is per-user, so
+   * the key belongs to the person doing it, not to the server: it arrives on
+   * the request (see src/routes/native/import.ts) and is never stored. The only
+   * reason this URL is configurable is so a test — or an agent driving the
+   * wizard — can point the importer at a fake Splitwise on localhost.
+   */
+  SPLITWISE_API_BASE: z.string().url().default("https://secure.splitwise.com/api/v3.0"),
 
   // Postmark. Absence must be a no-op, never a boot failure — sending degrades
   // to a console log (see src/email/postmark.ts), which is also how you complete

@@ -119,28 +119,26 @@ function authed(path: string, init: RequestInit = {}) {
 
 describe("compat: auth", () => {
   test("rejects requests with no token", async () => {
-    const res = await app.request("/api/v3.0/get_current_user");
+    const res = await app.request("/api/sw/v3.0/get_current_user");
     assert.equal(res.status, 401);
   });
 
   test("rejects a bogus token", async () => {
-    const res = await app.request("/api/v3.0/get_current_user", {
+    const res = await app.request("/api/sw/v3.0/get_current_user", {
       headers: { Authorization: "Bearer not-a-real-token" },
     });
     assert.equal(res.status, 401);
   });
 
-  test("is mounted at both /api/v3.0 and /v3.0", async () => {
-    const a = await authed("/api/v3.0/get_current_user");
-    const b = await authed("/v3.0/get_current_user");
-    assert.equal(a.status, 200);
-    assert.equal(b.status, 200);
+  test("is mounted at /api/sw/v3.0", async () => {
+    const res = await authed("/api/sw/v3.0/get_current_user");
+    assert.equal(res.status, 200);
   });
 });
 
 describe("compat: get_current_user", () => {
   test("returns the fields splitwise-to-toshl validates on", async () => {
-    const res = await authed("/api/v3.0/get_current_user");
+    const res = await authed("/api/sw/v3.0/get_current_user");
     assert.equal(res.status, 200);
 
     const body = (await res.json()) as { user: Record<string, unknown> };
@@ -154,7 +152,7 @@ describe("compat: get_current_user", () => {
 
 describe("compat: get_friends", () => {
   test("returns friends with a per-currency balance array", async () => {
-    const res = await authed("/api/v3.0/get_friends");
+    const res = await authed("/api/sw/v3.0/get_friends");
     assert.equal(res.status, 200);
 
     const body = (await res.json()) as { friends: Array<Record<string, any>> };
@@ -171,7 +169,7 @@ describe("compat: get_friends", () => {
   });
 
   test("gives ghosts a synthetic email so clients don't reject them", async () => {
-    const res = await authed("/api/v3.0/get_friends");
+    const res = await authed("/api/sw/v3.0/get_friends");
     const body = (await res.json()) as { friends: Array<Record<string, any>> };
     assert.ok(body.friends[0]!.email, "ghost email must be truthy");
     assert.match(body.friends[0]!.email, /@splitsmart\.invalid$/);
@@ -180,7 +178,7 @@ describe("compat: get_friends", () => {
 
 describe("compat: get_friend/:id", () => {
   test("returns a single friend with the balance owed", async () => {
-    const res = await authed(`/api/v3.0/get_friend/${bobId}`);
+    const res = await authed(`/api/sw/v3.0/get_friend/${bobId}`);
     assert.equal(res.status, 200);
 
     const body = (await res.json()) as { friend: Record<string, any> };
@@ -189,14 +187,14 @@ describe("compat: get_friend/:id", () => {
   });
 
   test("404s on an unknown friend", async () => {
-    const res = await authed("/api/v3.0/get_friend/99999");
+    const res = await authed("/api/sw/v3.0/get_friend/99999");
     assert.equal(res.status, 404);
   });
 });
 
 describe("compat: get_categories", () => {
   test("nests subcategories under parents", async () => {
-    const res = await authed("/api/v3.0/get_categories");
+    const res = await authed("/api/sw/v3.0/get_categories");
     assert.equal(res.status, 200);
 
     const body = (await res.json()) as { categories: Array<Record<string, any>> };
@@ -215,7 +213,7 @@ describe("compat: get_categories", () => {
 
 describe("compat: get_expenses", () => {
   test("returns the exact field shape Friend.tsx reads", async () => {
-    const res = await authed("/api/v3.0/get_expenses?limit=10");
+    const res = await authed("/api/sw/v3.0/get_expenses?limit=10");
     assert.equal(res.status, 200);
 
     const body = (await res.json()) as { expenses: Array<Record<string, any>> };
@@ -236,7 +234,7 @@ describe("compat: get_expenses", () => {
   });
 
   test("expense users carry both user_id and nested user.id", async () => {
-    const res = await authed("/api/v3.0/get_expenses?limit=10");
+    const res = await authed("/api/sw/v3.0/get_expenses?limit=10");
     const body = (await res.json()) as { expenses: Array<Record<string, any>> };
     const users = body.expenses[0]!.users;
 
@@ -256,34 +254,34 @@ describe("compat: get_expenses", () => {
   });
 
   test("filters by friend_id", async () => {
-    const mine = await authed(`/api/v3.0/get_expenses?friend_id=${bobId}`);
+    const mine = await authed(`/api/sw/v3.0/get_expenses?friend_id=${bobId}`);
     assert.equal(((await mine.json()) as any).expenses.length, 1);
 
-    const none = await authed("/api/v3.0/get_expenses?friend_id=99999");
+    const none = await authed("/api/sw/v3.0/get_expenses?friend_id=99999");
     assert.equal(((await none.json()) as any).expenses.length, 0);
   });
 
   test("filters by date range", async () => {
     const inRange = await authed(
-      "/api/v3.0/get_expenses?dated_after=2026-07-01&dated_before=2026-08-31",
+      "/api/sw/v3.0/get_expenses?dated_after=2026-07-01&dated_before=2026-08-31",
     );
     assert.equal(((await inRange.json()) as any).expenses.length, 1);
 
     const outOfRange = await authed(
-      "/api/v3.0/get_expenses?dated_after=2026-09-01&dated_before=2026-09-30",
+      "/api/sw/v3.0/get_expenses?dated_after=2026-09-01&dated_before=2026-09-30",
     );
     assert.equal(((await outOfRange.json()) as any).expenses.length, 0);
   });
 
   test("honours limit and offset", async () => {
-    const res = await authed("/api/v3.0/get_expenses?limit=1&offset=5");
+    const res = await authed("/api/sw/v3.0/get_expenses?limit=1&offset=5");
     assert.equal(((await res.json()) as any).expenses.length, 0);
   });
 });
 
 describe("compat: create_expense", () => {
   test("accepts Splitwise's flattened users__N__ body", async () => {
-    const res = await authed("/api/v3.0/create_expense", {
+    const res = await authed("/api/sw/v3.0/create_expense", {
       method: "POST",
       body: JSON.stringify({
         cost: "20.00",
@@ -311,13 +309,13 @@ describe("compat: create_expense", () => {
 
   test("the new expense moves the balance", async () => {
     // Alice was owed 15.00; the taxi adds another 10.00.
-    const res = await authed(`/api/v3.0/get_friend/${bobId}`);
+    const res = await authed(`/api/sw/v3.0/get_friend/${bobId}`);
     const body = (await res.json()) as { friend: Record<string, any> };
     assert.equal(body.friend.balance[0].amount, "25.00");
   });
 
   test("rejects shares that don't add up, with an errors object", async () => {
-    const res = await authed("/api/v3.0/create_expense", {
+    const res = await authed("/api/sw/v3.0/create_expense", {
       method: "POST",
       body: JSON.stringify({
         cost: "20.00",
@@ -346,7 +344,7 @@ describe("compat: create_expense", () => {
       .returning("id")
       .executeTakeFirstOrThrow();
 
-    const res = await authed("/api/v3.0/create_expense", {
+    const res = await authed("/api/sw/v3.0/create_expense", {
       method: "POST",
       body: JSON.stringify({
         cost: "10.00",
@@ -384,7 +382,7 @@ describe("compat: zero-decimal currencies", () => {
     });
     assert.ok(jpyExpense);
 
-    const res = await authed("/api/v3.0/get_expenses?limit=50");
+    const res = await authed("/api/sw/v3.0/get_expenses?limit=50");
     const body = (await res.json()) as { expenses: Array<Record<string, any>> };
     const ramen = body.expenses.find((e) => e.description === "Ramen");
 
@@ -393,7 +391,7 @@ describe("compat: zero-decimal currencies", () => {
   });
 
   test("balances stay in separate per-currency buckets", async () => {
-    const res = await authed(`/api/v3.0/get_friend/${bobId}`);
+    const res = await authed(`/api/sw/v3.0/get_friend/${bobId}`);
     const body = (await res.json()) as { friend: Record<string, any> };
 
     const codes = body.friend.balance.map((b: any) => b.currency_code).sort();
