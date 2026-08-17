@@ -41,9 +41,9 @@ Ordered by how much they matter for day-to-day use.
 - 🚧 **Expense editing** — server supports it (`updateExpense`), no UI yet
 - ⬜ **Split-type UI** — only equal split is exposed; exact/percent/shares/
       adjustment all work server-side already
-- 🚧 **Settle up in the UI** — done on the friend screen
-      (`POST /api/v1/friends/:id/payments`). The group screen shows suggested
-      transfers but has no button to record one yet.
+- ✅ **Settle up in the UI** — on both the friend and group screens, as a dialog
+      off the page header. The group one opens prefilled from the largest
+      suggested transfer, so `/settle` finally leads somewhere.
 - ✅ **One-on-one expenses** — `POST /api/v1/friends/:id/expenses`, group_id
       NULL. Participants are restricted to the pair, because `createExpense`
       skips its membership check when there is no group.

@@ -291,6 +291,13 @@ h3 {
   gap: 0.5rem;
 }
 
+/* Header actions size to their label. Without this "Add an expense" wraps to
+   two lines and the two buttons stop matching height. */
+.page-actions button {
+  width: auto;
+  white-space: nowrap;
+}
+
 /* --- money ---------------------------------------------------------------- */
 
 .amount {
@@ -609,6 +616,52 @@ button.icon:hover:not(:disabled) {
 .participant label {
   margin: 0;
   font-weight: 400;
+}
+
+/* --- modal ---------------------------------------------------------------- */
+
+/* Native <dialog>. Backdrop clicks do nothing — that is the browser default
+   and it is deliberate here, so a stray click can't discard a half-typed
+   expense. See web/src/Modal.tsx. */
+dialog.modal {
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  width: min(560px, calc(100vw - 2rem));
+  max-height: min(85vh, 860px);
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.45);
+}
+
+dialog.modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+dialog.modal::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.modal-body {
+  padding: 1rem;
+  overflow-y: auto;
 }
 
 /* --- messages ------------------------------------------------------------- */

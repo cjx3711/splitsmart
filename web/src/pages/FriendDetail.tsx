@@ -1,17 +1,21 @@
 /**
- * One friend: what stands between the two of you, everything you've split, and
- * the forms to add to it or settle it.
+ * One friend: what stands between the two of you and everything you've split.
  *
  * Expenses here span every group plus the one-on-one ones — the question "what
  * is between us" does not stop at a group boundary. New expenses added from
  * this screen are one-on-one (no group).
+ *
+ * Adding and settling live in dialogs off the header rather than inline, so the
+ * page stays a view of the balance instead of a stack of forms.
  */
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, fullName, type Friend, type ExpenseSummary } from "../api.ts";
-import { Amount, Amounts, useCurrencies, useParseMoney } from "../money.tsx";
+import { Amount, Amounts, useFormatMoney } from "../money.tsx";
 import { ExpenseForm } from "../ExpenseForm.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
+import { SettleUpForm } from "../SettleUpForm.tsx";
+import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 
@@ -23,6 +27,8 @@ export function FriendDetail() {
   const [friend, setFriend] = useState<Friend | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const formatMoney = useFormatMoney();
 
   async function load() {
     try {
@@ -57,6 +63,16 @@ export function FriendDetail() {
     user.id,
   );
 
+  // What you actually owe each other, biggest first, so the settle-up dialog
+  // opens on the currency worth clearing rather than the alphabetical one.
+  const owed = [...friend.balances].sort(
+    (a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor),
+  );
+  const currenciesInPlay = [
+    ...new Set([...owed.map((b) => b.currencyCode), user.defaultCurrency]),
+  ];
+  const top = owed[0];
+
   return (
     <>
       <div className="page-head">
@@ -70,7 +86,64 @@ export function FriendDetail() {
             </p>
           </div>
         </div>
+        <div className="page-actions">
+          <button className="secondary" onClick={() => setOpenDialog("settle")}>
+            Settle up
+          </button>
+          <button onClick={() => setOpenDialog("expense")}>Add an expense</button>
+        </div>
       </div>
+
+      <Modal
+        open={openDialog === "expense"}
+        title={`Add an expense with ${name}`}
+        onClose={() => setOpenDialog(null)}
+      >
+        <ExpenseForm
+          className="stack"
+          people={people}
+          currentUserId={user.id}
+          defaultCurrency={user.defaultCurrency}
+          onSubmit={async (input) => {
+            await api.createFriendExpense(friendId, input);
+            setOpenDialog(null);
+            await load();
+          }}
+        />
+      </Modal>
+
+      <Modal
+        open={openDialog === "settle"}
+        title={`Settle up with ${name}`}
+        onClose={() => setOpenDialog(null)}
+      >
+        <SettleUpForm
+          className="stack"
+          people={people}
+          currencies={currenciesInPlay}
+          initial={
+            top && {
+              // A positive balance means they owe you, so they are the payer.
+              fromUserId: top.amountMinor > 0 ? friend.id : user.id,
+              toUserId: top.amountMinor > 0 ? user.id : friend.id,
+              amount: formatMoney(Math.abs(top.amountMinor), top.currencyCode) ?? "",
+              currencyCode: top.currencyCode,
+            }
+          }
+          onSubmit={async (payment) => {
+            await api.createFriendPayment(friendId, {
+              // The friend endpoint takes a direction rather than a pair, since
+              // a one-on-one payment can only run between the two of you.
+              direction: payment.fromUserId === user.id ? "you_paid" : "they_paid",
+              amountMinor: payment.amountMinor,
+              currencyCode: payment.currencyCode,
+              date: payment.date,
+            });
+            setOpenDialog(null);
+            await load();
+          }}
+        />
+      </Modal>
 
       <div className="card">
         <span className="eyebrow">Between you</span>
@@ -107,20 +180,6 @@ export function FriendDetail() {
         )}
       </div>
 
-      <h2>Settle up</h2>
-      <SettleUp friend={friend} onSettled={load} />
-
-      <h2>Add a one-on-one expense</h2>
-      <ExpenseForm
-        people={people}
-        currentUserId={user.id}
-        defaultCurrency={user.defaultCurrency}
-        onSubmit={async (input) => {
-          await api.createFriendExpense(friendId, input);
-          await load();
-        }}
-      />
-
       <h2>Shared expenses</h2>
       <ExpenseList
         expenses={expenses}
@@ -131,117 +190,5 @@ export function FriendDetail() {
         empty={`Nothing split with ${name} yet.`}
       />
     </>
-  );
-}
-
-/**
- * Records a payment between the two of you.
- *
- * A payment is an ordinary expense with is_payment = 1 (see
- * src/domain/expenses.ts), so it nets off through exactly the same balance
- * query as everything else.
- */
-function SettleUp({ friend, onSettled }: { friend: Friend; onSettled: () => void }) {
-  const { user } = useAuth();
-  const parseInCurrency = useParseMoney();
-  const { decimalsFor } = useCurrencies();
-
-  // Default to whichever direction actually clears something.
-  const owing = friend.balances[0];
-  const [direction, setDirection] = useState<"you_paid" | "they_paid">(
-    owing && owing.amountMinor < 0 ? "you_paid" : "they_paid",
-  );
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState(
-    owing?.currencyCode ?? user?.defaultCurrency ?? "USD",
-  );
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const name = fullName(friend);
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-
-    let amountMinor: number;
-    try {
-      amountMinor = parseInCurrency(amount, currency);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid amount");
-      return;
-    }
-    if (amountMinor <= 0) return setError("Amount must be greater than zero");
-
-    setBusy(true);
-    try {
-      await api.createFriendPayment(friend.id, { direction, amountMinor, currencyCode: currency });
-      setAmount("");
-      onSettled();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record the payment");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const currencyOptions = friend.balances.length
-    ? friend.balances.map((b) => b.currencyCode)
-    : [user?.defaultCurrency ?? "USD"];
-
-  return (
-    <form onSubmit={handleSubmit} className="card stack">
-      {error && <p className="error">{error}</p>}
-
-      <div className="form-grid">
-        <div>
-          <label htmlFor="direction">Who paid</label>
-          <select
-            id="direction"
-            value={direction}
-            onChange={(e) => setDirection(e.target.value as "you_paid" | "they_paid")}
-          >
-            <option value="you_paid">You paid {name}</option>
-            <option value="they_paid">{name} paid you</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="settleAmount">Amount</label>
-          <input
-            id="settleAmount"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={decimalsFor(currency) === 0 ? "2000" : "20.00"}
-            inputMode="decimal"
-            required
-          />
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="settleCurrency">Currency</label>
-        <select
-          id="settleCurrency"
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
-        >
-          {currencyOptions.map((code) => (
-            <option key={code} value={code}>
-              {code}
-            </option>
-          ))}
-        </select>
-        <p className="field-hint">
-          A payment only clears the currency it's made in. Owing yen and paying in dollars leaves
-          both ledgers open.
-        </p>
-      </div>
-
-      <div>
-        <button type="submit" disabled={busy} className="inline">
-          {busy ? "Recording…" : "Record payment"}
-        </button>
-      </div>
-    </form>
   );
 }

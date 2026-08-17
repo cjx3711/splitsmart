@@ -8,9 +8,11 @@ import {
   type ExpenseSummary,
   type CurrencyAmount,
 } from "../api.ts";
-import { Amount } from "../money.tsx";
+import { Amount, useFormatMoney } from "../money.tsx";
 import { ExpenseForm } from "../ExpenseForm.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
+import { SettleUpForm } from "../SettleUpForm.tsx";
+import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 
@@ -31,6 +33,8 @@ export function GroupDetail() {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const formatMoney = useFormatMoney();
 
   async function load() {
     try {
@@ -62,6 +66,21 @@ export function GroupDetail() {
     label: m.id === user.id ? "You" : fullName(m),
   }));
 
+  // Currencies this group actually holds balances in, with its default first so
+  // a group that is fully settled still offers something sensible.
+  const currenciesInPlay = [
+    ...new Set([
+      group.default_currency,
+      ...balances.flatMap((b) => b.balances.map((x) => x.currencyCode)),
+    ]),
+  ];
+
+  // Prefill the settle-up dialog from the largest suggested transfer, so the
+  // usual case is one click and a confirm rather than three dropdowns.
+  const topTransfer = settle.flatMap((s) =>
+    s.transfers.map((t) => ({ ...t, currencyCode: s.currencyCode })),
+  )[0];
+
   return (
     <>
       <div className="page-head">
@@ -72,7 +91,56 @@ export function GroupDetail() {
             {members.length === 1 ? "member" : "members"}
           </p>
         </div>
+        <div className="page-actions">
+          <button className="secondary" onClick={() => setOpenDialog("settle")}>
+            Settle up
+          </button>
+          <button onClick={() => setOpenDialog("expense")}>Add an expense</button>
+        </div>
       </div>
+
+      <Modal
+        open={openDialog === "expense"}
+        title={`Add an expense to ${group.name}`}
+        onClose={() => setOpenDialog(null)}
+      >
+        <ExpenseForm
+          className="stack"
+          people={people}
+          currentUserId={user.id}
+          defaultCurrency={group.default_currency}
+          onSubmit={async (input) => {
+            await api.createExpense(groupId, input);
+            setOpenDialog(null);
+            await load();
+          }}
+        />
+      </Modal>
+
+      <Modal
+        open={openDialog === "settle"}
+        title={`Settle up in ${group.name}`}
+        onClose={() => setOpenDialog(null)}
+      >
+        <SettleUpForm
+          className="stack"
+          people={people}
+          currencies={currenciesInPlay}
+          initial={
+            topTransfer && {
+              fromUserId: topTransfer.fromUserId,
+              toUserId: topTransfer.toUserId,
+              amount: formatMoney(topTransfer.amountMinor, topTransfer.currencyCode) ?? "",
+              currencyCode: topTransfer.currencyCode,
+            }
+          }
+          onSubmit={async (payment) => {
+            await api.createGroupPayment(groupId, payment);
+            setOpenDialog(null);
+            await load();
+          }}
+        />
+      </Modal>
 
       <h2 style={{ marginTop: 0 }}>Balances</h2>
       {balances.length === 0 ? (
@@ -104,7 +172,8 @@ export function GroupDetail() {
           <div className="card stack">
             <p className="muted" style={{ margin: 0 }}>
               The fewest transfers that clear this group, one set per currency. Nothing is recorded
-              until someone actually pays.
+              until someone actually pays — use <strong>Settle up</strong> above, which starts
+              prefilled with the first of these.
             </p>
             {settle
               .filter((s) => s.transfers.length > 0)
@@ -124,17 +193,6 @@ export function GroupDetail() {
           </div>
         </>
       )}
-
-      <h2>Add an expense</h2>
-      <ExpenseForm
-        people={people}
-        currentUserId={user.id}
-        defaultCurrency={group.default_currency}
-        onSubmit={async (input) => {
-          await api.createExpense(groupId, input);
-          await load();
-        }}
-      />
 
       <h2>Expenses</h2>
       <ExpenseList
