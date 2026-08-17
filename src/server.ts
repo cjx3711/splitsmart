@@ -102,6 +102,11 @@ if (env.NODE_ENV === "production") {
   app.use("/assets/*", serveStatic({ root: "./web/dist" }));
   app.use("/app/sw.js", serveStatic({ root: "./web/dist" }));
   app.use("/app/manifest.webmanifest", serveStatic({ root: "./web/dist" }));
+  // The PWA icon set (`yarn icons`). Under /app/ like the manifest that names
+  // them, and registered before the /app/* document fallback for the same reason
+  // sw.js is: the fallback would hand back HTML and the install would show a
+  // blank icon.
+  app.use("/app/icons/*", serveStatic({ root: "./web/dist" }));
   app.use("/guest/sw.js", serveStatic({ root: "./web/dist" }));
   app.use("/favicon.svg", serveStatic({ root: "./web/dist" }));
   app.use("/splitsmart.svg", serveStatic({ root: "./web/dist" }));

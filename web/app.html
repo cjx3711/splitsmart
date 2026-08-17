@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/app/manifest.webmanifest" />
+    <!--
+      iOS ignores the manifest's icons entirely, so the home-screen icon has to
+      be named here or it falls back to a screenshot of the page. Both are
+      generated from the mark by `yarn icons`.
+    -->
+    <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SplitSmart" />
     <meta name="theme-color" content="#0e1214" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f6f9f8" media="(prefers-color-scheme: light)" />
     <!--
