@@ -7,8 +7,10 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { LuSettings } from "react-icons/lu";
 import { api, fullName, type Group, type Friend } from "./api.ts";
-import { useSidebarVersion } from "./App.tsx";
+import { useAuth, useSidebarVersion } from "./App.tsx";
+import { Avatar } from "./Avatar.tsx";
 import { GroupTypeIcon } from "./groupTypes.tsx";
 
 const SIDEBAR_GROUP_LIMIT = 5;
@@ -20,6 +22,7 @@ function byNewestId<T extends { id: string }>(items: T[]): T[] {
 }
 
 export function Sidebar({ className }: { className: string }) {
+  const { user } = useAuth();
   const version = useSidebarVersion();
   const [groups, setGroups] = useState<Group[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -50,8 +53,26 @@ export function Sidebar({ className }: { className: string }) {
   const hasMoreGroups = !query && filteredGroups.length > SIDEBAR_GROUP_LIMIT;
   const hasMoreFriends = !query && filteredFriends.length > SIDEBAR_FRIEND_LIMIT;
 
+  const displayName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(" ")
+    : "";
+
   return (
     <nav className={className} aria-label="Main">
+      {user && (
+        <div className="sidebar-user">
+          <Avatar id={user.id} name={displayName} size={32} />
+          <span className="sidebar-user-name">{user.firstName}</span>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => (isActive ? "sidebar-settings active" : "sidebar-settings")}
+            aria-label="Settings"
+          >
+            <LuSettings aria-hidden="true" />
+          </NavLink>
+        </div>
+      )}
+
       <NavLink to="/" end className={navClass}>
         <span className="dot" />
         <span className="nav-item-label">Dashboard</span>

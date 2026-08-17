@@ -24,7 +24,7 @@ export function AddExpenseDialog({
   onClose,
   initialGroupId = null,
   initialFriendId = null,
-  title = "Add an expense",
+  title = "Add Expense",
   onCreated,
 }: {
   open: boolean;

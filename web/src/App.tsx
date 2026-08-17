@@ -13,7 +13,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { Routes, Route, Link, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import { api, type ApiUser } from "./api.ts";
 import { CurrencyProvider } from "./money.tsx";
 import { Logo } from "./Logo.tsx";
@@ -171,6 +171,11 @@ function Protected({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Group and friend detail screens carry their own add-expense action. */
+function pageHasAddExpense(pathname: string): boolean {
+  return /^\/groups\/[^/]+$/.test(pathname) || /^\/friends\/[^/]+$/.test(pathname);
+}
+
 function TopBar({
   menuOpen,
   onToggleMenu,
@@ -180,16 +185,10 @@ function TopBar({
   onToggleMenu: () => void;
   appChrome: boolean;
 }) {
-  const { user, setUser } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const location = useLocation();
   const [adding, setAdding] = useState(false);
-
-  async function handleLogout() {
-    await api.logout().catch(() => {});
-    setUser(null);
-    navigate("/login");
-  }
+  const showAddExpense = appChrome && !pageHasAddExpense(location.pathname);
 
   return (
     <header className="topbar">
@@ -217,40 +216,18 @@ function TopBar({
             <a href="/docs">API</a>
           </nav>
         )}
-        {appChrome && (
+        {showAddExpense && (
           <>
-            {/* Adding an expense is the thing this app is for; it should not
-                require navigating to a group first. */}
-            <button
-              className="inline topbar-add"
-              onClick={() => setAdding(true)}
-              aria-label="Add an expense"
-            >
-              {/* The full label would push "Log out" off a phone; the short one
-                  is decorative, so the button keeps its real name above. */}
-              <span className="topbar-add-long">Add an expense</span>
-              <span className="topbar-add-short" aria-hidden="true">
-                + Add
-              </span>
+            <button className="inline" onClick={() => setAdding(true)}>
+              Add Expense
             </button>
             <AddExpenseDialog open={adding} onClose={() => setAdding(false)} />
           </>
         )}
-        {user ? (
-          <>
-            <Link to="/settings" className="muted" style={{ textDecoration: "none" }}>
-              {user.firstName}
-            </Link>
-            <button className="link" onClick={handleLogout}>
-              Log out
-            </button>
-          </>
-        ) : (
-          location.pathname !== "/login" && (
-            <Link to="/login" className="mkt-btn mkt-btn-sm">
-              Log in
-            </Link>
-          )
+        {!user && location.pathname !== "/login" && (
+          <Link to="/login" className="mkt-btn mkt-btn-sm">
+            Log in
+          </Link>
         )}
       </div>
     </header>

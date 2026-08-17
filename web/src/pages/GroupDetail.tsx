@@ -146,13 +146,13 @@ export function GroupDetail() {
           <button className="secondary" onClick={() => setOpenDialog("settle")}>
             Settle up
           </button>
-          <button onClick={() => setOpenDialog("expense")}>Add an expense</button>
+          <button onClick={() => setOpenDialog("expense")}>Add Expense</button>
         </div>
       </div>
 
       <AddExpenseDialog
         open={openDialog === "expense"}
-        title={`Add an expense to ${group.name}`}
+        title={`Add Expense to ${group.name}`}
         initialGroupId={group.id}
         onClose={() => setOpenDialog(null)}
         onCreated={load}

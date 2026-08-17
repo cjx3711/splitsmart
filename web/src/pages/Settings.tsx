@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth } from "../App.tsx";
 import { CurrencySelect } from "../CurrencySelect.tsx";
@@ -14,6 +14,7 @@ import { ConfirmDialog } from "../ConfirmDialog.tsx";
  */
 export function Settings() {
   const { user, setUser } = useAuth();
+  const navigate = useNavigate();
   const [tokens, setTokens] = useState<
     Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>
   >([]);
@@ -166,6 +167,19 @@ export function Settings() {
           undo this.
         </p>
       </ConfirmDialog>
+
+      <h2>Session</h2>
+      <button
+        className="secondary"
+        style={{ width: "auto" }}
+        onClick={() => {
+          void api.logout().catch(() => {});
+          setUser(null);
+          navigate("/login");
+        }}
+      >
+        Log out
+      </button>
     </>
   );
 }

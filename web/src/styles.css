@@ -140,25 +140,6 @@ a {
   color: var(--text);
 }
 
-.topbar-add-short {
-  display: none;
-}
-
-/* On a phone the full label pushes "Log out" off the bar. */
-@media (max-width: 620px) {
-  .topbar-add-long {
-    display: none;
-  }
-
-  .topbar-add-short {
-    display: inline;
-  }
-
-  .topbar-add {
-    padding: 0.4rem 0.6rem;
-  }
-}
-
 .shell {
   display: grid;
   grid-template-columns: var(--rail-w) minmax(0, 1fr);
@@ -225,6 +206,43 @@ a {
 }
 
 /* --- sidebar nav ---------------------------------------------------------- */
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.6rem 1rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-user-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 650;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  color: var(--muted);
+  text-decoration: none;
+  border-radius: 0.35rem;
+}
+
+.sidebar-settings:hover,
+.sidebar-settings.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 .nav-section {
   margin-top: 1.25rem;
