@@ -1,12 +1,18 @@
 ---
 name: ai-smoke-test
-description: Run the SplitSmart AI end-to-end smoke suite in docs/AI_SMOKE_TESTS.md — drive the app in a browser against an isolated seeded database, judge each screen by looking at it, snapshot the pages, and write a report. Reports only; never fixes what it finds. Use when asked to run the smoke tests, the AI E2E suite, or to check whether the app still works end to end.
+description: Run the SplitSmart AI end-to-end smoke suite in docs/AI_SMOKE_TESTS.md — drive the app in a browser against an isolated seeded database, judge each screen by looking at it, snapshot the pages, and write a report. Reports only; never fixes what it finds. Use when asked to run the smoke tests, the AI E2E suite, /ai-smoke-test, or to check whether the app still works end to end.
 ---
 
 # AI smoke tests
 
 You are the test runner. You drive a real browser against a real seeded app,
 decide by looking whether each screen is right, and write down what you saw.
+
+This skill is agent-agnostic: it names **jobs** (navigate, click, screenshot,
+dump the page, read console/network), not a vendor's tool names. Use whatever
+browser tools you have. If you cannot do a job a test requires, mark that test
+`blocked` and say which job was missing — do not invent a Playwright suite or
+fall back to guessing from HTML.
 
 ## The rule that outranks the rest
 
@@ -35,9 +41,9 @@ suggestion. Then stop. The user decides.
 
 ## Arguments
 
-`/ai-smoke-test` with no argument runs the whole suite. An argument selects a
-subset: test ids (`S3`, `S1-S4`, `S3,S7`) or a word to match against test titles
-(`guest`, `mobile`). Note in the report which subset ran.
+No extra argument runs the whole suite. An argument selects a subset: test ids
+(`S3`, `S1-S4`, `S3,S7`) or a word to match against test titles (`guest`,
+`mobile`). Note in the report which subset ran.
 
 ## Procedure
 
@@ -58,13 +64,24 @@ yarn smoke:new
 ```
 
 which prints the run directory (`smoke/runs/<stamp>/`). Everything you write
-goes there. Then start the server with `preview_start` using the launch config
-named `smoke` (5644 web / 5645 API) and confirm the dashboard loads before
-starting the suite.
+goes there.
+
+Start the smoke server as a **long-running** process and leave it running:
+
+```bash
+yarn smoke:server
+```
+
+That is 5644 (web) / 5645 (API). How you keep it in the background is up to
+your environment (a background shell, a launch config named `smoke` if you
+have one). Confirm http://localhost:5644 loads before starting the suite.
 
 If the server does not come up, stop. Report a run that could not start; do not
 debug the server and do not fall back to the dev stack on 5444 — that one has
 the user's real data in it and the suite writes expenses.
+
+If you have no browser you can drive, stop the same way. A text-only agent
+cannot run this suite.
 
 ### 2. Read the suite
 
@@ -76,24 +93,29 @@ earlier ones having happened (S12 audits what S5 and S7 wrote).
 
 For every test:
 
-1. **Perform the steps** with the browser tools — `navigate`, `computer`,
-   `form_input`, `read_page`. Prefer `read_page` refs over screenshot
-   coordinates for clicking; it is far less brittle.
+1. **Perform the steps** in a real browser. Map these jobs onto your tools:
+
+   | Job | Do this |
+   |---|---|
+   | Go to a URL | Open it in the browser. S10 needs a **new tab** (or a clean profile) so the guest shell is not the logged-in session. |
+   | Click / type / submit | Drive the page. Prefer refs from an accessibility-tree dump over screenshot coordinates — far less brittle. |
+   | Resize | S11 needs a 375×812 viewport. If you cannot resize, mark S11 `blocked`. |
 
 2. **Take a screenshot and actually look at it.** This is the part that
    justifies an LLM running the suite at all. Answer each "look for" question
    from the image, one at a time, out loud. Vague self-assessment ("the page
    looks correct") is not a result; if you cannot tell from the screenshot,
-   zoom (`computer` action `zoom`) or check the computed style with
-   `javascript_tool`, and if you still cannot tell, that is `blocked`.
+   zoom in or read computed styles with in-page JavaScript, and if you still
+   cannot tell, that is `blocked`. A text dump is not a substitute for looking.
 
-3. **Check the console and network** where the test asks: `read_console_messages`
-   and `read_network_requests`. An uncaught error with a correct-looking page is
-   still a fail.
+3. **Check the console and network** where the test asks. An uncaught error
+   with a correct-looking page is still a fail. S10 fails if anything hits
+   `/api/v1/` that is not under `/api/v1/guest/`. If you cannot read console
+   or network, mark those checks `blocked` rather than assuming they passed.
 
-4. **Take the snapshot**, if the test names one. Capture `read_page` output (or
-   `get_page_text` where the test says visible text), write it verbatim to
-   `<run>/raw/<test-id>-<step>.txt` with the Write tool, then:
+4. **Take the snapshot**, if the test names one. Capture the accessibility
+   tree if you have one (preferred), or visible text if the test asks for
+   that. Write it **verbatim** to `<run>/raw/<test-id>-<step>.txt`, then:
 
    ```bash
    yarn smoke:snapshot -- <run-dir> <test-id> <step> <run-dir>/raw/<test-id>-<step>.txt
@@ -101,16 +123,23 @@ For every test:
 
    It prints `MATCH`, `DIFF` (with a unified diff), or `RECORDED` (no baseline
    existed; it wrote one). Do not normalise the text yourself — the script owns
-   that, precisely so two runs produce identical bytes.
+   that, precisely so two runs produce identical bytes. Do not pretty-print or
+   rewrite the dump to look more like a baseline.
 
    `RECORDED` is not a pass. Record the verdict from your own vision checks and
    set `snapshot: "recorded"`; say in the report that the baseline is new and
    the user should eyeball it before committing.
 
-   A `DIFF` is a finding on its own, even when the screen looks fine — some
-   regressions (a lost aria-label, a heading demoted to a div) are invisible in
-   a screenshot and obvious in the diff. Read the diff and say in the report
-   what changed, in words.
+   A `DIFF` is recorded as `snapshot: "diff"` even when the screen looks fine —
+   some regressions (a lost aria-label, a heading demoted to a div) are
+   invisible in a screenshot and obvious in the diff. Read the diff and say in
+   the report what changed, in words.
+
+   Accessibility-tree dumps are **not** interchangeable across agents. If the
+   screenshot answers every "look for" and the diff is only dump structure
+   (YAML vs indented text, ref syntax, extra wrapper nodes) rather than missing
+   labels, amounts, or headings, set `verdict` to `pass` and explain the format
+   difference in `notes`. If you cannot tell format from content, `fail`.
 
 5. **Record the result immediately** into `<run>/results.json`, appending to
    `tests`. Do not batch this to the end of the suite; a run that dies halfway
@@ -151,7 +180,8 @@ Then, in chat, give the user:
 - each failure in a sentence or two — what was expected, what was on screen,
   where (`file:line` only if you already know it from reading the suite, not
   from a debugging expedition you were not asked for);
-- any snapshot diffs, described in words;
+- any snapshot diffs, described in words (and whether they look like dump
+  format or real UI);
 - any new baselines that were recorded and need a human look;
 - if you have one, a suggested fix per failure, clearly marked as a suggestion
   and not applied.

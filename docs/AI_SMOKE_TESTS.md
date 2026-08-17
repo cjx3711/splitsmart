@@ -12,18 +12,15 @@ deliberately paired with a snapshot mechanism that IS deterministic — see
 "Two kinds of evidence" below — and it never gates a commit. `yarn test` is the
 suite you trust for logic; this one tells you the app is usable.
 
-**The agent that runs this fixes nothing.** See `.claude/skills/ai-smoke-test/SKILL.md`.
+**The agent that runs this fixes nothing.** See the `ai-smoke-test` skill.
 A run produces a report and stops. That is the whole point: a failing smoke test
 is information about the app, and an agent that quietly repairs the app to make
 its own test pass has destroyed the information.
 
 ## How to run it
 
-```bash
-/ai-smoke-test
-```
-
-Or a subset: `/ai-smoke-test S1-S4`, `/ai-smoke-test guest`.
+Ask an agent to run the AI smoke tests (Claude Code: `/ai-smoke-test`). A
+subset is an argument: test ids (`S1-S4`) or a word from a title (`guest`).
 
 ## The environment under test
 
@@ -38,7 +35,7 @@ and never fights your dev server for a port.
 
 ```bash
 yarn smoke:reset     # rebuild data/smoke.db and seed the demo account
-yarn smoke:server    # serve it on 5644/5645 (launch.json config: "smoke")
+yarn smoke:server    # serve it on 5644/5645
 ```
 
 `yarn smoke:reset` is destructive to `data/smoke.db` and to nothing else. Run it
@@ -59,8 +56,9 @@ Every test produces at least one, and most produce both.
 run through `yarn smoke:snapshot`, which erases the values that legitimately
 change between runs (ULIDs, dates, `ref_N`, link secrets) and diffs the rest
 against a committed baseline in `smoke/baselines/`. This is the deterministic
-half: a diff is a fact, not a judgement, and it survives the agent being
-replaced by a different agent next month.
+half: a diff is a fact, not a judgement. It is stable across runs of the
+**same** dump format; a different agent's accessibility tree will often DIFF
+even when the UI did not change (see the skill).
 
 **A vision check** is the agent looking at a screenshot and answering the
 questions the test asks. This is the half that catches a chart rendered on top
@@ -70,8 +68,12 @@ off-screen — none of which move a single byte of the accessibility tree.
 Screenshots are judged in the session and the *judgement* is what gets written
 down; the browser tooling hands the agent an image, not a file it can commit, so
 there are no PNG baselines to diff. Where a visual regression must be caught
-byte-for-byte rather than by opinion, assert on computed styles via
-`javascript_tool` and snapshot the result as text.
+byte-for-byte rather than by opinion, read computed styles with in-page
+JavaScript and snapshot the result as text.
+
+Accessibility-tree dumps differ by agent, so a snapshot `DIFF` against a
+baseline captured by a different agent may be dump format rather than a UI
+change. The skill says how to record that; do not "fix" the dump to match.
 
 ### On baselines
 
@@ -112,7 +114,7 @@ http://localhost:5644/app.
   not a bare signed number.
 - The sidebar shows at most 5 groups (the seed makes 10; the sidebar shows the
   newest 5).
-- No error toast, and no console error (check `read_console_messages`).
+- No error toast, and no console error (check the browser console).
 
 ---
 
@@ -265,13 +267,13 @@ http://localhost:5644/app.
   to mint another link, and no access to groups outside this link's scope.
 - A claim/sign-up affordance is offered rather than assumed.
 - Console shows no failed requests to `/api/v1/` (the guest shell must only
-  talk to `/api/v1/guest/`) — check `read_network_requests`.
+  talk to `/api/v1/guest/`) — check the page's network requests.
 
 ---
 
 ### S11 — Mobile viewport
 
-1. Resize to the `mobile` preset (375×812) and reload.
+1. Resize the viewport to 375×812 and reload.
 2. Visit the dashboard, a group, and an expense detail.
 
 **Snapshot:** none (the tree is the same; the failure mode is visual).

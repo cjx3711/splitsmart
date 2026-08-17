@@ -1,0 +1,1 @@
+../../../.claude/skills/ai-smoke-test/SKILL.md
