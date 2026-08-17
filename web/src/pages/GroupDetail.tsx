@@ -162,7 +162,7 @@ export function GroupDetail() {
           <div className="card stack">
             <p className="muted" style={{ margin: 0 }}>
               The fewest transfers that clear this group, one set per currency. Nothing is recorded
-              until someone actually pays — use <strong>Settle up</strong> above, which starts
+              until someone actually pays - use <strong>Settle up</strong> above, which starts
               prefilled with the first of these.
             </p>
             {settle
@@ -189,7 +189,6 @@ export function GroupDetail() {
         expenses={expenses}
         currentUserId={user.id}
         nameOf={nameOf}
-        onDeleted={load}
       />
 
       <h2>Members</h2>
@@ -214,7 +213,7 @@ export function GroupDetail() {
           <div className="card stack">
             <p className="muted" style={{ margin: 0 }}>
               Anyone with this link can join the group and read every expense in it. Sharing it is
-              the only way in — there is no per-person invite for groups.
+              the only way in - there is no per-person invite for groups.
             </p>
             <code>{group.inviteUrl}</code>
             <div>

@@ -1,7 +1,7 @@
 /**
  * The add-expense form.
  *
- * One form for every way of adding an expense — a group, a friend, or neither —
+ * One form for every way of adding an expense - a group, a friend, or neither -
  * because the alternative was three forms drifting apart. What varies is the
  * pool of people it offers and whether the group is fixed; both are props.
  *
@@ -24,7 +24,7 @@ import { CurrencySelect } from "./CurrencySelect.tsx";
 import { CategoryButton, DEFAULT_CATEGORY_ID } from "./categories.tsx";
 import { PeoplePicker, type Person } from "./PeoplePicker.tsx";
 import { PaidByField, type Payment } from "./PaidBy.tsx";
-import { SplitEditor, buildSplit, itemizedTotal, useSplitDraft } from "./SplitEditor.tsx";
+import { SplitEditor, buildSplit, itemizedTotal, useSplitDraft, type SplitDraftInit } from "./SplitEditor.tsx";
 
 /** Kept as the old name so SettleUpForm and friends need no churn. */
 export type Payer = Person;
@@ -33,12 +33,23 @@ export type { Person };
 /**
  * A placeholder in the selected currency's own precision.
  *
- * Typing "30.00" with JPY selected is rejected — correctly, since yen has no
- * subunit — so the hint must not suggest it in the first place.
+ * Typing "30.00" with JPY selected is rejected - correctly, since yen has no
+ * subunit - so the hint must not suggest it in the first place.
  */
 function amountPlaceholder(decimals: number | null): string {
   if (decimals === null) return "30";
   return decimals === 0 ? "3000" : `30.${"0".repeat(decimals)}`;
+}
+
+export interface ExpenseFormInit {
+  description: string;
+  details?: string | null;
+  /** Raw text, in `defaultCurrency`'s own precision - same convention as the amount box. */
+  amount: string;
+  date: string;
+  categoryId: number;
+  payment: Payment;
+  split: SplitDraftInit;
 }
 
 export function ExpenseForm({
@@ -52,37 +63,42 @@ export function ExpenseForm({
   onSubmit,
   submitLabel = "Add expense",
   className = "card stack",
+  initial,
 }: {
   /** Everyone selectable: your friends, or the members of the chosen group. */
   candidates: Person[];
   initialParticipantIds: number[];
   defaultCurrency: string;
   currentUserId: number;
-  /** Omit to hide the group selector — the friend screen has no use for it. */
+  /** Omit to hide the group selector - the friend screen has no use for it. */
   groups?: Group[];
   groupId: number | null;
   onGroupChange?: (groupId: number | null) => void;
   onSubmit: (input: ExpenseInput) => Promise<void>;
   submitLabel?: string;
-  /** Pass "stack" inside a Modal — the dialog already draws the surround. */
+  /** Pass "stack" inside a Modal - the dialog already draws the surround. */
   className?: string;
+  /** Reopens an existing expense instead of starting a blank one. */
+  initial?: ExpenseFormInit;
 }) {
   const { decimalsFor } = useCurrencies();
   const parseInCurrency = useParseMoney();
 
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [amount, setAmount] = useState(initial?.amount ?? "");
   const [currency, setCurrency] = useState(defaultCurrency);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [categoryId, setCategoryId] = useState<number>(DEFAULT_CATEGORY_ID);
-  const [notes, setNotes] = useState("");
-  const [showNotes, setShowNotes] = useState(false);
+  const [date, setDate] = useState(initial?.date ?? (() => new Date().toISOString().slice(0, 10)));
+  const [categoryId, setCategoryId] = useState<number>(initial?.categoryId ?? DEFAULT_CATEGORY_ID);
+  const [notes, setNotes] = useState(initial?.details ?? "");
+  const [showNotes, setShowNotes] = useState(Boolean(initial?.details));
   const [participantIds, setParticipantIds] = useState<number[]>(initialParticipantIds);
-  const [payment, setPayment] = useState<Payment>({ kind: "single", payerId: currentUserId });
+  const [payment, setPayment] = useState<Payment>(
+    initial?.payment ?? { kind: "single", payerId: currentUserId },
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const draft = useSplitDraft();
+  const draft = useSplitDraft(initial?.split);
 
   const byId = useMemo(() => new Map(candidates.map((p) => [p.id, p])), [candidates]);
   // Participants in the picker's order, minus anyone the pool no longer offers
@@ -97,7 +113,7 @@ export function ExpenseForm({
   // The preview needs the amount as minor units on every keystroke, including
   // the keystrokes where it is not a valid amount yet ("12."). Zero means "no
   // total to divide", which the editor renders as an empty preview rather than
-  // an error — the real parse happens on submit and reports properly there.
+  // an error - the real parse happens on submit and reports properly there.
   let costMinor = 0;
   if (itemizing) {
     costMinor = itemizedTotal(draft, currency, parseInCurrency);
@@ -111,7 +127,7 @@ export function ExpenseForm({
 
   useEffect(() => setCurrency(defaultCurrency), [defaultCurrency]);
 
-  // The candidate pool changed under us — a different group, or a friend list
+  // The candidate pool changed under us - a different group, or a friend list
   // that has just loaded. Reset to whatever the caller says belongs on the
   // expense now rather than leaving half a stale selection behind.
   useEffect(() => {
@@ -283,7 +299,7 @@ export function ExpenseForm({
       />
 
       {/* Notes only. There is no image upload in this app and there will not be
-          one without an explicit decision — see CLAUDE.md. */}
+          one without an explicit decision - see CLAUDE.md. */}
       <div>
         {showNotes || notes ? (
           <>

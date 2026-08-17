@@ -4,8 +4,15 @@
  * Shows each expense from the signed-in user's point of view: their own net
  * position on it (paid minus owed), which is the number people actually look
  * for. The cost sits next to it for context.
+ *
+ * The row itself opens the expense's own page, where editing and deleting
+ * live - not here, and not behind a bare "✕" with no confirmation. The group
+ * and payer names are their own links to that group's or friend's page, so
+ * they need `stopPropagation` to keep the row underneath from also navigating.
  */
-import { api, fullName, type ExpenseSummary, type GroupMember } from "./api.ts";
+import { Link, useNavigate } from "react-router-dom";
+import { Fragment } from "react";
+import { fullName, type ExpenseSummary, type GroupMember } from "./api.ts";
 import { Amount } from "./money.tsx";
 
 export interface PersonLookup {
@@ -29,7 +36,6 @@ export function ExpenseList({
   currentUserId,
   nameOf,
   showGroup = false,
-  onDeleted,
   empty = "Nothing yet.",
 }: {
   expenses: ExpenseSummary[];
@@ -37,9 +43,10 @@ export function ExpenseList({
   nameOf: PersonLookup;
   /** Label each row with the group it belongs to. */
   showGroup?: boolean;
-  onDeleted?: () => void;
   empty?: string;
 }) {
+  const navigate = useNavigate();
+
   if (expenses.length === 0) return <p className="empty">{empty}</p>;
 
   return (
@@ -50,16 +57,54 @@ export function ExpenseList({
         const payers = expense.shares.filter((s) => s.paid_share_minor > 0);
 
         return (
-          <div key={expense.id} className="list-item">
+          <div
+            key={expense.id}
+            className="list-item"
+            role="link"
+            tabIndex={0}
+            style={{ cursor: "pointer" }}
+            onClick={() => navigate(`/expenses/${expense.id}`)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") navigate(`/expenses/${expense.id}`);
+            }}
+          >
             <div className="list-item-body">
               <div className="list-item-title">
                 {expense.is_payment === 1 ? "Settle up" : expense.description}
               </div>
               <div className="muted">
                 {expense.date.slice(0, 10)}
-                {showGroup && ` · ${expense.group_name ?? "One-on-one"}`}
+                {showGroup && (
+                  <>
+                    {" · "}
+                    {expense.group_id ? (
+                      <Link to={`/groups/${expense.group_id}`} onClick={(e) => e.stopPropagation()}>
+                        {expense.group_name}
+                      </Link>
+                    ) : (
+                      "One-on-one"
+                    )}
+                  </>
+                )}
                 {expense.category_name && ` · ${expense.category_name}`}
-                {payers.length > 0 && ` · ${payers.map((p) => nameOf(p.user_id)).join(", ")} paid`}
+                {payers.length > 0 && (
+                  <>
+                    {" · "}
+                    {payers.map((p, i) => (
+                      <Fragment key={p.user_id}>
+                        {i > 0 && ", "}
+                        {p.user_id === currentUserId ? (
+                          nameOf(p.user_id)
+                        ) : (
+                          <Link to={`/friends/${p.user_id}`} onClick={(e) => e.stopPropagation()}>
+                            {nameOf(p.user_id)}
+                          </Link>
+                        )}
+                      </Fragment>
+                    ))}{" "}
+                    paid
+                  </>
+                )}
               </div>
             </div>
 
@@ -74,19 +119,6 @@ export function ExpenseList({
                 </div>
               )}
             </div>
-
-            {onDeleted && (
-              <button
-                className="icon"
-                title="Delete expense"
-                aria-label={`Delete ${expense.description}`}
-                onClick={() => {
-                  void api.deleteExpense(expense.id).then(onDeleted).catch(() => {});
-                }}
-              >
-                ✕
-              </button>
-            )}
           </div>
         );
       })}

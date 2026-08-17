@@ -44,7 +44,6 @@ export function AllExpenses() {
         currentUserId={user.id}
         nameOf={nameOf}
         showGroup
-        onDeleted={load}
         empty="You haven't split anything yet."
       />
     </>

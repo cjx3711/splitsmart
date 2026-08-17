@@ -3,7 +3,7 @@
  *
  * It owns the group and friend lists rather than each page fetching its own,
  * because they are visible on every screen. Pages that change either list call
- * useSidebarRefresh() — see App.tsx.
+ * useSidebarRefresh() - see App.tsx.
  */
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
@@ -59,8 +59,10 @@ export function Sidebar({ className }: { className: string }) {
 
       <div className="nav-section">
         <div className="nav-heading">
-          <span>Groups</span>
-          <NavLink to="/groups" className="link" style={{ textDecoration: "none" }}>
+          <NavLink to="/groups" end style={{ textDecoration: "none", color: "inherit" }}>
+            Groups
+          </NavLink>
+          <NavLink to="/groups/new" className="link" style={{ textDecoration: "none" }}>
             + add
           </NavLink>
         </div>
@@ -78,8 +80,10 @@ export function Sidebar({ className }: { className: string }) {
 
       <div className="nav-section">
         <div className="nav-heading">
-          <span>Friends</span>
-          <NavLink to="/friends" className="link" style={{ textDecoration: "none" }}>
+          <NavLink to="/friends" end style={{ textDecoration: "none", color: "inherit" }}>
+            Friends
+          </NavLink>
+          <NavLink to="/friends/new" className="link" style={{ textDecoration: "none" }}>
             + add
           </NavLink>
         </div>

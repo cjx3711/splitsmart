@@ -1,14 +1,14 @@
 /**
  * Native API client.
  *
- * Talks to /api/v1 — the clean internal model, NOT the Splitwise compat layer.
+ * Talks to /api/v1 - the clean internal model, NOT the Splitwise compat layer.
  * Money crosses this boundary as integer minor units, same as the database.
  *
  * When the RPC migration in docs/PLAN.md lands, this file is replaced by Hono's
  * `hc<AppType>()` client and these hand-written types go away.
  *
  * The split types come from the server's own split engine rather than being
- * retyped here. src/domain/split.ts is pure — no database, no Node built-ins —
+ * retyped here. src/domain/split.ts is pure - no database, no Node built-ins -
  * so the browser can import it, and the add-expense form runs the real
  * computeSplit() to preview a split instead of reimplementing its rounding.
  * See web/src/SplitEditor.tsx.
@@ -86,6 +86,28 @@ export interface ExpenseSummary {
     user_id: number;
     paid_share_minor: number;
     owed_share_minor: number;
+  }>;
+}
+
+export interface ExpenseDetail {
+  id: number;
+  description: string;
+  details: string | null;
+  cost_minor: number;
+  currency_code: string;
+  date: string;
+  is_payment: number;
+  split_type: SplitType;
+  split_meta: string | null;
+  category_id: number | null;
+  category_name: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  shares: Array<{
+    user_id: number;
+    paid_share_minor: number;
+    owed_share_minor: number;
+    split_input: number | null;
   }>;
 }
 
@@ -233,7 +255,7 @@ export const api = {
 
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 
-  /** Unauthenticated — the link is often opened in a different browser. */
+  /** Unauthenticated - the link is often opened in a different browser. */
   verifyEmail: (token: string) =>
     request<{ ok: boolean; status: string }>(`/auth/verify/${token}`, { method: "POST" }),
 
@@ -315,6 +337,11 @@ export const api = {
 
   deleteExpense: (id: number) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
 
+  getExpense: (id: number) => request<{ expense: ExpenseDetail }>(`/expenses/${id}`),
+
+  updateExpense: (id: number, input: ExpenseInput & { groupId: number | null }) =>
+    request<{ ok: boolean }>(`/expenses/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
   listExpenses: () => request<{ expenses: ExpenseSummary[] }>("/expenses"),
 
   listActivity: () => request<{ activity: ActivityEntry[] }>("/activity"),
@@ -364,7 +391,7 @@ export const api = {
   // --- Splitwise import -----------------------------------------------------
   //
   // The API key is passed on every call and never stored, server-side or here.
-  // Keep it in component state only — never localStorage.
+  // Keep it in component state only - never localStorage.
 
   importStatus: () => request<ImportStatus>("/import/status"),
 
@@ -436,7 +463,7 @@ export const api = {
  *
  * `decimalPlaces` is required rather than defaulting to 2, because defaulting
  * is how JPY ends up displayed as one hundredth of its real value. Callers get
- * it from the currencies table via useCurrencies() — never from a guess.
+ * it from the currencies table via useCurrencies() - never from a guess.
  */
 export function formatMoney(minor: number, decimalPlaces: number): string {
   const negative = minor < 0;

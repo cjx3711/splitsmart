@@ -1,7 +1,7 @@
 /**
  * One friend: what stands between the two of you and everything you've split.
  *
- * Expenses here span every group plus the one-on-one ones — the question "what
+ * Expenses here span every group plus the one-on-one ones - the question "what
  * is between us" does not stop at a group boundary. New expenses added from
  * this screen are one-on-one (no group).
  *
@@ -176,7 +176,6 @@ export function FriendDetail() {
         currentUserId={user.id}
         nameOf={nameOf}
         showGroup
-        onDeleted={load}
         empty={`Nothing split with ${name} yet.`}
       />
     </>

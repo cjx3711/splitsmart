@@ -11,7 +11,7 @@
  *   itemized    a line-item bill, plus tax and tip
  *
  * THE PREVIEW RUNS THE REAL ENGINE. `computeSplit` is imported from
- * src/domain/split.ts — the same pure module the server calls — so the amounts
+ * src/domain/split.ts - the same pure module the server calls - so the amounts
  * shown here are the amounts that will be stored, down to which person gets the
  * leftover cent. There is no second implementation of the rounding to drift out
  * of sync, and the validation messages the user sees are the server's own.
@@ -19,7 +19,7 @@
  * The server still recomputes on submit and remains authoritative; this is a
  * preview, not a substitute for validation.
  *
- * WHO is on the expense is not decided here — PeoplePicker owns that, and this
+ * WHO is on the expense is not decided here - PeoplePicker owns that, and this
  * component renders a row per person it is given. Two controls editing one list
  * is how a person ends up on the chips but not in the split.
  */
@@ -33,11 +33,11 @@ export const SPLIT_MODES: Array<{ id: SplitType; label: string; hint: string }> 
   { id: "equal", label: "Equally", hint: "Split the total evenly between everyone on the expense." },
   { id: "exact", label: "Exact amounts", hint: "Enter what each person owes. Must add up to the total." },
   { id: "percent", label: "Percentages", hint: "Enter each person's share of the bill. Must add up to 100%." },
-  { id: "shares", label: "Shares", hint: "Weights, not amounts — a couple taking 2 shares to someone else's 1." },
+  { id: "shares", label: "Shares", hint: "Weights, not amounts - a couple taking 2 shares to someone else's 1." },
   {
     id: "adjustment",
     label: "Adjustment",
-    hint: "A fixed amount for one person — their own drink, their single room — then the rest splits evenly.",
+    hint: "A fixed amount for one person - their own drink, their single room - then the rest splits evenly.",
   },
   {
     id: "itemized",
@@ -77,13 +77,24 @@ export interface SplitDraft {
   reset: () => void;
 }
 
-export function useSplitDraft(): SplitDraft {
-  const [mode, setModeRaw] = useState<SplitType>("equal");
-  const [values, setValues] = useState<Record<number, string>>({});
-  const [items, setItems] = useState<DraftItem[]>([]);
-  const [tax, setTax] = useState("");
-  const [tip, setTip] = useState("");
+/** Reopens an existing expense's split, from its stored split_input/split_meta. */
+export interface SplitDraftInit {
+  mode: SplitType;
+  values: Record<number, string>;
+  items?: Array<{ label: string; amount: string; participantIds: number[] }>;
+  tax?: string;
+  tip?: string;
+}
+
+export function useSplitDraft(initial?: SplitDraftInit): SplitDraft {
+  const [mode, setModeRaw] = useState<SplitType>(initial?.mode ?? "equal");
+  const [values, setValues] = useState<Record<number, string>>(initial?.values ?? {});
   const nextKey = useRef(1);
+  const [items, setItems] = useState<DraftItem[]>(() =>
+    (initial?.items ?? []).map((item) => ({ ...item, key: nextKey.current++ })),
+  );
+  const [tax, setTax] = useState(initial?.tax ?? "");
+  const [tip, setTip] = useState(initial?.tip ?? "");
 
   // Switching mode clears the per-person values, because they do not survive
   // reinterpretation: "50" as a percentage and "50" as an exact amount are not
@@ -162,7 +173,7 @@ function parseOrZero(
  * it is lines you add up. Deriving it also means tax and tip always agree with
  * the gap the engine spreads, which is what the server insists on.
  *
- * Unparseable boxes count as zero — the preview reports them properly.
+ * Unparseable boxes count as zero - the preview reports them properly.
  */
 export function itemizedTotal(
   draft: SplitDraft,
@@ -187,7 +198,7 @@ export function itemizedTotal(
 /**
  * Turns the draft into the `participants` / `items` the API expects.
  *
- * Throws on unparseable input — a stray letter in an amount — with the same
+ * Throws on unparseable input - a stray letter in an amount - with the same
  * MoneyError text the server would produce. Numbers that parse but do not add
  * up are NOT rejected here; that is computeSplit's call, so there is one set of
  * arithmetic rules rather than two.
@@ -224,7 +235,7 @@ export function buildSplit(
         // box to express "the default" would be busywork.
         return raw === "" ? 0 : parseInCurrency(raw, currency);
 
-      // Plain numbers, and legitimately fractional — 33.33%, 1.5 shares.
+      // Plain numbers, and legitimately fractional - 33.33%, 1.5 shares.
       case "percent":
       case "shares": {
         if (raw === "") return 0;
@@ -257,7 +268,7 @@ export function buildSplit(
 
   const inputs = new Map(participantIds.map((id) => [id, inputFor(id)]));
 
-  // `own-share` cannot be resolved before the split is known — what each person
+  // `own-share` cannot be resolved before the split is known - what each person
   // paid IS what they owe. So the shares are computed once with a provisional
   // payer (which changes no owed amount; paid only has to sum to the total),
   // then the payments are set from the result.
@@ -294,8 +305,8 @@ export function buildSplit(
  * Runs the split for the preview, returning either per-person amounts or the
  * reason it does not work yet.
  *
- * Every failure is expected here — a half-typed form is invalid most of the
- * time — so this reports rather than throws, and the message is shown inline as
+ * Every failure is expected here - a half-typed form is invalid most of the
+ * time - so this reports rather than throws, and the message is shown inline as
  * guidance instead of as an error.
  */
 function previewSplit(
@@ -310,7 +321,7 @@ function previewSplit(
     return { shares: null, problem: "Nobody is on this expense yet." };
   }
   if (costMinor <= 0) {
-    return { shares: null, problem: null }; // No amount typed yet — not a problem.
+    return { shares: null, problem: null }; // No amount typed yet - not a problem.
   }
 
   try {
@@ -334,7 +345,7 @@ export function SplitEditor({
   currency,
   payment,
 }: {
-  /** The expense's participants — exactly the rows shown. */
+  /** The expense's participants - exactly the rows shown. */
   people: Person[];
   draft: SplitDraft;
   costMinor: number;
@@ -365,7 +376,7 @@ export function SplitEditor({
 
         {/* Splitwise's two one-sided shortcuts. They set `shares` weights rather
             than fixed amounts so that changing the total afterwards keeps them
-            true — a preset that silently goes stale is worse than no preset. */}
+            true - a preset that silently goes stale is worse than no preset. */}
         {people.length === 2 && (
           <div className="split-presets">
             {people.map((person) => {
@@ -434,7 +445,7 @@ export function SplitEditor({
 /**
  * Each person's per-mode input and what they end up owing.
  *
- * Shown for every mode including itemized and equal — in those two there is no
+ * Shown for every mode including itemized and equal - in those two there is no
  * value to type, but the computed per-person amount is the whole point of the
  * preview.
  */
@@ -518,7 +529,7 @@ function ItemizedEditor({
       <label>Line items</label>
 
       {draft.items.length === 0 && (
-        <p className="split-hint">No lines yet — add the first one below.</p>
+        <p className="split-hint">No lines yet - add the first one below.</p>
       )}
 
       <div className="stack-tight">

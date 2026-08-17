@@ -12,7 +12,7 @@ import { env } from "../../env.ts";
 import { generateToken } from "../../auth/password.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
-import { createExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
+import { createExpense, updateExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { expenseBodySchema, genericExpenseBodySchema } from "./expense-schema.ts";
 
@@ -291,15 +291,15 @@ expenseRoutes.use("*", requireAuth);
 /**
  * Create an expense anywhere: in a group, or in no group at all.
  *
- * The group-scoped and friend-scoped endpoints stay as they are — they are what
- * the compat layer and existing clients use — but neither can express the one
+ * The group-scoped and friend-scoped endpoints stay as they are - they are what
+ * the compat layer and existing clients use - but neither can express the one
  * shape the add-expense dialog needs: several people, chosen freely, possibly
  * with no group. This is that endpoint, and it is the one the web UI posts to.
  *
  * Who may appear on the expense:
  *
- *   in a group — its current members, enforced by createExpense itself
- *   no group   — you, plus anyone you already share money history with
+ *   in a group - its current members, enforced by createExpense itself
+ *   no group   - you, plus anyone you already share money history with
  *                (src/domain/friends.ts is the ONE definition of that)
  *
  * The caller must be on the expense either way. A non-group expense between two
@@ -390,7 +390,7 @@ expenseRoutes.get("/", async (c) => {
 /**
  * Currencies this user has actually used, most-used first.
  *
- * Backs the "Popular" section of the currency picker — a static top-10 list is
+ * Backs the "Popular" section of the currency picker - a static top-10 list is
  * a poor default for someone whose expenses are mostly in a currency it
  * doesn't include. Deleted expenses are excluded so removing a one-off mistake
  * in a rare currency doesn't keep it pinned at the top forever.
@@ -413,19 +413,102 @@ expenseRoutes.get("/currencies/frequent", async (c) => {
   return c.json({ codes: rows.map((r) => r.currency_code) });
 });
 
+/** Throws a 404-shaped result unless the caller is on this expense. */
+async function assertParticipant(expenseId: number, userId: number) {
+  return db
+    .selectFrom("expense_users")
+    .select("user_id")
+    .where("expense_id", "=", expenseId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+}
+
+/**
+ * One expense in full - every share, plus each one's `split_input` so the edit
+ * form can reopen the split exactly as it was entered rather than re-deriving
+ * it from the stored amounts.
+ */
+expenseRoutes.get("/:id", async (c) => {
+  const auth = c.get("user");
+  const expenseId = Number(c.req.param("id"));
+  if (!Number.isInteger(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+
+  const expense = await db
+    .selectFrom("expenses")
+    .leftJoin("categories", "categories.id", "expenses.category_id")
+    .leftJoin("groups", "groups.id", "expenses.group_id")
+    .select([
+      "expenses.id", "expenses.description", "expenses.details", "expenses.cost_minor",
+      "expenses.currency_code", "expenses.date", "expenses.is_payment",
+      "expenses.split_type", "expenses.split_meta", "expenses.category_id", "expenses.group_id",
+      "categories.name as category_name", "groups.name as group_name",
+    ])
+    .where("expenses.id", "=", expenseId)
+    .where("expenses.deleted_at", "is", null)
+    .executeTakeFirst();
+
+  if (!expense) return c.json({ error: "Not found" }, 404);
+
+  const shares = await db
+    .selectFrom("expense_users")
+    .select(["user_id", "paid_share_minor", "owed_share_minor", "split_input"])
+    .where("expense_id", "=", expenseId)
+    .execute();
+
+  return c.json({ expense: { ...expense, shares } });
+});
+
+/** Replaces an expense's contents via the domain layer's updateExpense. */
+expenseRoutes.patch("/:id", zValidator("json", genericExpenseBodySchema), async (c) => {
+  const auth = c.get("user");
+  const expenseId = Number(c.req.param("id"));
+  if (!Number.isInteger(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+
+  const { groupId = null, ...input } = c.req.valid("json");
+
+  if (!input.participants.some((p) => p.userId === auth.id)) {
+    return c.json({ error: "You have to be one of the people on this expense." }, 400);
+  }
+
+  if (groupId !== null) {
+    if (!(await assertMember(groupId, auth.id))) {
+      return c.json({ error: "Not a member of this group" }, 403);
+    }
+  } else {
+    const allowed = new Set([auth.id, ...(await listRelatedUserIds(db, auth.id))]);
+    const strangers = input.participants.filter((p) => !allowed.has(p.userId));
+    if (strangers.length > 0) {
+      return c.json(
+        { error: "A non-group expense can only involve you and people you share history with." },
+        400,
+      );
+    }
+  }
+
+  try {
+    await updateExpense(expenseId, {
+      ...input,
+      groupId,
+      details: input.details ?? null,
+      categoryId: input.categoryId ?? null,
+      updatedBy: auth.id,
+    });
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Could not update expense" }, 400);
+  }
+});
+
 expenseRoutes.delete("/:id", async (c) => {
   const auth = c.get("user");
   const expenseId = Number(c.req.param("id"));
 
   // Only a participant may delete an expense.
-  const participant = await db
-    .selectFrom("expense_users")
-    .select("user_id")
-    .where("expense_id", "=", expenseId)
-    .where("user_id", "=", auth.id)
-    .executeTakeFirst();
-
-  if (!participant) return c.json({ error: "Not found" }, 404);
+  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
 
   await deleteExpense(expenseId, auth.id);
   return c.json({ ok: true });

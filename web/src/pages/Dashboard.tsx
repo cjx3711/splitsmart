@@ -2,8 +2,8 @@
  * The dashboard.
  *
  * Splitwise shows one grand total with an asterisk and a footnote when you hold
- * several currencies. SplitSmart cannot do that honestly — there is no
- * exchange-rate table and there must not be one (see src/domain/balances.ts) —
+ * several currencies. SplitSmart cannot do that honestly - there is no
+ * exchange-rate table and there must not be one (see src/domain/balances.ts) -
  * so the summary is a stack of per-currency rows instead. That stack is the
  * page, not a detail of it.
  */
@@ -42,10 +42,10 @@ export function Dashboard() {
       <div className="page-head">
         <h1>Dashboard</h1>
         <div className="page-actions">
-          <Link to="/groups">
+          <Link to="/groups/new">
             <button className="secondary inline">New group</button>
           </Link>
-          <Link to="/friends">
+          <Link to="/friends/new">
             <button className="inline">Add a friend</button>
           </Link>
         </div>
@@ -152,7 +152,7 @@ function PeopleList({
                 {direction === "positive" ? "owes you " : "you owe "}
                 <Amounts balances={relevant} absolute />
               </div>
-              {/* Every bucket, signed — including ones pointing the other way.
+              {/* Every bucket, signed - including ones pointing the other way.
                   Filtering to this column's direction would print sub-lines
                   that don't add up to the figure above them. Only shown when
                   there is more than one, since a single line just repeats it. */}
