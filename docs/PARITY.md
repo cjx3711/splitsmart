@@ -1,34 +1,42 @@
 # Feature parity
 
-A plan, not an implementation. This is the remaining **product** work: the
-day-to-day Splitwise features the app still does not have, mainly comments
-and recurring expenses. Import, guest links, and offline have to take those
-features in the same change, or they get retrofitted later (and offline's
-`sync_log` CHECK cannot be retrofitted cheaply).
+**Built.** This was the plan for the remaining product work — comments,
+recurring expenses, search / filters / CSV, restore, and what those forced on
+import and guest links — and all five slices have landed. The document stays as
+the reference for how they work and why they work that way, because most of the
+"why" is not visible from the code.
 
-This is **not** a plan to finish `/api/sw/v3.0`. That layer already covers
-what this instance needs (`splitwise-to-toshl`: current user, friends,
-categories, expenses list, create expense). Wrapping native groups /
-expenses / friends on the compat wire is a small optional leftover at the
-end, not the point.
+What is deliberately still open:
+
+- **Phase 0, the fixture capture** below. It needs a real Splitwise account and
+  cannot be done from here. The importer no longer *depends* on the answer (it
+  handles nested and non-nested comments alike), but the raw backup is still
+  time-boxed: run `yarn export:splitwise` while the API is free.
+- **The optional compat wrappers** at the end. Still optional, still not the
+  point, and `docs/PLAN.md` phase 3 lists them.
+
+This was never a plan to finish `/api/sw/v3.0`. That layer already covers what
+this instance needs (`splitwise-to-toshl`: current user, friends, categories,
+expenses list, create expense).
 
 Status checklists live in `docs/PLAN.md` phase 2. This document is the how.
 
 ---
 
-## What is already true
+## What was already true when this was written
 
 The ledger, six split types, friends, groups, members, settle-up, activity,
-guest links, and an in-app import of people → groups → expenses all exist.
+guest links, and an in-app import of people → groups → expenses all existed.
 
-The `comments` table exists: ULID PK, `metadata.splitwise_id` unique index,
-soft `deleted_at`, rewritten in `mergeUsers`. Nothing reads or writes it.
-The importer ignores `comments` / `comments_count` on Splitwise expenses.
-The export script never fetches comments as their own resource.
+The `comments` table existed — ULID PK, `metadata.splitwise_id` unique index,
+soft `deleted_at`, rewritten in `mergeUsers` — and nothing read or wrote it. The
+importer ignored `comments` / `comments_count`. The export script never fetched
+comments as their own resource. Recurring did not exist at all.
 
-Recurring does not exist at all. Compat `serializeExpense` hardcodes
-`repeats: false`. Imported Splitwise recurrences arrive as ordinary
-one-off bills, which is the right starting point (see slice 2).
+All of that is now built. Compat `serializeExpense` still hardcodes
+`repeats: false` and `comments_count: 0`, deliberately: see the frozen-wire note
+below. Imported Splitwise recurrences still arrive as ordinary one-off bills,
+which was the right answer then and is the implemented one now (slice 2).
 
 ---
 
@@ -67,9 +75,13 @@ had.
 
 ## Capture what import will need
 
-Phase 0 is still the only time-boxed item. The export script dumps
-expenses, groups, friends, and a notifications file; it does not call
-`get_comments` or `get_expense/:id`.
+Phase 0 is still the only time-boxed item, and still the only thing here that
+cannot be done from a keyboard without a Splitwise account.
+
+`scripts/export-splitwise.ts` now walks it for you: after dumping expenses it
+saves `comments.json`, taking the nested `comments[]` where the list payload has
+them and calling `get_comments?expense_id=` where it does not. `_meta.json`
+records how many of each, which is the answer to the question below.
 
 Against a real account, while the API is free:
 
@@ -79,16 +91,21 @@ Against a real account, while the API is free:
 | `get_comments?expense_id=` (or `get_expense/:id`) for that expense | User vs System rows, `deleted_at`, who authored them. |
 | One expense with `repeats: true`, if the account has any | How past occurrences look next to the live template (`expense_bundle_id`, `next_repeat`). |
 
-If nested `comments[]` on the list is populated and complete, the raw
-expenses dump already *is* the comments backup. If it is empty or
-truncated, extend the export script to walk expenses with
-`comments_count > 0` and save them before that history is unreadable.
+If nested `comments[]` on the list is populated and complete, the raw expenses
+dump already *is* the comments backup. If it is empty or truncated, the export's
+per-expense walk is what saves that history.
+
+The importer does not wait on the answer: it handles **both** shapes (slice 1,
+"Import"), so a wrong guess costs nothing either way.
 
 ---
 
-## Slice 1 — Comments
+## Slice 1 — Comments ✅
 
-The load-bearing remaining feature. Schema exists; product does not.
+The load-bearing feature of this plan. Built as described below;
+`src/domain/comments.ts` is the writer, `src/routes/native/comments.ts` and the
+guest tree are the routes, `web/src/CommentThread.tsx` is the one component both
+shells render, and `src/routes/native/comments.test.ts` pins the rules.
 
 ### What we are cloning
 
@@ -109,10 +126,16 @@ expenses look annotated and new ones silent. Write both.
 `content`, `created_at`, `deleted_at`. Add:
 
 ```sql
--- fold into migrations/001 until a real database exists; after deploy
--- this is a new forward-only file.
-ALTER TABLE comments ADD COLUMN kind TEXT NOT NULL DEFAULT 'user';
--- CHECK (kind IN ('user', 'system')) if folded into the CREATE TABLE.
+-- Folded into migrations/001 (no deployed database yet), with the CHECK:
+kind TEXT NOT NULL DEFAULT 'user',
+CHECK (kind IN ('user', 'system'))
+```
+
+There is also a partial index for the thread query and the per-row count:
+
+```sql
+CREATE INDEX idx_comments_live ON comments(expense_id, created_at)
+  WHERE deleted_at IS NULL;
 ```
 
 Do not put `kind` in `metadata`. Listing user comments should not need
@@ -162,6 +185,13 @@ List returns live user *and* system comments, oldest first, with author
 `/api/v1/guest/...`, scoped with `expenseInScope`. A guest may comment as
 the person the link acts as, and may delete only their own user comments.
 System comments are not deletable.
+
+Worth knowing, because it surprised the tests: **guest visibility is stricter
+than the logged-in rule.** A logged-in group member can comment on a group bill
+they are not on (the "why am I not on this?" case); a link holder cannot, because
+`expenseInScope` requires them to be a participant. Both are correct, they are
+just not the same rule, and the guest routes check theirs *before* calling the
+domain writer.
 
 ### UI
 
@@ -229,7 +259,12 @@ still logs, like imported expenses.
 
 ---
 
-## Slice 2 — Recurring expenses
+## Slice 2 — Recurring expenses ✅
+
+Built as described. `src/domain/recurring.ts` is the pure interval arithmetic
+(imported by the form, like `split.ts`), `src/domain/scheduler.ts` is the job, and
+`src/routes/native/recurring.test.ts` covers the clock-jump, edit-the-template and
+guest cases.
 
 A real feature, not a flag. Splitwise stores `repeats`, `repeat_interval`
 (`never` / `weekly` / `fortnightly` / `monthly` / `yearly`), `next_repeat`,
@@ -238,11 +273,16 @@ normal expense. The template is the row that still has `repeats: true`.
 
 ### Schema
 
-New columns on `expenses`, fold into `001` until deploy:
+New columns on `expenses`, folded into `001`:
 
 - `repeat_interval` — `null` means never
 - `next_repeat` — when the scheduler should fire
 - `repeat_of` — ULID of the template; null on the template itself
+
+Plus CHECKs that a template is always scheduled, that an occurrence is never
+itself a template (series stay one level deep), and that nothing repeats itself.
+`yarn db:check` audits all three from the other side, along with
+"no two occurrences share a due date".
 
 No `expense_bundle_id`; the template id plus `repeat_of` is the bundle.
 Email reminders are phase 4, not this slice.
@@ -293,10 +333,14 @@ normal expenses and follow the ordinary outbox.
 
 ---
 
-## Slice 3 — Search, filters, CSV
+## Slice 3 — Search, filters, CSV ✅
 
-Smaller than the two above, but the All expenses screen has no search
-today and `GET /expenses` only takes `limit` / `offset`.
+Built. `src/routes/native/expense-filters.ts` is the one definition, shared by
+the three list endpoints and the CSV export; `web/src/ExpenseFilters.tsx` is the
+one bar, on the all-expenses, group and friend screens.
+
+One implementation note worth keeping: `q` is `instr(lower(...))`, not `LIKE`, so
+a search for `50%` finds a percent sign instead of matching every row.
 
 **Native list endpoints** (all expenses, group, friend): `q` (description
 substring), `group_id`, `friend_id`, `dated_after`, `dated_before`,
@@ -312,34 +356,36 @@ same CSV can be built locally; the HTTP endpoint stays for scripts.
 
 ---
 
-## Slice 4 — Restore
+## Slice 4 — Restore ✅
 
-Soft deletes are already stored. There is no way to undo one.
+Built. Soft deletes were already stored; now there is a way back.
 
-Native `POST /expenses/:id/restore` (and later groups, if group delete
-lands). Must go through the expense writer, rebuild repayments, write
-activity, and bump `version` once offline exists — otherwise a restored
-row looks like the tombstone it replaced. `yarn db:check` clean after.
-UI: an undo on the confirm dialog, and a way back from the activity feed
-entry.
+Native `POST /expenses/:id/restore` (and later groups, if group delete lands).
+Goes through the expense writer, rebuilds repayments, writes activity and a
+system comment, and must bump `version` once offline exists — otherwise a
+restored row looks like the tombstone it replaced. `yarn db:check` clean after.
 
-Nice, not blocking comments or recurring.
+UI: the expense page no longer navigates away on delete; it stays and offers the
+undo, and the activity feed offers one for a delete you find later.
 
 ---
 
-## Slice 5 — Import leftovers
+## Slice 5 — Import leftovers ✅ (bar the operator step)
 
-Still open after comments:
+- **Re-import as update.** Implemented as recommended: overwrite through
+  `updateExpense` only when the local row is untouched since import, otherwise
+  skip with `"local edits, not refreshed"`. Never re-runs `computeSplit`; the
+  split stays `exact`. New comments are inserted by `splitwise_id`; local user
+  comments Splitwise never saw are never deleted.
 
-- **Re-import as update.** Today an already-imported expense is left
-  alone. Recommended v1: overwrite through `updateExpense` only when the
-  local row is untouched since import (`updated_at == created_at` and no
-  local comments added); otherwise skip with `"local edits, not refreshed"`.
-  Never re-run `computeSplit`; keep `exact`. Comments: insert any new
-  `splitwise_id` not already present; do not delete local user comments
-  Splitwise never saw.
-- **`yarn db:check` after import** and a manual balance spot-check against
-  the Splitwise UI. Operator step; the wizard can say it at the end.
+  One detail the plan did not foresee: a refresh has to stamp
+  `metadata.splitwise_synced_at` and write `updated_at` itself, or the trigger's
+  own bump would make the next run think a person had edited the row. Import
+  stamps use full ISO with milliseconds so they can never collide with the
+  `YYYY-MM-DD HH:MM:SS` a native edit writes.
+- **`yarn db:check` after import** and a manual balance spot-check against the
+  Splitwise UI. Still an operator step, by nature; the wizard now says so on its
+  last screen.
 
 ---
 
@@ -377,17 +423,22 @@ rule still applies if you do wrap: money as decimal strings, ULID ids,
 
 ---
 
-## Suggested order
+## The order it happened in
 
-0. **Fixtures** for comment import (and a recurring example if you have one).
+0. **Fixtures** — still outstanding, and no longer blocking: see above.
 1. **Comments** — domain, native, guest, UI, import, System rows on live edit.
 2. **Recurring.**
 3. **Search / filters / CSV.**
-4. **Restore**, then re-import-as-update, whenever they annoy you.
+4. **Restore**, then re-import-as-update.
 
 ---
 
 ## Testing
+
+Written, in `src/domain/recurring.test.ts`,
+`src/routes/native/comments.test.ts`, `src/routes/native/recurring.test.ts`,
+`src/routes/native/expense-search.test.ts`, and additions to
+`src/routes/native/import.test.ts`:
 
 - Domain / route tests for comment create/delete, guest scope, author-only
   delete, System-not-via-HTTP.

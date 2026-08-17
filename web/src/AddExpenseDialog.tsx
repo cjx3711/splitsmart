@@ -101,6 +101,9 @@ export function AddExpenseDialog({
         groups={groups}
         groupId={groupId}
         onGroupChange={setGroupId}
+        // A logged-in account may start a recurring series here. The guest
+        // dialog deliberately does not offer it; see ExpenseForm's `allowRepeat`.
+        allowRepeat
         onSubmit={async (input) => {
           await api.createAnyExpense({ ...input, groupId });
           onClose();

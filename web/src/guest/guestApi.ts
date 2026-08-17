@@ -15,7 +15,13 @@
  *   GuestOfflineError fetch itself failed. NOT a cached ledger; a
  *                     needs-connection screen. See docs/GUEST.md.
  */
-import type { CurrencyAmount, ExpenseInput, ExpenseSummary, ExpenseDetail } from "../api.ts";
+import type {
+  Comment,
+  CurrencyAmount,
+  ExpenseInput,
+  ExpenseSummary,
+  ExpenseDetail,
+} from "../api.ts";
 import { readActingAs, readGuestLink } from "./guestStorage.ts";
 
 export type GuestLinkFailure = "invalid" | "expired" | "revoked" | "claimed" | "gone";
@@ -183,6 +189,23 @@ export const guestApi = {
     currencyCode: string;
     date?: string;
   }) => request<{ id: string }>("/payments", { method: "POST", body: JSON.stringify(input) }),
+
+  // --- comments -------------------------------------------------------------
+  //
+  // A guest who can read a bill can talk about it, as the person the link acts
+  // as. They can delete their own notes and nobody else's, and generated system
+  // comments are not deletable by anyone. All three rules live server-side.
+
+  comments: (expenseId: string) =>
+    request<{ comments: Comment[] }>(`/expenses/${expenseId}/comments`),
+
+  addComment: (expenseId: string, content: string) =>
+    request<{ comment: Comment | null }>(`/expenses/${expenseId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+
+  deleteComment: (id: string) => request<{ ok: boolean }>(`/comments/${id}`, { method: "DELETE" }),
 };
 
 export function guestFullName(person: {

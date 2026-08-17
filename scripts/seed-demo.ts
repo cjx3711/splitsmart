@@ -8,7 +8,9 @@
  *   yarn seed:demo -- alice@example.com
  */
 import { hashPassword } from "../src/auth/password.ts";
-import { createExpense, createPayment } from "../src/domain/expenses.ts";
+import { createExpense, createPayment, updateExpense } from "../src/domain/expenses.ts";
+import { createComment } from "../src/domain/comments.ts";
+import { runDueRecurrences } from "../src/domain/scheduler.ts";
 import { addFriendship } from "../src/domain/friends.ts";
 import { mintAccessLink } from "../src/domain/access-links.ts";
 import type { GroupType } from "../src/domain/group-types.ts";
@@ -17,6 +19,17 @@ import { db, transaction } from "../src/db/index.ts";
 
 const DEFAULT_EMAIL = "test@example.com";
 const DEFAULT_PASSWORD = "password123";
+
+/**
+ * Dates relative to today, so the demo is never stale.
+ *
+ * The recurring series below depends on this: a template can only produce bills
+ * once its `next_repeat` is in the past, and a hardcoded year would either
+ * generate nothing or generate a decade of rent.
+ */
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+}
 
 async function ensureUser(
   email: string,
@@ -246,7 +259,7 @@ async function main(): Promise<void> {
   ]);
 
   // Tokyo trip
-  await createExpense({
+  const ramenId = await createExpense({
     groupId: tokyoId,
     description: "Ramen at Ichiran",
     costMinor: 4800,
@@ -280,7 +293,7 @@ async function main(): Promise<void> {
   });
 
   // Apartment
-  await createExpense({
+  const groceriesId = await createExpense({
     groupId: apartmentId,
     description: "Trader Joe's run",
     costMinor: 8743,
@@ -342,7 +355,7 @@ async function main(): Promise<void> {
   });
 
   // Lunch club
-  await createExpense({
+  const sushiId = await createExpense({
     groupId: lunchClubId,
     description: "Team sushi lunch",
     costMinor: 15640,
@@ -391,6 +404,100 @@ async function main(): Promise<void> {
     ],
   });
 
+  // --- recurring series ----------------------------------------------------
+  //
+  // Two templates, dated far enough back that the scheduler has bills to make,
+  // and then the REAL job is run rather than inserting occurrences by hand: the
+  // demo should show what the app actually produces, including the cap of one
+  // occurrence per template per tick.
+  const rentTemplateId = await createExpense({
+    groupId: apartmentId,
+    description: "Rent",
+    costMinor: 180_000,
+    currencyCode: "USD",
+    date: daysAgo(100),
+    categoryId: 3,
+    splitType: "equal",
+    repeatInterval: "monthly",
+    createdBy: userId,
+    participants: [
+      { userId, paidMinor: 180_000 },
+      { userId: jamieId, paidMinor: 0 },
+    ],
+  });
+
+  const coffeeTemplateId = await createExpense({
+    groupId: lunchClubId,
+    description: "Friday coffee round",
+    costMinor: 2400,
+    currencyCode: "USD",
+    date: daysAgo(30),
+    categoryId: 13,
+    splitType: "equal",
+    repeatInterval: "weekly",
+    createdBy: caseyId,
+    participants: [
+      { userId, paidMinor: 0 },
+      { userId: caseyId, paidMinor: 2400 },
+      { userId: jordanId, paidMinor: 0 },
+    ],
+  });
+
+  // Two ticks: enough for a couple of real bills, and it deliberately leaves
+  // both series a little behind, which is a state the expense page has to
+  // explain rather than hide.
+  const firstTick = await runDueRecurrences();
+  const secondTick = await runDueRecurrences();
+  const generated = firstTick.generated.length + secondTick.generated.length;
+
+  // --- comments ------------------------------------------------------------
+  //
+  // User comments are written through the domain writer, the same path the UI
+  // uses. The SYSTEM ones below are not written here at all: they come out of a
+  // real edit, which is the only way they are ever created.
+  await createComment({
+    expenseId: ramenId,
+    userId: jamieId,
+    content: "Worth the queue. I'll get the next one.",
+    createdAt: `${daysAgo(7)}T09:12:00Z`,
+  });
+  await createComment({
+    expenseId: ramenId,
+    userId,
+    content: "Extra chashu was my fault, sorry.",
+    createdAt: `${daysAgo(7)}T09:20:00Z`,
+  });
+  await createComment({
+    expenseId: sushiId,
+    userId: jordanId,
+    content: "Taylor wasn't there for the second round — should we split that separately?",
+    createdAt: `${daysAgo(20)}T12:40:00Z`,
+  });
+  await createComment({
+    expenseId: groceriesId,
+    userId: jamieId,
+    content: "Did this include the laundry stuff?",
+    createdAt: `${daysAgo(12)}T18:05:00Z`,
+  });
+
+  // An edit, so the thread on this bill also carries the generated note
+  // describing what changed. Same writer the Edit dialog uses.
+  await updateExpense(groceriesId, {
+    groupId: apartmentId,
+    description: "Trader Joe's run",
+    details: "Includes the laundry detergent",
+    costMinor: 9_243,
+    currencyCode: "USD",
+    date: "2026-08-05",
+    categoryId: 12,
+    splitType: "equal",
+    participants: [
+      { userId, paidMinor: 9_243 },
+      { userId: jamieId, paidMinor: 0 },
+    ],
+    updatedBy: userId,
+  });
+
   const groupLink = await transaction((trx) =>
     mintAccessLink(trx, { kind: "group", groupId: tokyoId, createdBy: userId }),
   );
@@ -403,6 +510,11 @@ async function main(): Promise<void> {
   console.log("  Friends:  15 (7 real accounts, 8 guest placeholders)");
   console.log("  Groups:   10 (sidebar shows the 5 newest)");
   console.log("  Expenses: 8 expenses + 1 payment across USD and JPY");
+  console.log(
+    `  Repeats:  2 series (monthly rent, weekly coffee) with ${generated} generated bill(s)`,
+  );
+  console.log("            both left slightly behind on purpose, so the catch-up note shows");
+  console.log("  Comments: 4 typed + 1 generated by an edit (see Trader Joe's run)");
   console.log("  Guest links:");
   console.log(`    group  ${groupLink.url}`);
   console.log(`    friend ${friendLink.url}`);

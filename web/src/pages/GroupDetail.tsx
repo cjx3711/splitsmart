@@ -6,6 +6,7 @@ import {
   type Group,
   type GroupMember,
   type ExpenseSummary,
+  type ExpenseQuery,
   type CurrencyAmount,
 } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
@@ -14,6 +15,7 @@ import { AddMemberForm } from "../AddMemberForm.tsx";
 import { Amount, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
+import { ExpenseFilters } from "../ExpenseFilters.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
@@ -42,6 +44,7 @@ export function GroupDetail() {
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
+  const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
 
   async function load() {
@@ -49,7 +52,7 @@ export function GroupDetail() {
     try {
       const [detail, expenseList, suggestions] = await Promise.all([
         api.getGroup(id),
-        api.getGroupExpenses(id),
+        api.getGroupExpenses(id, filters),
         api.getSettleSuggestions(id),
       ]);
       setGroup(detail.group);
@@ -65,7 +68,8 @@ export function GroupDetail() {
 
   useEffect(() => {
     if (id) void load();
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on a new group or a new filter
+  }, [id, filters]);
 
   if (error) return <p className="error">{error}</p>;
   if (!group || !user) return <p className="muted">Loading…</p>;
@@ -286,10 +290,23 @@ export function GroupDetail() {
       )}
 
       <h2>Expenses</h2>
+      {/* No group picker: this screen IS the group scope, and a filter cannot
+          widen it. The CSV carries the same filters as the list. */}
+      <ExpenseFilters
+        value={filters}
+        onChange={setFilters}
+        csvScope={{ groupId: group.id }}
+        csvFilename={`splitsmart-${group.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+      />
       <ExpenseList
         expenses={expenses}
         currentUserId={user.id}
         nameOf={nameOf}
+        empty={
+          Object.keys(filters).length > 0
+            ? "Nothing in this group matches those filters."
+            : "Nothing yet."
+        }
       />
 
       <h2>Members</h2>

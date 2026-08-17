@@ -14,8 +14,9 @@
  * See web/src/SplitEditor.tsx.
  */
 import type { SplitItem, SplitType } from "../../src/domain/split.ts";
+import type { RepeatInterval } from "../../src/domain/recurring.ts";
 
-export type { SplitItem, SplitType };
+export type { SplitItem, SplitType, RepeatInterval };
 
 export interface ApiUser {
   id: string;
@@ -82,6 +83,12 @@ export interface ExpenseSummary {
   category_name: string | null;
   group_id?: string | null;
   group_name?: string | null;
+  /** Live comments on this expense, user and system alike. */
+  comment_count?: number;
+  /** Set on a recurring TEMPLATE. Null on occurrences and one-offs. */
+  repeat_interval?: string | null;
+  /** Set on an occurrence: the template it came from. */
+  repeat_of?: string | null;
   shares: Array<{
     user_id: string;
     paid_share_minor: number;
@@ -103,12 +110,28 @@ export interface ExpenseDetail {
   category_name: string | null;
   group_id: string | null;
   group_name: string | null;
+  /** Recurrence. A template has an interval and a next date; an occurrence has neither. */
+  repeat_interval?: RepeatInterval | null;
+  next_repeat?: string | null;
+  repeat_of?: string | null;
+  /** Bills this template has generated so far. Zero unless this IS a template. */
+  series_count?: number;
   shares: Array<{
     user_id: string;
     paid_share_minor: number;
     owed_share_minor: number;
     split_input: number | null;
   }>;
+}
+
+/** A comment on an expense. `system` rows are generated, not typed. */
+export interface Comment {
+  id: string;
+  expenseId: string;
+  kind: "user" | "system";
+  content: string;
+  createdAt: string;
+  author: { id: string; firstName: string; lastName: string | null };
 }
 
 export interface ActivityEntry {
@@ -202,7 +225,14 @@ export interface ImportStatus {
 
 export interface ImportPreview {
   splitwiseAccount: { id: number; name: string; email: string | null };
-  counts: { groups: number; friends: number; expenses: number; expensesCapped: boolean };
+  counts: {
+    groups: number;
+    friends: number;
+    expenses: number;
+    expensesCapped: boolean;
+    /** A floor: counted from the first page of expenses only. */
+    comments: number;
+  };
   people: ImportPerson[];
   groups: Array<{ splitwiseId: number; name: string; members: number; alreadyImported: boolean }>;
   local: ImportFootprint;
@@ -217,6 +247,21 @@ export interface ImportSkip {
 
 export interface ImportExpensePage {
   offset: number;
+  fetched: number;
+  imported: number;
+  alreadyPresent: number;
+  /** Already here, changed upstream, and overwritten because nothing had edited it. */
+  refreshed: number;
+  /** Comments that came nested on these expenses. */
+  commentsImported: number;
+  skipped: ImportSkip[];
+  nextOffset: number | null;
+  done: boolean;
+}
+
+export interface ImportCommentsPage {
+  offset: number;
+  scanned: number;
   fetched: number;
   imported: number;
   alreadyPresent: number;
@@ -256,6 +301,38 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * The filter bar, as a query string.
+ *
+ * Mirrors src/routes/native/expense-filters.ts one for one, including the
+ * `"none"` sentinel for "no group at all". Kept in one place so the three screens
+ * that filter cannot each invent their own parameter names.
+ */
+export interface ExpenseQuery {
+  q?: string;
+  /** A group id, or "none" for expenses outside any group. */
+  groupId?: string;
+  /** Only expenses this person is also on. */
+  friendId?: string;
+  datedAfter?: string;
+  datedBefore?: string;
+  categoryId?: number;
+  isPayment?: boolean;
+}
+
+export function expenseQueryString(filters: ExpenseQuery = {}): string {
+  const params = new URLSearchParams();
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.groupId) params.set("group_id", filters.groupId);
+  if (filters.friendId) params.set("friend_id", filters.friendId);
+  if (filters.datedAfter) params.set("dated_after", filters.datedAfter);
+  if (filters.datedBefore) params.set("dated_before", filters.datedBefore);
+  if (filters.categoryId !== undefined) params.set("category_id", String(filters.categoryId));
+  if (filters.isPayment !== undefined) params.set("is_payment", String(filters.isPayment));
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 export interface ExpenseInput {
   description: string;
   /** Free-text notes. There is no image upload and there will not be one. */
@@ -275,6 +352,12 @@ export interface ExpenseInput {
    */
   taxMinor?: number;
   tipMinor?: number;
+  /**
+   * Recurrence. THREE STATES: absent leaves an existing schedule alone, `null`
+   * stops it, a value starts or changes it. The server derives the next fire date
+   * from the expense's own date; there is no way to name it from here.
+   */
+  repeatInterval?: RepeatInterval | null;
 }
 
 export const api = {
@@ -352,8 +435,10 @@ export const api = {
   removeGroupMember: (groupId: string, userId: string) =>
     request<{ ok: boolean }>(`/groups/${groupId}/members/${userId}`, { method: "DELETE" }),
 
-  getGroupExpenses: (id: string) =>
-    request<{ expenses: ExpenseSummary[] }>(`/groups/${id}/expenses`),
+  getGroupExpenses: (id: string, filters?: ExpenseQuery) =>
+    request<{ expenses: ExpenseSummary[] }>(
+      `/groups/${id}/expenses${expenseQueryString(filters)}`,
+    ),
 
   getSettleSuggestions: (id: string) =>
     request<{
@@ -393,12 +478,39 @@ export const api = {
 
   deleteExpense: (id: string) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
 
+  /** Undoes a delete. The tombstone was always recoverable; this is the undo. */
+  restoreExpense: (id: string) =>
+    request<{ ok: boolean }>(`/expenses/${id}/restore`, { method: "POST" }),
+
   getExpense: (id: string) => request<{ expense: ExpenseDetail }>(`/expenses/${id}`),
 
   updateExpense: (id: string, input: ExpenseInput & { groupId: string | null }) =>
     request<{ ok: boolean }>(`/expenses/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
 
-  listExpenses: () => request<{ expenses: ExpenseSummary[] }>("/expenses"),
+  listExpenses: (filters?: ExpenseQuery) =>
+    request<{ expenses: ExpenseSummary[] }>(`/expenses${expenseQueryString(filters)}`),
+
+  /**
+   * A URL, not a fetch: the browser downloads it, and the session cookie goes
+   * along for the ride. Reading it into memory to re-save it would buy nothing.
+   */
+  expensesCsvUrl: (filters?: ExpenseQuery) => `/api/v1/expenses.csv${expenseQueryString(filters)}`,
+
+  // --- comments -------------------------------------------------------------
+  //
+  // System comments are generated server-side when a bill is edited, deleted or
+  // restored. There is no way to write one from here, and no way to delete one.
+
+  listComments: (expenseId: string) =>
+    request<{ comments: Comment[] }>(`/expenses/${expenseId}/comments`),
+
+  addComment: (expenseId: string, content: string) =>
+    request<{ comment: Comment | null }>(`/expenses/${expenseId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+
+  deleteComment: (id: string) => request<{ ok: boolean }>(`/comments/${id}`, { method: "DELETE" }),
 
   listActivity: () => request<{ activity: ActivityEntry[] }>("/activity"),
 
@@ -424,8 +536,10 @@ export const api = {
   removeFriend: (id: string) =>
     request<{ ok: boolean; stillVisible: boolean }>(`/friends/${id}`, { method: "DELETE" }),
 
-  getFriendExpenses: (id: string) =>
-    request<{ expenses: ExpenseSummary[] }>(`/friends/${id}/expenses`),
+  getFriendExpenses: (id: string, filters?: ExpenseQuery) =>
+    request<{ expenses: ExpenseSummary[] }>(
+      `/friends/${id}/expenses${expenseQueryString(filters)}`,
+    ),
 
   createFriendExpense: (friendId: string, input: ExpenseInput) =>
     request<{ id: string }>(`/friends/${friendId}/expenses`, {
@@ -474,6 +588,16 @@ export const api = {
   /** One page. Feed `nextOffset` back in until `done`. */
   importExpenses: (apiKey: string, offset = 0) =>
     request<ImportExpensePage>("/import/expenses", {
+      method: "POST",
+      body: JSON.stringify({ apiKey, offset }),
+    }),
+
+  /**
+   * Step 4. Safe to call even when Splitwise nested the comments on the expense
+   * payload: those are already in and stamped, so this walks past them.
+   */
+  importComments: (apiKey: string, offset = 0) =>
+    request<ImportCommentsPage>("/import/comments", {
       method: "POST",
       body: JSON.stringify({ apiKey, offset }),
     }),

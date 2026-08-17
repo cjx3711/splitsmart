@@ -33,8 +33,10 @@ import {
   listRelatedUserIds,
 } from "../../domain/friends.ts";
 import { createExpense, createPayment } from "../../domain/expenses.ts";
+import { commentCountSql } from "../../domain/comments.ts";
 import { mintAccessLink } from "../../domain/access-links.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
+import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
 import { env } from "../../env.ts";
@@ -284,8 +286,9 @@ friendRoutes.get("/:id/expenses", async (c) => {
   if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
   const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
+  const filters = parseExpenseFilters(c.req.query());
 
-  const expenses = await db
+  let query = db
     .selectFrom("expenses")
     .leftJoin("categories", "categories.id", "expenses.category_id")
     .leftJoin("groups", "groups.id", "expenses.group_id")
@@ -293,8 +296,10 @@ friendRoutes.get("/:id/expenses", async (c) => {
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.group_id",
+      "expenses.repeat_interval", "expenses.repeat_of",
       "categories.name as category_name", "groups.name as group_name",
     ])
+    .select(commentCountSql().as("comment_count"))
     .where("expenses.deleted_at", "is", null)
     // Both of us on the same expense. Two EXISTS rather than a self-join so the
     // per-user index is used twice instead of scanning the pair table.
@@ -316,8 +321,11 @@ friendRoutes.get("/:id/expenses", async (c) => {
     )
     .orderBy("expenses.date", "desc")
     .orderBy("expenses.id", "desc")
-    .limit(limit)
-    .execute();
+    .limit(limit);
+
+  if (hasFilters(filters)) query = query.where(expenseFilterWhere(filters));
+
+  const expenses = await query.execute();
 
   if (expenses.length === 0) return c.json({ expenses: [] });
 

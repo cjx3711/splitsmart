@@ -179,7 +179,16 @@ export function serializeExpense(
       owed_share: money(u.owed_share_minor),
       net_balance: money(u.paid_share_minor - u.owed_share_minor),
     })),
-    // Fields we do not model yet, present so clients never see `undefined`.
+    // Present so clients never see `undefined`, and deliberately CONSTANT.
+    //
+    // `receipt` is a hardcoded null because there is no file storage in this
+    // app at all (CLAUDE.md, "No file uploads"). The next four are different:
+    // comments and recurring series are real features here now, and they are
+    // native-only on purpose (docs/PARITY.md). Filling these in would grow this
+    // frozen wire a feature surface nobody asked it for, and `repeats: true` on
+    // an expense a Splitwise client cannot then manage is worse than a flat
+    // false. If a client ever genuinely needs `comments_count`, fill it from a
+    // COUNT; do not invent fields Splitwise never had.
     receipt: { large: null, original: null },
     comments_count: 0,
     expense_bundle_id: null,

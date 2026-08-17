@@ -12,7 +12,7 @@
  */
 import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
-import { transaction } from "../db/index.ts";
+import { db, transaction } from "../db/index.ts";
 import {
   computeSplit,
   deriveRepayments,
@@ -21,7 +21,9 @@ import {
   type SplitType,
 } from "./split.ts";
 import { isUlid, ulid } from "./ulid.ts";
-import { serializeMetadata, type EntityMetadata } from "./metadata.ts";
+import { parseMetadata, serializeMetadata, type EntityMetadata } from "./metadata.ts";
+import { recordExpenseEvent, snapshotExpense } from "./comments.ts";
+import { nextOccurrence, type RepeatInterval } from "./recurring.ts";
 
 export interface CreateExpenseInput {
   /**
@@ -58,6 +60,19 @@ export interface CreateExpenseInput {
   tipMinor?: number | null;
   isPayment?: boolean;
   paymentMethod?: string | null;
+  /**
+   * Makes this expense a recurring TEMPLATE. `next_repeat` is derived from the
+   * expense's own date (one interval later) rather than being accepted from the
+   * client: the schedule belongs to the server clock, and a client that could
+   * name the fire time could ask for one in 1970.
+   */
+  repeatInterval?: RepeatInterval | null;
+  /**
+   * The template this row was generated from. Set ONLY by
+   * src/domain/scheduler.ts; an occurrence is an ordinary expense in every other
+   * respect and never repeats itself (schema CHECK).
+   */
+  repeatOf?: string | null;
   createdBy: string;
   /**
    * JSON bag written as `expenses.metadata`. The importer stamps
@@ -107,6 +122,7 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
     const repayments = deriveRepayments(shares);
     const date = normaliseDate(input.date);
     const splitMeta = serialiseSplitMeta(input);
+    const repeatInterval = input.repeatInterval ?? null;
 
     await assertParticipantsAreMembers(trx, input.groupId ?? null, shares.map((s) => s.userId));
 
@@ -129,9 +145,17 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
           split_meta: splitMeta,
           is_payment: input.isPayment ? 1 : 0,
           payment_method: input.paymentMethod ?? null,
+          repeat_interval: repeatInterval,
+          next_repeat: repeatInterval ? nextOccurrence(date, repeatInterval) : null,
+          repeat_of: input.repeatOf ?? null,
           created_by: input.createdBy,
           updated_by: input.createdBy,
-          ...(input.createdAt ? { created_at: input.createdAt } : {}),
+          // `updated_at` is pinned to `created_at`, not left to default to now.
+          // A row that has never been edited should say so, and the Splitwise
+          // importer relies on exactly that to tell "nobody has touched this
+          // since it came across" from "somebody edited it here" when deciding
+          // whether a re-import may overwrite it (docs/PARITY.md slice 5).
+          ...(input.createdAt ? { created_at: input.createdAt, updated_at: input.createdAt } : {}),
         })
         .execute();
     } catch (err) {
@@ -165,19 +189,45 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
   });
 }
 
+export interface UpdateExpenseInput
+  extends Omit<CreateExpenseInput, "createdBy" | "id" | "repeatOf" | "createdAt"> {
+  updatedBy: string;
+  /**
+   * Overrides the `updated_at` stamp. The Splitwise importer passes one and
+   * records it in `metadata.splitwise_synced_at`, which is how a later run tells
+   * "refreshed from Splitwise" apart from "edited here". Nothing else should set
+   * it: an update that claims not to have happened is a lie to every other
+   * device.
+   */
+  updatedAt?: string;
+  /**
+   * Written only when present, so a native edit never has to know what the
+   * importer stamped. Rule 3 means this is the only path that may write the
+   * column at all.
+   */
+  metadata?: EntityMetadata;
+  /**
+   * Defaults to true. False suppresses BOTH the feed entry and the system
+   * comment; the Splitwise importer uses it, because refreshing an imported row
+   * is not a person editing a bill and should not read like one.
+   */
+  recordActivity?: boolean;
+}
+
 /**
  * Replaces an expense's contents.
  *
  * Shares and repayments are deleted and rewritten rather than diffed; an
  * expense has a handful of rows, and a full rewrite cannot leave a stale
  * participant behind the way a partial update can.
+ *
+ * Returns the `updated_at` it wrote, so a caller that has to remember when it
+ * last touched a row does not have to read it back and guess.
  */
 export async function updateExpense(
   expenseId: string,
-  input: Omit<CreateExpenseInput, "createdBy" | "splitwiseId" | "recordActivity" | "id"> & {
-    updatedBy: string;
-  },
-): Promise<void> {
+  input: UpdateExpenseInput,
+): Promise<string> {
   const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
     items: input.items,
   });
@@ -187,11 +237,12 @@ export async function updateExpense(
   // percent one has to clear the old line items, or the editor would reopen a
   // bill that no longer describes the split.
   const splitMeta = serialiseSplitMeta(input);
+  const updatedAt = input.updatedAt ?? new Date().toISOString().replace("T", " ").slice(0, 19);
 
   await transaction(async (trx) => {
     const existing = await trx
       .selectFrom("expenses")
-      .select(["id", "deleted_at"])
+      .select(["id", "deleted_at", "repeat_interval", "next_repeat", "repeat_of", "date"])
       .where("id", "=", expenseId)
       .executeTakeFirst();
 
@@ -199,6 +250,32 @@ export async function updateExpense(
     if (existing.deleted_at) throw new ExpenseError(`Expense ${expenseId} is deleted`);
 
     await assertParticipantsAreMembers(trx, input.groupId ?? null, shares.map((s) => s.userId));
+
+    // Snapshotted before the write so the system comment can describe what
+    // actually changed rather than what the request asked for.
+    const before = input.recordActivity === false ? null : await snapshotExpense(trx, expenseId);
+
+    // ABSENT MEANS "LEAVE THE SCHEDULE ALONE"; explicit null means "stop
+    // repeating". The distinction is load-bearing: the guest edit dialog has no
+    // repeat control and sends nothing, and silently ending someone's rent
+    // series because a guest fixed a typo would be a bad surprise.
+    //
+    // An occurrence can never become a template (schema CHECK), and editing a
+    // template must not move bills that already happened: only `next_repeat`
+    // moves, and only forward from the new date.
+    const requested =
+      input.repeatInterval === undefined
+        ? (existing.repeat_interval as RepeatInterval | null)
+        : input.repeatInterval;
+    const repeatInterval = existing.repeat_of !== null ? null : requested;
+    const nextRepeat =
+      repeatInterval === null
+        ? null
+        : repeatInterval === existing.repeat_interval && existing.next_repeat !== null && date === existing.date
+          ? // Same schedule, same date: leave the series where it is, so an
+            // unrelated edit does not silently skip or duplicate a bill.
+            existing.next_repeat
+          : nextOccurrence(date, repeatInterval);
 
     await trx
       .updateTable("expenses")
@@ -214,8 +291,11 @@ export async function updateExpense(
         split_meta: splitMeta,
         is_payment: input.isPayment ? 1 : 0,
         payment_method: input.paymentMethod ?? null,
+        repeat_interval: repeatInterval,
+        next_repeat: nextRepeat,
         updated_by: input.updatedBy,
-        updated_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+        updated_at: updatedAt,
+        ...(input.metadata ? { metadata: serializeMetadata(input.metadata) } : {}),
       })
       .where("id", "=", expenseId)
       .execute();
@@ -224,6 +304,8 @@ export async function updateExpense(
     await trx.deleteFrom("expense_repayments").where("expense_id", "=", expenseId).execute();
 
     await writeSharesAndRepayments(trx, expenseId, shares, repayments);
+
+    if (input.recordActivity === false) return;
 
     await trx
       .insertInto("activity")
@@ -236,7 +318,20 @@ export async function updateExpense(
         payload: JSON.stringify({ description: input.description }),
       })
       .execute();
+
+    // The bill's own history, next to the global feed entry above. Best-effort
+    // by contract: see recordExpenseEvent.
+    const after = await snapshotExpense(trx, expenseId);
+    if (before && after) {
+      await recordExpenseEvent(trx, {
+        expenseId,
+        actorId: input.updatedBy,
+        event: { kind: "updated", before, after },
+      });
+    }
   });
+
+  return updatedAt;
 }
 
 /**
@@ -245,7 +340,12 @@ export async function updateExpense(
  * Repayment rows are left in place; every balance query filters on
  * `expenses.deleted_at IS NULL`, so a deleted expense stops affecting balances
  * without losing the history. The compat API needs `deleted_at` on the way out,
- * which is the other reason not to hard-delete.
+ * which is the other reason not to hard-delete. It is also what makes
+ * `restoreExpense` below possible at all.
+ *
+ * Deleting a TEMPLATE stops the series and nothing else: the scheduler only
+ * looks at live rows, and the bills it already generated are real money that
+ * somebody still owes.
  */
 export async function deleteExpense(expenseId: string, deletedBy: string): Promise<void> {
   await transaction(async (trx) => {
@@ -274,7 +374,183 @@ export async function deleteExpense(expenseId: string, deletedBy: string): Promi
         action: "expense.deleted",
       })
       .execute();
+
+    await recordExpenseEvent(trx, { expenseId, actorId: deletedBy, event: { kind: "deleted" } });
   });
+}
+
+/**
+ * Undoes a soft delete.
+ *
+ * The tombstone was always recoverable in principle; this is the path that makes
+ * it recoverable in practice. Repayments are rebuilt from `expense_users` rather
+ * than trusted, because they are a cache (rule 4) and the row has been sitting
+ * outside every balance query since the delete — rebuilding is cheap and means a
+ * restored expense cannot come back with a stale derivation attached.
+ *
+ * Restoring twice is a no-op, so a double-tapped undo is not an error.
+ */
+export async function restoreExpense(expenseId: string, restoredBy: string): Promise<void> {
+  await transaction(async (trx) => {
+    const expense = await trx
+      .selectFrom("expenses")
+      .select(["id", "group_id", "deleted_at"])
+      .where("id", "=", expenseId)
+      .executeTakeFirst();
+
+    if (!expense) throw new ExpenseError(`Expense ${expenseId} not found`);
+    if (!expense.deleted_at) return; // already live
+
+    const shares = await trx
+      .selectFrom("expense_users")
+      .select(["user_id", "paid_share_minor", "owed_share_minor", "split_input"])
+      .where("expense_id", "=", expenseId)
+      .execute();
+
+    // An expense with no participants would come back invisible to everyone and
+    // would fail `yarn db:check`'s expenses_have_participants. Refuse instead.
+    if (shares.length === 0) {
+      throw new ExpenseError(`Expense ${expenseId} has no participants to restore`);
+    }
+
+    await trx
+      .updateTable("expenses")
+      .set({
+        deleted_at: null,
+        updated_by: restoredBy,
+        updated_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+      })
+      .where("id", "=", expenseId)
+      .execute();
+
+    await trx.deleteFrom("expense_repayments").where("expense_id", "=", expenseId).execute();
+
+    const repayments = deriveRepayments(
+      shares.map((s) => ({
+        userId: s.user_id,
+        paidMinor: s.paid_share_minor,
+        owedMinor: s.owed_share_minor,
+        input: s.split_input,
+      })),
+    );
+
+    if (repayments.length > 0) {
+      await trx
+        .insertInto("expense_repayments")
+        .values(
+          repayments.map((r, seq) => ({
+            expense_id: expenseId,
+            seq,
+            from_user_id: r.fromUserId,
+            to_user_id: r.toUserId,
+            amount_minor: r.amountMinor,
+          })),
+        )
+        .execute();
+    }
+
+    await trx
+      .insertInto("activity")
+      .values({
+        id: ulid(),
+        user_id: restoredBy,
+        group_id: expense.group_id,
+        expense_id: expenseId,
+        action: "expense.restored",
+      })
+      .execute();
+
+    await recordExpenseEvent(trx, { expenseId, actorId: restoredBy, event: { kind: "restored" } });
+  });
+}
+
+/**
+ * Records that the importer has just synced this row, without pretending a person
+ * edited it.
+ *
+ * Lives here because rule 3 has no exceptions: `expenses` has exactly one writer,
+ * including for a column the ledger does not read. It writes `metadata` and
+ * `updated_at` and nothing else — no shares, no repayments, no activity.
+ *
+ * `updated_at` is set explicitly rather than left alone, because the
+ * `trg_expenses_updated_at` trigger stamps `datetime('now')` on any UPDATE that
+ * does not change it, and an unexplained bump is exactly what would make the next
+ * re-import think somebody had edited the row by hand. Stamping
+ * `splitwise_synced_at` with the same value is what keeps the two in step.
+ *
+ * THE FORMAT IS FULL ISO WITH MILLISECONDS, deliberately unlike the
+ * `YYYY-MM-DD HH:MM:SS` a native edit writes. Import stamps and human edits are
+ * then distinguishable by construction rather than by luck: with second
+ * resolution, somebody editing a bill in the same second as a refresh would look
+ * to the next run like the refresh itself, and their edit would be overwritten.
+ *
+ * Returns the timestamp written.
+ */
+export function importStamp(): string {
+  return new Date().toISOString();
+}
+
+export async function markImportSynced(
+  expenseId: string,
+  patch: EntityMetadata = {},
+): Promise<string> {
+  const stamp = importStamp();
+
+  await transaction(async (trx) => {
+    const row = await trx
+      .selectFrom("expenses")
+      .select("metadata")
+      .where("id", "=", expenseId)
+      .executeTakeFirst();
+
+    if (!row) throw new ExpenseError(`Expense ${expenseId} not found`);
+
+    await trx
+      .updateTable("expenses")
+      .set({
+        metadata: serializeMetadata({
+          ...parseMetadata(row.metadata),
+          ...patch,
+          splitwise_synced_at: stamp,
+        }),
+        updated_at: stamp,
+      })
+      .where("id", "=", expenseId)
+      .execute();
+  });
+
+  return stamp;
+}
+
+/**
+ * Moves a template's `next_repeat` on by exactly one interval.
+ *
+ * Lives here rather than in the scheduler because rule 3 is "nothing else writes
+ * `expenses`", and that includes a column the ledger does not depend on.
+ *
+ * `from` is the value the caller believes is current, and it is part of the WHERE
+ * clause: two overlapping ticks then cannot advance the same series twice, and
+ * the loser simply does nothing. Returns whether it moved.
+ *
+ * ONE interval, never "catch up to now". A series that fell behind during
+ * downtime is meant to stay behind and be worked through one bill per tick, each
+ * dated the day it was due; the alternative is three months of rent appearing at
+ * once, all dated today.
+ */
+export async function advanceRepeatSchedule(
+  templateId: string,
+  from: string,
+  interval: RepeatInterval,
+): Promise<boolean> {
+  const result = await db
+    .updateTable("expenses")
+    .set({ next_repeat: nextOccurrence(from, interval) })
+    .where("id", "=", templateId)
+    .where("next_repeat", "=", from)
+    .where("repeat_interval", "=", interval)
+    .executeTakeFirst();
+
+  return Number(result?.numUpdatedRows ?? 0) > 0;
 }
 
 /**

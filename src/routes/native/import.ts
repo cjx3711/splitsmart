@@ -35,7 +35,9 @@ import {
   importFriends,
   importGroups,
   importExpensePage,
+  importCommentsPage,
   localFootprint,
+  type CommentsPageResult,
   type ExpensePageResult,
   type SkippedRow,
 } from "../../domain/import.ts";
@@ -161,6 +163,34 @@ importRoutes.post("/expenses", zValidator("json", expensePageSchema), async (c) 
 });
 
 /**
+ * Step 4: comments, for the expenses already imported.
+ *
+ * A separate step because `comments.expense_id` is a foreign key, so this cannot
+ * run before step 3. It is a no-op when Splitwise nested the comments on the
+ * expense payload (they were imported with the expense and each row is stamped as
+ * synced), which is why the wizard can always call it and never has to know which
+ * shape this Splitwise deployment speaks.
+ */
+const commentPageSchema = keySchema.extend({
+  offset: z.number().int().min(0).default(0),
+  // Lower than the expense page size on purpose: this may be one upstream request
+  // PER EXPENSE, with a courtesy delay between them.
+  limit: z.number().int().min(1).max(50).default(25),
+});
+
+importRoutes.post("/comments", zValidator("json", commentPageSchema), async (c) => {
+  const auth = c.get("user");
+  const { apiKey, offset, limit } = c.req.valid("json");
+
+  const result = await withUpstream(() =>
+    importCommentsPage(clientFor(apiKey), auth.id, { offset, limit }),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+
+  return c.json(result.value);
+});
+
+/**
  * Everything, in order, in one request.
  *
  * Exists because the step-by-step flow is tedious to drive from a script and
@@ -185,6 +215,8 @@ importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
     const pages: ExpensePageResult[] = [];
     let imported = 0;
     let alreadyPresent = 0;
+    let refreshed = 0;
+    let commentsImported = 0;
     const skipped: SkippedRow[] = [];
     let offset = 0;
     let complete = false;
@@ -194,6 +226,8 @@ importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
       pages.push(result);
       imported += result.imported;
       alreadyPresent += result.alreadyPresent;
+      refreshed += result.refreshed;
+      commentsImported += result.commentsImported;
       skipped.push(...result.skipped);
 
       if (result.done || result.nextOffset === null) {
@@ -203,12 +237,33 @@ importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
       offset = result.nextOffset;
     }
 
+    // Comments last, because they reference the expenses above. A no-op when
+    // Splitwise already nested them; only walked when it did not.
+    const comments = { imported: commentsImported, skipped: [] as SkippedRow[], complete: true };
+    if (complete) {
+      let commentOffset: number | null = 0;
+      for (let page = 0; page < maxPages && commentOffset !== null; page++) {
+        const result: CommentsPageResult = await importCommentsPage(client, auth.id, {
+          offset: commentOffset,
+        });
+        comments.imported += result.imported;
+        comments.skipped.push(...result.skipped);
+        commentOffset = result.done ? null : result.nextOffset;
+      }
+      comments.complete = commentOffset === null;
+    } else {
+      // Expenses are not all in yet, so walking comments would miss the ones
+      // hanging off bills this run has not fetched.
+      comments.complete = false;
+    }
+
     return {
       friends,
       groups,
       expenses: {
         imported,
         alreadyPresent,
+        refreshed,
         skipped,
         pages: pages.length,
         // False means the cap was hit, not that anything failed. Call
@@ -216,6 +271,7 @@ importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
         complete,
         nextOffset: complete ? null : offset,
       },
+      comments,
     };
   });
 

@@ -35,17 +35,20 @@
  */
 import { db, transaction } from "../db/index.ts";
 import { parseAmount } from "./money.ts";
-import { createExpense } from "./expenses.ts";
+import { createExpense, importStamp, markImportSynced, updateExpense } from "./expenses.ts";
+import { createComment } from "./comments.ts";
 import { addFriendship, listRelatedUserIds } from "./friends.ts";
 import { ulid } from "./ulid.ts";
 import {
   metadataFromSplitwise,
   metadataWithSplitwiseId,
+  parseMetadata,
   splitwiseIdOf,
   splitwiseIdSql,
 } from "./metadata.ts";
 import type {
   SplitwiseClient,
+  SplitwiseComment,
   SplitwiseExpense,
   SplitwiseGroup,
   SplitwiseUser,
@@ -293,7 +296,17 @@ export async function localFootprint(userId: string): Promise<LocalFootprint> {
 
 export interface ImportPreview {
   splitwiseAccount: { id: number; name: string; email: string | null };
-  counts: { groups: number; friends: number; expenses: number; expensesCapped: boolean };
+  counts: {
+    groups: number;
+    friends: number;
+    expenses: number;
+    expensesCapped: boolean;
+    /**
+     * Comments on the first page of expenses, per Splitwise's own
+     * `comments_count`. A floor, like the expense count, and shown as one.
+     */
+    comments: number;
+  };
   /** Everyone the import would touch, and how each would be resolved. */
   people: PersonResult[];
   groups: Array<{ splitwiseId: number; name: string; members: number; alreadyImported: boolean }>;
@@ -315,11 +328,15 @@ export async function previewImport(
   const owner = await requireOwner(userId);
   const swMe = await client.getCurrentUser();
 
-  const [swGroups, swFriends, expenseCount, local] = await Promise.all([
+  const [swGroups, swFriends, expenseCount, local, firstPage] = await Promise.all([
     client.getGroups(),
     client.getFriends(),
     client.countExpenses(),
     localFootprint(userId),
+    // One page, purely to see what Splitwise says about comments, recurrence and
+    // receipts. The warnings below are the whole reason: a wizard that mentions
+    // these only afterwards is a wizard that surprised you.
+    client.getExpenses({ limit: 100, offset: 0 }),
   ]);
 
   const resolver = new PersonResolver(userId, swMe.id, owner.default_currency);
@@ -373,6 +390,33 @@ export async function previewImport(
     );
   }
 
+  const commentCount = firstPage.reduce((sum, e) => sum + (e.comments_count ?? 0), 0);
+  if (commentCount > 0) {
+    warnings.push(
+      "Comments come across too, including the automatic ones Splitwise writes when " +
+        "somebody edits a bill. They are the only edit history Splitwise will give us, so " +
+        "they are imported rather than dropped.",
+    );
+  }
+
+  // Deliberately NOT turned into live templates. Generating future copies of a
+  // series this account never asked us to originate is the one import behaviour
+  // that would create money on its own. See docs/PARITY.md slice 2.
+  if (firstPage.some((e) => e.repeats === true)) {
+    warnings.push(
+      "Recurring expenses are imported as the bills that already happened. Future repeats " +
+        "are not scheduled here; set the repeat up again in SplitSmart if you want it to carry on.",
+    );
+  }
+
+  // One warning, not a skip per expense: a receipt image is not part of the
+  // ledger, and refusing the whole bill over it would be absurd.
+  if (firstPage.some((e) => e.receipt?.original || e.receipt?.large)) {
+    warnings.push(
+      "Receipt images are not imported. This app has no file storage at all, by design.",
+    );
+  }
+
   return {
     splitwiseAccount: {
       id: swMe.id,
@@ -384,6 +428,7 @@ export async function previewImport(
       friends: swFriends.length,
       expenses: expenseCount.count,
       expensesCapped: expenseCount.capped,
+      comments: commentCount,
     },
     people,
     groups: importable.map((g) => ({
@@ -607,6 +652,13 @@ export interface ExpensePageResult {
   imported: number;
   /** Already present from an earlier run, matched on splitwise_id. */
   alreadyPresent: number;
+  /**
+   * Already here, changed in Splitwise since, and overwritten because nothing had
+   * touched the local row. See `refreshExpense`.
+   */
+  refreshed: number;
+  /** Comments imported alongside these expenses, when Splitwise nested them. */
+  commentsImported: number;
   skipped: SkippedRow[];
   /** Pass this back to import the next page. Null when there are none left. */
   nextOffset: number | null;
@@ -646,6 +698,8 @@ export async function importExpensePage(
     fetched: page.length,
     imported: 0,
     alreadyPresent: 0,
+    refreshed: 0,
+    commentsImported: 0,
     skipped: [],
     // Splitwise caps page size server-side, so a short page (not a page
     // shorter than `limit`: is the only reliable end-of-list signal.
@@ -662,8 +716,11 @@ export async function importExpensePage(
         categoryIds,
         groupIdBySplitwiseId,
       });
-      if (outcome === "imported") result.imported++;
-      else if (outcome === "present") result.alreadyPresent++;
+      if (outcome.status === "imported") result.imported++;
+      else if (outcome.status === "refreshed") result.refreshed++;
+      else if (outcome.status === "present") result.alreadyPresent++;
+      result.commentsImported += outcome.commentsImported;
+      result.skipped.push(...outcome.skippedComments);
     } catch (err) {
       result.skipped.push({
         splitwiseId: swExpense.id,
@@ -684,21 +741,33 @@ interface ExpenseContext {
   groupIdBySplitwiseId: Map<number, string>;
 }
 
+interface ExpenseOutcome {
+  status: "imported" | "refreshed" | "present";
+  commentsImported: number;
+  /** Comments that could not be imported exactly. Reported, never fudged. */
+  skippedComments: SkippedRow[];
+}
+
 /** Throws with a human-readable reason; the caller turns that into a skip. */
 async function importOneExpense(
   swExpense: SplitwiseExpense,
   ctx: ExpenseContext,
-): Promise<"imported" | "present" | "skipped"> {
+): Promise<ExpenseOutcome> {
   const existing = await db
     .selectFrom("expenses")
-    .select("id")
+    .select([
+      "id", "created_at", "updated_at", "metadata", "description", "details",
+      "cost_minor", "currency_code", "date", "category_id", "is_payment", "group_id",
+    ])
     .where(splitwiseIdSql(), "=", swExpense.id)
     .executeTakeFirst();
-  if (existing) return "present";
 
   // A tombstone in Splitwise affects nobody's balance. Importing it would mean
-  // writing a row purely to soft-delete it, so it is left behind on purpose.
+  // writing a row purely to soft-delete it, so it is left behind on purpose. A
+  // row deleted in Splitwise AFTER we imported it is left alone rather than
+  // deleted here: that is somebody's balance, and this is an import, not a sync.
   if (swExpense.deleted_at) {
+    if (existing) return { status: "present", commentsImported: 0, skippedComments: [] };
     throw new Error("Deleted in Splitwise");
   }
 
@@ -749,11 +818,7 @@ async function importOneExpense(
       ? swExpense.category.id
       : null;
 
-  const { id, createdAt } = originalInstant(swExpense.created_at, swExpense.date);
-  await createExpense({
-    id,
-    createdAt,
-    metadata: { splitwise_id: swExpense.id },
+  const fields = {
     groupId,
     description: swExpense.description || "(no description)",
     details: swExpense.details ?? null,
@@ -761,16 +826,390 @@ async function importOneExpense(
     currencyCode: currency,
     date: swExpense.date,
     categoryId,
-    splitType: "exact",
+    // Splitwise's own allocation, kept as an `exact` split. A refresh keeps it
+    // exact too: re-running computeSplit would move cents nobody asked to move.
+    splitType: "exact" as const,
     isPayment: swExpense.payment === true,
     participants,
+  };
+
+  if (existing) {
+    const status = await refreshExpense(existing, fields, swExpense, ctx.userId);
+    const comments = await importNestedComments(existing.id, swExpense, ctx);
+    return { status, ...comments };
+  }
+
+  const { id, createdAt } = originalInstant(swExpense.created_at, swExpense.date);
+  const localId_ = await createExpense({
+    ...fields,
+    id,
+    createdAt,
+    metadata: { splitwise_id: swExpense.id },
     createdBy: ctx.userId,
     // One activity row per expense would bury the feed under an import. The
     // route writes a single summary entry instead.
     recordActivity: false,
   });
 
-  return "imported";
+  const comments = await importNestedComments(localId_, swExpense, ctx);
+  return { status: "imported", ...comments };
+}
+
+type LocalExpenseRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  metadata: string;
+  description: string;
+  details: string | null;
+  cost_minor: number;
+  currency_code: string;
+  date: string;
+  category_id: number | null;
+  is_payment: number;
+  group_id: string | null;
+};
+
+/**
+ * Re-import as update in place.
+ *
+ * Three outcomes, and the middle one is the point:
+ *
+ *   nothing changed upstream          left alone, reported as already present
+ *   changed, local row untouched      overwritten through `updateExpense`
+ *   changed, local row edited HERE    skipped with a reason, never overwritten
+ *
+ * The last case is the whole reason this is not a blind overwrite. Somebody may
+ * have fixed a split or a category in SplitSmart after importing; silently
+ * replacing that with Splitwise's older version would destroy work and move a
+ * balance with no trace.
+ *
+ * "Untouched" is `updated_at == created_at` (never edited at all, which
+ * `createExpense` guarantees for imported rows) or `updated_at` equal to the
+ * `splitwise_synced_at` stamp a previous refresh left behind. Both come from
+ * `markImportSynced`, so a refresh does not make the row look hand-edited to the
+ * next run.
+ *
+ * The split stays `exact` either way — see rule 3's note in this module's header.
+ */
+async function refreshExpense(
+  existing: LocalExpenseRow,
+  fields: {
+    groupId: string | null;
+    description: string;
+    details: string | null;
+    costMinor: number;
+    currencyCode: string;
+    date: string;
+    categoryId: number | null;
+    splitType: "exact";
+    isPayment: boolean;
+    participants: Array<{ userId: string; paidMinor: number; input: number }>;
+  },
+  swExpense: SplitwiseExpense,
+  importerId: string,
+): Promise<"refreshed" | "present"> {
+  const localShares = await db
+    .selectFrom("expense_users")
+    .select(["user_id", "paid_share_minor", "owed_share_minor"])
+    .where("expense_id", "=", existing.id)
+    .execute();
+
+  const sameShares =
+    localShares.length === fields.participants.length &&
+    fields.participants.every((p) => {
+      const local = localShares.find((s) => s.user_id === p.userId);
+      return (
+        local !== undefined &&
+        local.paid_share_minor === p.paidMinor &&
+        local.owed_share_minor === p.input
+      );
+    });
+
+  const unchanged =
+    sameShares &&
+    existing.description === fields.description &&
+    (existing.details ?? null) === fields.details &&
+    existing.cost_minor === fields.costMinor &&
+    existing.currency_code === fields.currencyCode &&
+    // Parsed rather than string-compared: the stored value is normalised and the
+    // source may be date-only, so "2026-03-01" and "2026-03-01T00:00:00Z" are the
+    // same instant written two ways.
+    Date.parse(existing.date) === Date.parse(fields.date) &&
+    existing.category_id === fields.categoryId &&
+    existing.is_payment === (fields.isPayment ? 1 : 0) &&
+    existing.group_id === fields.groupId;
+
+  if (unchanged) return "present";
+
+  const synced = parseMetadata(existing.metadata).splitwise_synced_at;
+  const untouched =
+    existing.updated_at === existing.created_at ||
+    (typeof synced === "string" && existing.updated_at === synced);
+
+  if (!untouched) {
+    throw new Error("Changed in Splitwise, but edited here since import: local edits, not refreshed");
+  }
+
+  // Full ISO with milliseconds, unlike the `YYYY-MM-DD HH:MM:SS` a native edit
+  // writes: that is what makes "the importer last touched this" impossible to
+  // confuse with "a person edited it in the same second". See importStamp.
+  const stamp = importStamp();
+
+  await updateExpense(existing.id, {
+    ...fields,
+    // The person running the import is who touched it, and saying so is honest:
+    // they are the one who asked Splitwise for the newer version.
+    updatedBy: importerId,
+    updatedAt: stamp,
+    // Written in the same statement as `updated_at`, so the two agree and the
+    // next run can still tell an import from a person.
+    metadata: {
+      ...parseMetadata(existing.metadata),
+      splitwise_id: swExpense.id,
+      splitwise_synced_at: stamp,
+    },
+    // Neither a feed entry nor a system comment: a refresh is not somebody
+    // editing a bill and must not read like one.
+    recordActivity: false,
+  });
+
+  return "refreshed";
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: comments
+// ---------------------------------------------------------------------------
+//
+// TWO SHAPES, BOTH SUPPORTED, on purpose. Splitwise's `get_expenses` may nest
+// complete `comments[]` on each expense, or it may only give a `comments_count`.
+// The fixture that would settle which (docs/PARITY.md, "Capture what import will
+// need") can only be captured against a live account while the API is still
+// free, and betting on the wrong answer means either a wasted request per expense
+// or silently importing no comments at all. So:
+//
+//   nested         imported alongside the expense, no extra request, no new step
+//   count only     `POST /api/v1/import/comments` walks the expenses that have a
+//                  count and fetches `get_comments` for each
+//
+// Both paths converge on `importComment` below, so identity, authorship and
+// skip-don't-fudge behave identically whichever one runs.
+
+export interface CommentsPageResult {
+  offset: number;
+  /** Local expenses examined in this page. */
+  scanned: number;
+  /** Expenses we actually asked Splitwise about. */
+  fetched: number;
+  imported: number;
+  /** Expenses whose comments were already here, or that have none. */
+  alreadyPresent: number;
+  skipped: SkippedRow[];
+  nextOffset: number | null;
+  done: boolean;
+}
+
+/**
+ * Imports comments for one page of already-imported expenses.
+ *
+ * Runs AFTER expenses, because `comments.expense_id` is a foreign key. Paged for
+ * the same reason the expense step is: one request per page keeps a large
+ * account from holding a single HTTP request open for minutes.
+ *
+ * Expenses are ordered by their local ULID so the offset is stable between calls,
+ * and every expense that has already had its comments fetched is skipped on the
+ * `splitwise_comments_synced_at` stamp, which makes a second run nearly free
+ * rather than a re-fetch of the whole account.
+ */
+export async function importCommentsPage(
+  client: SplitwiseClient,
+  userId: string,
+  params: { offset?: number; limit?: number } = {},
+): Promise<CommentsPageResult> {
+  const owner = await requireOwner(userId);
+  const swMe = await client.getCurrentUser();
+  await stampOwnerSplitwiseId(userId, swMe.id);
+
+  const offset = params.offset ?? 0;
+  const limit = params.limit ?? 25;
+
+  const resolver = new PersonResolver(userId, swMe.id, owner.default_currency);
+
+  const candidates = await db
+    .selectFrom("expenses")
+    .select(["id", "metadata", "description"])
+    .where(splitwiseIdSql(), "is not", null)
+    .where("deleted_at", "is", null)
+    .orderBy("id")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+
+  const result: CommentsPageResult = {
+    offset,
+    scanned: candidates.length,
+    fetched: 0,
+    imported: 0,
+    alreadyPresent: 0,
+    skipped: [],
+    nextOffset: candidates.length === 0 ? null : offset + candidates.length,
+    done: candidates.length < limit,
+  };
+
+  for (const expense of candidates) {
+    const meta = parseMetadata(expense.metadata);
+    const swId = splitwiseIdOf(expense.metadata);
+    if (swId === null) continue;
+
+    // Already fetched once. Splitwise comments are append-only in practice, and
+    // re-reading every expense on every run would be one HTTP request per bill
+    // for no new data.
+    if (typeof meta.splitwise_comments_synced_at === "string") {
+      result.alreadyPresent++;
+      continue;
+    }
+    // Splitwise itself said there are none.
+    if (meta.splitwise_comments_count === 0) {
+      result.alreadyPresent++;
+      continue;
+    }
+
+    try {
+      const swComments = await client.getComments(swId);
+      result.fetched++;
+
+      for (const swComment of swComments) {
+        const outcome = await importComment(expense.id, swComment, resolver);
+        if (outcome.imported) result.imported++;
+        if (outcome.skipped) result.skipped.push(outcome.skipped);
+      }
+
+      await markImportSynced(expense.id, {
+        splitwise_comments_synced_at: new Date().toISOString(),
+        splitwise_comments_count: swComments.length,
+      });
+    } catch (err) {
+      // One unreachable expense must not abort the page; the next run retries it
+      // because nothing was stamped.
+      result.skipped.push({
+        splitwiseId: swId,
+        description: expense.description,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    await client.wait();
+  }
+
+  return result;
+}
+
+/**
+ * Imports the comments Splitwise nested on an expense, if it nested any.
+ *
+ * A count of zero is recorded so the paged step can skip the expense entirely
+ * rather than spending a request to be told the same thing.
+ */
+async function importNestedComments(
+  localExpenseId: string,
+  swExpense: SplitwiseExpense,
+  ctx: ExpenseContext,
+): Promise<{ commentsImported: number; skippedComments: SkippedRow[] }> {
+  const nested = swExpense.comments;
+  const count = swExpense.comments_count;
+
+  if (nested === undefined) {
+    // No nested array. Remember the count if we were given one, so the paged
+    // step knows which expenses are worth a request.
+    if (typeof count === "number") {
+      await markImportSynced(localExpenseId, { splitwise_comments_count: count });
+    }
+    return { commentsImported: 0, skippedComments: [] };
+  }
+
+  let commentsImported = 0;
+  const skippedComments: SkippedRow[] = [];
+
+  for (const swComment of nested) {
+    const outcome = await importComment(localExpenseId, swComment, ctx.resolver);
+    if (outcome.imported) commentsImported++;
+    if (outcome.skipped) skippedComments.push(outcome.skipped);
+  }
+
+  await markImportSynced(localExpenseId, {
+    splitwise_comments_synced_at: new Date().toISOString(),
+    splitwise_comments_count: nested.length,
+  });
+
+  return { commentsImported, skippedComments };
+}
+
+/**
+ * One comment, matched on `metadata.splitwise_id`.
+ *
+ * Rules, all of them the same rules the expense import lives by:
+ *
+ *   - identity is the Splitwise id; the PK is a fresh ULID minted from
+ *     `created_at`, so the thread sorts in the order it was written
+ *   - System rows are imported as well as User ones. They are the ONLY edit
+ *     history Splitwise will ever hand over, and dropping them would leave an
+ *     imported bill silent about why its amount changed
+ *   - an author nobody has seen becomes a ghost, via the shared PersonResolver,
+ *     rather than costing us the comment
+ *   - deleted at the source is skipped, exactly like a deleted expense
+ *   - visibility is not enforced: this is replaying history, and Splitwise lets
+ *     somebody comment and then leave the group
+ */
+async function importComment(
+  localExpenseId: string,
+  swComment: SplitwiseComment,
+  resolver: PersonResolver,
+): Promise<{ imported: boolean; skipped?: SkippedRow }> {
+  const describe = (reason: string): SkippedRow => ({
+    splitwiseId: swComment.id,
+    description: `comment on expense ${localExpenseId}`,
+    reason,
+  });
+
+  if (swComment.deleted_at) return { imported: false };
+
+  const content = (swComment.content ?? "").trim();
+  if (content === "") return { imported: false, skipped: describe("Empty comment") };
+
+  const existing = await db
+    .selectFrom("comments")
+    .select("id")
+    .where(splitwiseIdSql("comments"), "=", swComment.id)
+    .executeTakeFirst();
+  if (existing) return { imported: false };
+
+  const author = swComment.user;
+  if (!author?.id) {
+    return { imported: false, skipped: describe("Comment has no author") };
+  }
+
+  const resolved = await resolver.resolve(author);
+
+  const { id, createdAt } = originalInstant(swComment.created_at);
+
+  await createComment({
+    id,
+    createdAt,
+    expenseId: localExpenseId,
+    userId: localId(resolved),
+    content,
+    // Splitwise capitalises these: "User" / "System". Anything unrecognised is
+    // treated as somebody having typed it, which is the safer default: it stays
+    // deletable by its author rather than becoming permanent history.
+    kind: (swComment.comment_type ?? "").toLowerCase() === "system" ? "system" : "user",
+    metadata: { splitwise_id: swComment.id },
+    // One summary feed entry per import run, not one per comment.
+    recordActivity: false,
+    // See the note above.
+    enforceVisibility: false,
+  });
+
+  return { imported: true };
 }
 
 // ---------------------------------------------------------------------------

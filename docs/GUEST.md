@@ -63,8 +63,19 @@ ghost is not in stay invisible.
 Guest permissions (all three kinds):
 
 - Add, edit, delete expenses; settle up.
+- Read and write **comments** on an expense the link can see, as the person the
+  link acts as. Their own notes are deletable by them and nobody else; the
+  generated `system` ones are not deletable by anyone (`docs/PARITY.md` slice 1).
+- Download the expenses **in scope** as CSV (`/api/v1/guest/expenses.csv`). The
+  scope is the link's, not the owner's.
 - Not: group settings, members, mint/rotate/expire links, add people, API
   tokens, import, create groups, create friends.
+- Not: **starting or changing a recurring series.** Occurrences are ordinary
+  expenses and a guest sees and edits them like any other bill, but the
+  scheduler is a server job and a series the owner cannot see coming is a bad
+  surprise. The field is dropped from a guest write rather than rejected, so the
+  bill they were recording still lands, and an omitted interval leaves an
+  existing series alone.
 
 Owner-only for anything that mints or revokes a link. There is no route under
 `/api/v1/guest/*` for any of it, so this is structural rather than a hidden

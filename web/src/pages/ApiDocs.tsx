@@ -272,7 +272,24 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/expenses">
-        <p>Every expense you are on, group and not.</p>
+        <p>
+          Every expense you are on, group and not. Filters, all optional and all
+          shared with the group and friend listings and with the CSV export:{" "}
+          <code>q</code> (description substring), <code>group_id</code> (a ULID,
+          or <code>none</code> for expenses outside any group),{" "}
+          <code>friend_id</code>, <code>dated_after</code>,{" "}
+          <code>dated_before</code>, <code>category_id</code>,{" "}
+          <code>is_payment</code>. A filter narrows what you can already see; it
+          never widens it. Malformed values are ignored rather than rejected.
+        </p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/expenses.csv">
+        <p>
+          The same rows and the same filters as above, as CSV: one row per
+          expense, money as a decimal string with the currency in its own column.
+          Guests have their own link-scoped{" "}
+          <code>/api/v1/guest/expenses.csv</code>.
+        </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/expenses/currencies/frequent">
         <p>Currencies you have actually used, for the picker.</p>
@@ -288,6 +305,60 @@ export function ApiDocs() {
       </Endpoint>
       <Endpoint method="DELETE" path="/api/v1/expenses/:id">
         <p>Soft-delete. <code>{`{ ok: true }`}</code></p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/expenses/:id/restore">
+        <p>
+          Undoes a delete. Participant-only, rebuilds the repayment cache, and is
+          a no-op if the expense is already live.
+        </p>
+      </Endpoint>
+
+      <h3>Recurring expenses</h3>
+      <p>
+        Send <code>repeatInterval</code> on a create or an edit to make an
+        expense a <em>template</em>: <code>weekly</code>,{" "}
+        <code>fortnightly</code>, <code>monthly</code> or <code>yearly</code>. A
+        job in the same process then generates ordinary expenses from it, one per
+        template per tick, each dated the day it was due and carrying{" "}
+        <code>repeat_of</code>. The next fire date is derived from the expense's
+        own date; there is no way to name it from the API.
+      </p>
+      <p>
+        <strong>Three states, and they differ.</strong> Omitting{" "}
+        <code>repeatInterval</code> leaves an existing schedule alone,{" "}
+        <code>null</code> stops it, and a value sets it. Editing a template
+        affects future bills only; deleting it stops the series and keeps the
+        bills it already made. Guests cannot create or change a template.
+      </p>
+
+      <h3>Comments</h3>
+      <p>
+        Two kinds of row: <code>user</code>, which somebody typed, and{" "}
+        <code>system</code>, generated when an expense is edited, deleted or
+        restored. System rows cannot be written or deleted through the API by
+        anyone; there is no <code>kind</code> field on the wire. Visibility is
+        the same rule as <code>GET /api/v1/expenses/:id</code>, and failing it is
+        a <code>404</code>.
+      </p>
+      <Endpoint method="GET" path="/api/v1/expenses/:id/comments">
+        <p>
+          The live thread, oldest first, each with{" "}
+          <code>{`{ id, kind, content, createdAt, author }`}</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/expenses/:id/comments">
+        <Code>{`{ "content": "I paid the tip in cash" }`}</Code>
+        <p>
+          Empty or whitespace-only content is a <code>400</code>. An optional{" "}
+          <code>id</code> may be a client-minted ULID; replaying it returns the
+          existing comment rather than a second one.
+        </p>
+      </Endpoint>
+      <Endpoint method="DELETE" path="/api/v1/comments/:id">
+        <p>
+          Soft-delete, author-only. Deleting twice is not an error. The list
+          endpoints also carry a live <code>comment_count</code> per expense.
+        </p>
       </Endpoint>
 
       <h3>Guest links</h3>
@@ -354,9 +425,27 @@ export function ApiDocs() {
         <p>
           Same body as <code>/api/v1/expenses</code>. Also{" "}
           <code>PATCH</code>, <code>DELETE</code>, and{" "}
-          <code>/api/v1/guest/payments</code>. Nothing else: no route here
+          <code>/api/v1/guest/payments</code>. A <code>repeatInterval</code> is
+          dropped rather than refused: the bill still lands, but a guest cannot
+          start a series the owner cannot see coming. Nothing else: no route here
           creates a group, a person, or a link.
         </p>
+      </Endpoint>
+      <Endpoint
+        method="GET"
+        path="/api/v1/guest/expenses/:id/comments"
+        auth="guest link"
+      >
+        <p>
+          The thread on an expense in scope, plus <code>POST</code> to add one
+          and <code>DELETE /api/v1/guest/comments/:id</code> to remove your own.
+          A guest speaks as the person the link acts as. Guest visibility is
+          stricter than the logged-in rule: it needs you to be a participant of
+          that bill, not merely in its group.
+        </p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/guest/expenses.csv" auth="guest link">
+        <p>The rows in scope, as CSV. The link's scope, not the owner's.</p>
       </Endpoint>
 
       <h3>Claiming a placeholder</h3>
@@ -427,12 +516,27 @@ export function ApiDocs() {
         <Code>{`{ "apiKey": "…", "offset": 0, "limit": 100 }`}</Code>
         <p>
           One page. Returns <code>imported</code>, <code>alreadyPresent</code>,{" "}
-          <code>skipped[]</code> with reasons, and <code>nextOffset</code>.
+          <code>refreshed</code>, <code>commentsImported</code>,{" "}
+          <code>skipped[]</code> with reasons, and <code>nextOffset</code>. An
+          expense that changed in Splitwise is refreshed only when nothing has
+          edited the local row since import; otherwise it is skipped as{" "}
+          <code>local edits, not refreshed</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/import/comments">
+        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 25 }`}</Code>
+        <p>
+          Step 4, after expenses, because a comment references one. Cheap and safe
+          to call either way: when Splitwise nests comments on the expenses page
+          they are already in, and each expense is stamped once fetched so a
+          second run does not ask again. Splitwise's automatic{" "}
+          <em>System</em> comments are imported too — they are the only edit
+          history it will hand over.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/run">
         <Code>{`{ "apiKey": "…", "maxPages": 50 }`}</Code>
-        <p>Friends, groups, then expenses up to the page cap.</p>
+        <p>Friends, groups, expenses up to the page cap, then comments.</p>
       </Endpoint>
 
       <h2 id="compat">Compat API</h2>

@@ -106,9 +106,55 @@ re-split.
 
 ## Soft deletes
 
-`expenses.deleted_at` rather than a DELETE, for two reasons: balance queries
-filter on it, and the compat API must return `deleted_at` to clients so they can
-sync incrementally. Never hard-delete an expense.
+`expenses.deleted_at` rather than a DELETE, for three reasons: balance queries
+filter on it, the compat API must return `deleted_at` to clients so they can
+sync incrementally, and `restoreExpense` can put a row back. Never hard-delete an
+expense.
+
+Restore is not just clearing the column: `expense_repayments` is rebuilt from
+`expense_users` on the way back, because it is a cache (above) and the row has
+been sitting outside every balance query since the delete. `yarn db:check` is the
+proof that the two agree afterwards.
+
+## Comments
+
+Two kinds of row in `comments`, distinguished by `kind`:
+
+- **`user`** — somebody typed it. Deletable by its author and nobody else.
+- **`system`** — generated when an expense is edited, deleted or restored, and
+  hung on the bill so "why is this 92.43 now" is answerable from the expense
+  rather than from the global activity feed. Never accepted over HTTP, never
+  deletable.
+
+`kind` is a column rather than a metadata key because listing a thread has to
+distinguish the two, and a WHERE on `json_extract` is not free.
+
+A comment is **not part of the expense**. It has no `version`, it cannot
+conflict, and writing one must never bump the expense's own version once offline
+sync exists (`docs/OFFLINE.md`) — otherwise an offline note would fight an
+offline edit of the split. Deletes are soft, so merge and re-import matching
+still find the row. All writes go through `src/domain/comments.ts`.
+
+## Recurring expenses
+
+A series is one **template** row plus ordinary expenses generated from it. There
+is no bundle table: the template's id, carried by each occurrence in
+`repeat_of`, is the bundle.
+
+| | `repeat_interval` | `next_repeat` | `repeat_of` |
+|---|---|---|---|
+| template | set | set | NULL |
+| occurrence | NULL | NULL | set |
+| ordinary expense | NULL | NULL | NULL |
+
+CHECK constraints enforce that a template is always scheduled and that an
+occurrence is never itself a template, so a series stays one level deep and
+"which bills belong to this series" is one WHERE clause forever.
+
+`next_repeat` advances by exactly **one interval** per scheduler tick
+(`src/domain/scheduler.ts`), and each generated bill is dated the day it was due.
+A series that fell behind during downtime therefore catches up one bill at a
+time instead of dropping three months of rent into the ledger all dated today.
 
 ## Metadata
 

@@ -13,6 +13,8 @@ import { Amount, useCurrencies } from "../money.tsx";
 import { makeLookup } from "../ExpenseList.tsx";
 import { Modal } from "../Modal.tsx";
 import { reconstructExpenseForm } from "../reopenExpense.ts";
+import { CommentThread } from "../CommentThread.tsx";
+import { RepeatNote } from "../RepeatNote.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { GuestExpenseDialog } from "./GuestExpenseDialog.tsx";
 import { expenseCrumbs } from "./guestCrumbs.ts";
@@ -124,6 +126,13 @@ export function GuestExpense() {
             {expense.details}
           </p>
         )}
+        {/* No link back to the template: the guest shell has no page for one, and
+            creating or changing a series is logged-in only. See docs/PARITY.md. */}
+        <RepeatNote
+          repeatInterval={expense.repeat_interval}
+          nextRepeat={expense.next_repeat}
+          repeatOf={expense.repeat_of}
+        />
       </div>
 
       <h2>Who paid, who owes</h2>
@@ -146,6 +155,16 @@ export function GuestExpense() {
           </div>
         ))}
       </div>
+
+      <CommentThread
+        expenseId={expense.id}
+        currentUserId={me.id}
+        api={{
+          list: guestApi.comments,
+          add: guestApi.addComment,
+          remove: guestApi.deleteComment,
+        }}
+      />
 
       <GuestExpenseDialog
         open={editing}

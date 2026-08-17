@@ -60,6 +60,25 @@ export interface SplitwiseExpenseUser {
   owed_share: string;
 }
 
+/**
+ * A comment on an expense, as Splitwise returns it.
+ *
+ * `comment_type` is `"User"` or `"System"` — capitalised, and the reason the
+ * importer maps rather than trusting the string. System rows are the edit history
+ * of the bill ("Jane updated this transaction: ..."), and they are the only
+ * edit history Splitwise will ever give us, so they are imported too.
+ */
+export interface SplitwiseComment {
+  id: number;
+  content: string;
+  comment_type?: string | null;
+  relation_type?: string | null;
+  relation_id?: number | null;
+  created_at?: string | null;
+  deleted_at?: string | null;
+  user?: SplitwiseUser | null;
+}
+
 export interface SplitwiseExpense {
   id: number;
   group_id?: number | null;
@@ -70,9 +89,30 @@ export interface SplitwiseExpense {
   currency_code: string;
   date: string;
   created_at?: string | null;
+  updated_at?: string | null;
   category?: { id: number; name: string } | null;
   deleted_at?: string | null;
   users?: SplitwiseExpenseUser[];
+  /**
+   * Present on `get_expenses` even when `comments[]` is not, which is exactly
+   * why the importer reads it: an expense whose count is 0 never needs a second
+   * request, and one with a count but no nested array does.
+   */
+  comments_count?: number | null;
+  /**
+   * Nested comments, IF this deployment of Splitwise sends them on the list.
+   * Ours may not; see `getComments` below and docs/PARITY.md, "Capture what
+   * import will need". The importer handles both shapes rather than betting on
+   * one, because the fixture that would settle it can only be captured against a
+   * live account while the API is still free.
+   */
+  comments?: SplitwiseComment[];
+  /** Splitwise's recurrence fields. Read for the preview warning ONLY. */
+  repeats?: boolean | null;
+  repeat_interval?: string | null;
+  next_repeat?: string | null;
+  /** Receipts are never imported (CLAUDE.md, "No file uploads"). */
+  receipt?: { original?: string | null; large?: string | null } | null;
 }
 
 export interface SplitwiseClientOptions {
@@ -135,6 +175,26 @@ export class SplitwiseClient {
       `/get_expenses?limit=${limit}&offset=${offset}`,
     );
     return body.expenses ?? [];
+  }
+
+  /**
+   * Comments on one expense.
+   *
+   * Needed because `get_expenses` may or may not nest them: this is the fallback
+   * that makes comment import work either way, and the paged
+   * `POST /api/v1/import/comments` step is built on it. Still read-only — there
+   * is no `create_comment` here and there must not be.
+   */
+  async getComments(expenseId: number): Promise<SplitwiseComment[]> {
+    const body = await this.get<{ comments?: SplitwiseComment[] }>(
+      `/get_comments?expense_id=${expenseId}`,
+    );
+    return body.comments ?? [];
+  }
+
+  /** Courtesy delay between paged requests, for callers that loop. */
+  async wait(): Promise<void> {
+    await this.pause();
   }
 
   /**

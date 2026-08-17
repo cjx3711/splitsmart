@@ -10,10 +10,17 @@
  */
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api, fullName, type Friend, type ExpenseSummary } from "../api.ts";
+import {
+  api,
+  fullName,
+  type Friend,
+  type ExpenseQuery,
+  type ExpenseSummary,
+} from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
+import { ExpenseFilters } from "../ExpenseFilters.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
@@ -31,6 +38,7 @@ export function FriendDetail() {
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
 
   async function load() {
@@ -38,7 +46,7 @@ export function FriendDetail() {
     try {
       const [detail, list] = await Promise.all([
         api.getFriend(id),
-        api.getFriendExpenses(id),
+        api.getFriendExpenses(id, filters),
       ]);
       setFriend(detail.friend);
       setExpenses(list.expenses);
@@ -49,7 +57,8 @@ export function FriendDetail() {
 
   useEffect(() => {
     if (id) void load();
-  }, [id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on a new friend or a new filter
+  }, [id, filters]);
 
   if (error) return <p className="error">{error}</p>;
   if (!friend || !user) return <p className="muted">Loading…</p>;
@@ -235,12 +244,24 @@ export function FriendDetail() {
       )}
 
       <h2>Shared expenses</h2>
+      {/* No person picker: this screen IS "what is between the two of us", and
+          the download says so too via csvScope. */}
+      <ExpenseFilters
+        value={filters}
+        onChange={setFilters}
+        csvScope={{ friendId: friend.id }}
+        csvFilename={`splitsmart-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+      />
       <ExpenseList
         expenses={expenses}
         currentUserId={user.id}
         nameOf={nameOf}
         showGroup
-        empty={`Nothing split with ${name} yet.`}
+        empty={
+          Object.keys(filters).length > 0
+            ? "Nothing shared with them matches those filters."
+            : `Nothing split with ${name} yet.`
+        }
       />
     </>
   );

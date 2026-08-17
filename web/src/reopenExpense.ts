@@ -88,5 +88,9 @@ export function reconstructExpenseForm(
     categoryId: expense.category_id ?? 18,
     payment: reconstructPayment(expense.shares, expense.cost_minor),
     split: reconstructSplit(expense, decimals),
+    // A template reopens with its own schedule selected. An occurrence does not:
+    // `repeat_of` is set on it and `repeat_interval` is null, so the control shows
+    // "does not repeat", which is the truth about that individual bill.
+    repeatInterval: expense.repeat_interval ?? null,
   };
 }

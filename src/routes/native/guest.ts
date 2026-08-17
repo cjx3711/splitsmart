@@ -52,7 +52,22 @@ import {
   deleteExpense,
   createPayment,
 } from "../../domain/expenses.ts";
+import {
+  commentCountSql,
+  createComment,
+  deleteComment,
+  listComments,
+} from "../../domain/comments.ts";
+import { buildExpenseCsv } from "../../domain/expense-csv.ts";
 import { genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
+import { commentBodySchema, commentErrorResponse, serializeComment } from "./comments.ts";
+import {
+  expenseFilterWhere,
+  hasFilters,
+  parseExpenseFilters,
+  type ExpenseFilters,
+} from "./expense-filters.ts";
+import { csvResponse } from "./export.ts";
 import { isUlid } from "../../domain/ulid.ts";
 
 /**
@@ -253,10 +268,10 @@ async function visibleExpenseIds(scope: GuestScope): Promise<string[]> {
     .map((e) => e.id);
 }
 
-async function loadExpenses(ids: string[], limit: number) {
+async function loadExpenses(ids: string[], limit: number, filters: ExpenseFilters = {}) {
   if (ids.length === 0) return [];
 
-  const expenses = await db
+  let query = db
     .selectFrom("expenses")
     .leftJoin("categories", "categories.id", "expenses.category_id")
     .leftJoin("groups", "groups.id", "expenses.group_id")
@@ -264,14 +279,21 @@ async function loadExpenses(ids: string[], limit: number) {
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.group_id",
+      "expenses.repeat_interval", "expenses.repeat_of",
       "categories.name as category_name", "groups.name as group_name",
     ])
+    .select(commentCountSql().as("comment_count"))
     .where("expenses.id", "in", ids)
     .where("expenses.deleted_at", "is", null)
     .orderBy("expenses.date", "desc")
     .orderBy("expenses.id", "desc")
-    .limit(limit)
-    .execute();
+    .limit(limit);
+
+  // Filters narrow what the scope already allowed. `ids` is the scope and is
+  // always applied, so no filter can reach outside the link.
+  if (hasFilters(filters)) query = query.where(expenseFilterWhere(filters));
+
+  const expenses = await query.execute();
 
   if (expenses.length === 0) return [];
 
@@ -328,7 +350,25 @@ guestRoutes.get("/people", async (c) => {
 guestRoutes.get("/expenses", async (c) => {
   const scope = scopeOf(c);
   const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
-  return c.json({ expenses: await loadExpenses(await visibleExpenseIds(scope), limit) });
+  const filters = parseExpenseFilters(c.req.query());
+  return c.json({
+    expenses: await loadExpenses(await visibleExpenseIds(scope), limit, filters),
+  });
+});
+
+/**
+ * The same download the logged-in app offers, over the same builder, with the
+ * link's scope as the row set. A guest gets their own history, not the owner's.
+ */
+guestRoutes.get("/expenses.csv", async (c) => {
+  const scope = scopeOf(c);
+  const filters = parseExpenseFilters(c.req.query());
+
+  const visible = await visibleExpenseIds(scope);
+  const rows = await loadExpenses(visible, 20_000, filters);
+  const csv = await buildExpenseCsv(db, rows.map((e) => e.id));
+
+  return csvResponse(c, csv, "splitsmart-expenses.csv");
 });
 
 /** One group inside the scope: members, balances, expenses. */
@@ -417,7 +457,8 @@ guestRoutes.get("/expenses/:id", async (c) => {
       "expenses.id", "expenses.description", "expenses.details", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.category_id",
-      "expenses.group_id", "categories.name as category_name", "groups.name as group_name",
+      "expenses.group_id", "expenses.repeat_interval", "expenses.next_repeat",
+      "expenses.repeat_of", "categories.name as category_name", "groups.name as group_name",
     ])
     .where("expenses.id", "=", expenseId)
     .where("expenses.deleted_at", "is", null)
@@ -497,7 +538,11 @@ async function checkWrite(
 
 guestRoutes.post("/expenses", zValidator("json", genericExpenseBodySchema), async (c) => {
   const scope = scopeOf(c);
-  const { groupId = null, ...input } = c.req.valid("json");
+  // `repeatInterval` is dropped rather than rejected. A guest can add and edit
+  // bills, but starting a recurring series is a server job the owner cannot see
+  // or stop from their side, so v1 keeps templates logged-in only
+  // (docs/PARITY.md slice 2). Occurrences are ordinary expenses and stay visible.
+  const { groupId = null, repeatInterval: _ignored, ...input } = c.req.valid("json");
 
   const problem = await checkWrite(scope, groupId, input.participants.map((p) => p.userId));
   if (problem) return c.json({ error: problem }, 403);
@@ -525,7 +570,10 @@ guestRoutes.patch("/expenses/:id", zValidator("json", genericExpenseBodySchema),
   // may only edit something you can already see.
   if (!(await inScope(scope, expenseId))) return c.json({ error: "Not found" }, 404);
 
-  const { groupId = null, ...input } = c.req.valid("json");
+  // Same reasoning as the create above, and here dropping it is what LEAVES an
+  // existing series alone: `updateExpense` treats absent as "do not touch the
+  // schedule", so a guest fixing a typo cannot end the owner's rent series.
+  const { groupId = null, repeatInterval: _ignored, ...input } = c.req.valid("json");
 
   // ...and against the expense AS IT WOULD BE, so an edit cannot move an
   // expense out of the scope that authorised the edit.
@@ -594,6 +642,82 @@ guestRoutes.post(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// Comments
+// ---------------------------------------------------------------------------
+//
+// A guest who can see a bill can talk about it. The scope question is the same
+// one every read here asks (`inScope`), so a group link still cannot reach a 1:1
+// expense, and the person speaking is always the name the link acts as.
+//
+// What a guest cannot do: write a system comment (there is no `kind` on the
+// wire anywhere), or delete somebody else's note. Both are enforced in
+// src/domain/comments.ts rather than here, so the two shells cannot disagree.
+
+guestRoutes.get("/expenses/:id/comments", async (c) => {
+  const scope = scopeOf(c);
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+  if (!(await inScope(scope, expenseId))) return c.json({ error: "Not found" }, 404);
+
+  const comments = await listComments(db, expenseId);
+  return c.json({ comments: comments.map(serializeComment) });
+});
+
+guestRoutes.post("/expenses/:id/comments", zValidator("json", commentBodySchema), async (c) => {
+  const scope = scopeOf(c);
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+  if (!(await inScope(scope, expenseId))) return c.json({ error: "Not found" }, 404);
+
+  const input = c.req.valid("json");
+
+  try {
+    const id = await createComment({
+      id: input.id,
+      expenseId,
+      userId: scope.actingAs,
+      content: input.content,
+      kind: "user",
+    });
+    const comments = await listComments(db, expenseId);
+    const created = comments.find((comment) => comment.id === id);
+    return c.json({ comment: created ? serializeComment(created) : null }, 201);
+  } catch (err) {
+    const mapped = commentErrorResponse(err);
+    return c.json({ error: mapped.error }, mapped.status);
+  }
+});
+
+guestRoutes.delete("/comments/:id", async (c) => {
+  const scope = scopeOf(c);
+  const commentId = c.req.param("id");
+  if (!isUlid(commentId)) return c.json({ error: "Invalid comment id" }, 400);
+
+  // The link's scope is checked as well as authorship: `deleteComment` asks
+  // whether the person may see the expense, which for a ghost is true in any
+  // group they belong to, not only the one this link covers.
+  const comment = await db
+    .selectFrom("comments")
+    .select(["id", "expense_id"])
+    .where("id", "=", commentId)
+    .executeTakeFirst();
+
+  if (!comment || !(await inScope(scope, comment.expense_id))) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  try {
+    await deleteComment(commentId, scope.actingAs);
+    return c.json({ ok: true });
+  } catch (err) {
+    const mapped = commentErrorResponse(err);
+    return c.json({ error: mapped.error }, mapped.status);
+  }
+});
 
 /** Suggested transfers for a group in scope. Presentational, like the app's. */
 guestRoutes.get("/groups/:id/settle", async (c) => {

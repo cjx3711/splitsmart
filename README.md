@@ -52,8 +52,9 @@ yarn seed:demo -- you@example.com
 ```
 
 This creates 15 friends (a mix of real accounts and guest placeholders), ten
-groups, eight expenses, one settlement payment, and two guest links it prints
-once. The sidebar shows the five newest groups and ten newest friends; anything
+groups, eight expenses, one settlement payment, two recurring series with the
+bills they have generated so far, a handful of comments (including one generated
+automatically by an edit), and two guest links it prints once. The sidebar shows the five newest groups and ten newest friends; anything
 beyond that links to the full list pages. It is idempotent: if the account
 already has expenses, the script skips.
 
@@ -111,7 +112,9 @@ yarn build           # production build
 ## Status
 
 Working: accounts, groups, friends, all six split types with an editor, one-on-one
-expenses, per-currency balances, settle-up suggestions, guest links and claiming,
+expenses, per-currency balances, settle-up suggestions, comments (including the
+automatic ones written when a bill is edited), recurring expenses, expense search
+and filters, CSV export, undo for a deleted expense, guest links and claiming,
 the Splitwise importer, email verification, API tokens, and the six
 Splitwise-compatible endpoints.
 

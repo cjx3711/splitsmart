@@ -96,6 +96,7 @@ export function EditExpenseDialog({
         onGroupChange={setGroupId}
         submitLabel="Save changes"
         initial={initial}
+        allowRepeat
         onSubmit={async (input) => {
           await api.updateExpense(expense.id, { ...input, groupId });
           onClose();

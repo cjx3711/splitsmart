@@ -11,7 +11,13 @@
  * server refuses to keep it, and it is dropped the moment this page unmounts.
  *
  * Four steps: key -> review -> run -> done. The run step drives the paged
- * expense endpoint in a loop so progress is real rather than a spinner.
+ * expense and comment endpoints in a loop so progress is real rather than a
+ * spinner.
+ *
+ * Comments are the last phase of the run, because `comments.expense_id` is a
+ * foreign key: they cannot land before the bills they hang off. Calling that step
+ * is unconditional and cheap — when Splitwise nested the comments on the expense
+ * payload they are already in, and the step walks straight past them.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -40,6 +46,9 @@ interface Outcome {
   groupsCreated: number;
   expensesImported: number;
   expensesAlreadyPresent: number;
+  /** Already here, changed in Splitwise, and overwritten because nothing had edited it. */
+  expensesRefreshed: number;
+  commentsImported: number;
   skipped: ImportSkip[];
   /** Placeholders created this run. They get no guest link; see the note below. */
   newPeople: ImportPerson[];
@@ -98,6 +107,8 @@ export function Import() {
         groupsCreated: groups.groups.filter((g) => g.created).length,
         expensesImported: 0,
         expensesAlreadyPresent: 0,
+        expensesRefreshed: 0,
+        commentsImported: 0,
         skipped: [],
         newPeople: [...friends.people, ...groups.people].filter((p) => p.matchedBy === "created"),
       };
@@ -112,6 +123,8 @@ export function Import() {
         seen += page.fetched;
         result.expensesImported += page.imported;
         result.expensesAlreadyPresent += page.alreadyPresent;
+        result.expensesRefreshed += page.refreshed;
+        result.commentsImported += page.commentsImported;
         result.skipped.push(...page.skipped);
 
         setProgress({
@@ -121,6 +134,22 @@ export function Import() {
         });
 
         offset = page.done ? null : page.nextOffset;
+      }
+
+      // Step 4. A no-op when the comments arrived nested above; a walk of one
+      // request per commented expense when they did not.
+      setProgress({
+        label: "Importing comments…",
+        expensesSeen: seen,
+        expensesTotal: total,
+      });
+
+      let commentOffset: number | null = 0;
+      while (commentOffset !== null) {
+        const page = await api.importComments(key, commentOffset);
+        result.commentsImported += page.imported;
+        result.skipped.push(...page.skipped);
+        commentOffset = page.done ? null : page.nextOffset;
       }
 
       setOutcome(result);
@@ -266,6 +295,11 @@ function ReviewStep({
           {preview.counts.expensesCapped ? "at least " : ""}
           {preview.counts.expenses} expense(s)
         </span>
+        {preview.counts.comments > 0 && (
+          // A floor: counted from the first page of expenses only, which is all
+          // the preview reads. Said as "at least" rather than implying a total.
+          <span>at least {preview.counts.comments} comment(s)</span>
+        )}
       </div>
 
       {/* Server-authored, shown verbatim. Rewording them here is how the UI and
@@ -369,6 +403,24 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
         {outcome.expensesAlreadyPresent > 0 && (
           <> {outcome.expensesAlreadyPresent} were already here and were left alone.</>
         )}
+        {outcome.expensesRefreshed > 0 && (
+          <>
+            {" "}
+            {outcome.expensesRefreshed} had changed in Splitwise and were updated here, because
+            nothing had edited them since the last import.
+          </>
+        )}
+        {outcome.commentsImported > 0 && (
+          <> {outcome.commentsImported} comment(s) came across as well.</>
+        )}
+      </div>
+
+      {/* An operator step, said out loud rather than assumed: the invariants that
+          matter here span rows, so the audit is a command, not a code path. */}
+      <div className="notice">
+        <strong>Worth doing now.</strong> Run <code>yarn db:check</code> and spot-check a couple of
+        balances against the Splitwise UI before you trust this. A row that could not be imported
+        exactly was skipped rather than guessed at, and the list below says which.
       </div>
 
       {outcome.newPeople.length > 0 && (

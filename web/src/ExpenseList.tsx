@@ -117,8 +117,25 @@ export function ExpenseList({
 
             <div style={{ textAlign: "right" }}>
               <div>
+                {/* A series template and one of its bills look the same in a list
+                    otherwise, and editing the wrong one has different consequences. */}
+                {expense.repeat_interval && (
+                  <span className="tag" title={`Repeats ${expense.repeat_interval}`}>
+                    repeats
+                  </span>
+                )}
+                {!expense.repeat_interval && expense.repeat_of && (
+                  <span className="tag muted" title="One of a repeating series">
+                    series
+                  </span>
+                )}
                 <Amount minor={expense.cost_minor} currency={expense.currency_code} />
               </div>
+              {(expense.comment_count ?? 0) > 0 && (
+                <div className="muted" style={{ fontSize: "0.8rem" }}>
+                  {expense.comment_count} comment{expense.comment_count === 1 ? "" : "s"}
+                </div>
+              )}
               {net !== 0 && (
                 <div className="muted" style={{ fontSize: "0.8rem" }}>
                   {net > 0 ? "you lent " : "you borrowed "}

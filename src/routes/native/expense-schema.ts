@@ -12,6 +12,7 @@
  */
 import { z } from "zod";
 import { isUlid } from "../../domain/ulid.ts";
+import { REPEAT_INTERVALS } from "../../domain/recurring.ts";
 
 export const ulidSchema = z.string().refine(isUlid, { message: "Invalid id" });
 
@@ -65,6 +66,18 @@ export const expenseBodyFields = {
   items: z.array(itemSchema).min(1).max(200).optional(),
   taxMinor: z.number().int().min(0).optional(),
   tipMinor: z.number().int().min(0).optional(),
+  /**
+   * Makes this a recurring template. THREE STATES, and they differ:
+   *
+   *   absent  leave the schedule as it is (what the guest editor and the
+   *           settle-up form send, since neither has a repeat control)
+   *   null    stop repeating
+   *   a value repeat on that interval
+   *
+   * `next_repeat` is never accepted from a client; the server derives it from the
+   * expense's own date, because the schedule belongs to the server clock.
+   */
+  repeatInterval: z.enum(REPEAT_INTERVALS).nullable().optional(),
   /** Client-minted expense id. Absent: the server mints one. */
   id: ulidSchema.optional(),
 } as const;

@@ -24,6 +24,9 @@ import { groupRoutes, expenseRoutes, categoryRoutes } from "./routes/native/grou
 import { friendRoutes } from "./routes/native/friends.ts";
 import { activityRoutes } from "./routes/native/activity.ts";
 import { importRoutes } from "./routes/native/import.ts";
+import { commentRoutes, expenseCommentRoutes } from "./routes/native/comments.ts";
+import { exportRoutes } from "./routes/native/export.ts";
+import { startRecurringScheduler } from "./domain/scheduler.ts";
 import { compatV3 } from "./routes/compat/v3.ts";
 
 const app = new Hono<AppEnv>();
@@ -48,9 +51,16 @@ app.route("/api/v1/links", linkRoutes);
 app.route("/api/v1/groups", groupRoutes);
 app.route("/api/v1/friends", friendRoutes);
 app.route("/api/v1/expenses", expenseRoutes);
+// A second router on the same prefix, so the comment code stays in one file
+// rather than being split across the expense routes it hangs off.
+app.route("/api/v1/expenses", expenseCommentRoutes);
+app.route("/api/v1/comments", commentRoutes);
 app.route("/api/v1/activity", activityRoutes);
 app.route("/api/v1/categories", categoryRoutes);
 app.route("/api/v1/import", importRoutes);
+// `/api/v1/expenses.csv` is a sibling of `/api/v1/expenses`, not a child, so it
+// cannot live inside a router mounted on that path.
+app.route("/api/v1", exportRoutes);
 
 // --- Guest API ---------------------------------------------------------------
 // Its own tree, deliberately. Authentication here is a guest access link and
@@ -119,6 +129,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   };
   purge();
   setInterval(purge, 86_400_000).unref();
+
+  // Recurring expenses. Only when run as the server: importing this module in a
+  // test must never start generating bills. See src/domain/scheduler.ts.
+  startRecurringScheduler().unref();
 
   serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log(`SplitSmart listening on http://localhost:${info.port}`);

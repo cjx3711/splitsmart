@@ -144,6 +144,15 @@ Shape details clients depend on:
 | `category` | nested object; read as `e.category.name` |
 | `users[].user_id` **and** `users[].user.id` | both present, same value |
 | `deleted_at` | returned, **not** filtered; clients skip them themselves |
+| `comments_count`, `repeats`, `repeat_interval`, `next_repeat` | present and **hardcoded** (`0` / `false` / `null`) |
+
+That last row is deliberate and is not an oversight. Comments and recurring
+expenses are real features here now (`docs/PARITY.md`), and they are **native
+only**: filling these fields in would mean this wire growing a feature surface
+nobody has asked it for, and `repeats: true` on an expense a Splitwise client
+could not then manage is worse than a flat `false`. If a client ever genuinely
+needs `comments_count`, fill it from a COUNT — do not invent fields Splitwise
+never had.
 
 ### `POST /create_expense`
 
@@ -184,7 +193,19 @@ status code is more useful.
 `get_notifications`, OAuth2.
 
 Priority order is in `docs/PLAN.md` phase 3: optional wrappers only. Product
-features (comments, recurring) are native, see `docs/PARITY.md`.
+features are native and stay native. Comments, recurring expenses, expense
+search, CSV export and restore all exist (`docs/PARITY.md`) and none of them
+appear on this wire:
+
+- **comments** — `/api/v1/expenses/:id/comments`, plus the guest equivalent
+- **recurring** — `repeatInterval` on the native create/update
+- **search / filters** — query params on the native list endpoints. Note that
+  `get_expenses` here already accepts Splitwise's own `dated_after` /
+  `dated_before` / `group_id` / `friend_id`; that is the pre-existing shape and
+  is not the native filter set.
+- **CSV** — `/api/v1/expenses.csv`
+- **restore** — `POST /api/v1/expenses/:id/restore` (Splitwise's `undelete_*`
+  stays unimplemented)
 
 ## Pointing splitwise-to-toshl at this server
 

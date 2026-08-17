@@ -18,7 +18,8 @@
  * figures in agreement with the gap the engine spreads.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { formatMoney, type ExpenseInput, type Group } from "./api.ts";
+import { formatMoney, type ExpenseInput, type Group, type RepeatInterval } from "./api.ts";
+import { REPEAT_INTERVALS, repeatLabel } from "../../src/domain/recurring.ts";
 import { useCurrencies, useParseMoney } from "./money.tsx";
 import { CurrencySelect } from "./CurrencySelect.tsx";
 import { CategoryButton, DEFAULT_CATEGORY_ID } from "./categories.tsx";
@@ -50,6 +51,8 @@ export interface ExpenseFormInit {
   categoryId: number;
   payment: Payment;
   split: SplitDraftInit;
+  /** Null means "does not repeat". Only meaningful with `allowRepeat`. */
+  repeatInterval?: RepeatInterval | null;
 }
 
 export function ExpenseForm({
@@ -64,6 +67,7 @@ export function ExpenseForm({
   submitLabel = "Add expense",
   className = "card stack",
   initial,
+  allowRepeat = false,
 }: {
   /** Everyone selectable: your friends, or the members of the chosen group. */
   candidates: Person[];
@@ -80,6 +84,14 @@ export function ExpenseForm({
   className?: string;
   /** Reopens an existing expense instead of starting a blank one. */
   initial?: ExpenseFormInit;
+  /**
+   * Shows the repeat control. Off by default, and deliberately off in the guest
+   * shell: generating occurrences is a server job, and a series a guest started
+   * would be one the owner cannot see or stop (docs/PARITY.md slice 2). When this
+   * is off the form sends NO `repeatInterval` at all, which the server reads as
+   * "leave the schedule alone" — so a guest editing a bill cannot end a series.
+   */
+  allowRepeat?: boolean;
 }) {
   const { decimalsFor } = useCurrencies();
   const parseInCurrency = useParseMoney();
@@ -94,6 +106,9 @@ export function ExpenseForm({
   const [participantIds, setParticipantIds] = useState<string[]>(initialParticipantIds);
   const [payment, setPayment] = useState<Payment>(
     initial?.payment ?? { kind: "single", payerId: currentUserId },
+  );
+  const [repeatInterval, setRepeatInterval] = useState<RepeatInterval | null>(
+    initial?.repeatInterval ?? null,
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -187,6 +202,8 @@ export function ExpenseForm({
         currencyCode: currency,
         date,
         categoryId,
+        // Absent, not null, when the control is hidden: see `allowRepeat`.
+        ...(allowRepeat ? { repeatInterval } : {}),
         ...split,
       });
       setDescription("");
@@ -194,6 +211,7 @@ export function ExpenseForm({
       setNotes("");
       setShowNotes(false);
       setCategoryId(DEFAULT_CATEGORY_ID);
+      setRepeatInterval(null);
       draft.reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add expense");
@@ -297,6 +315,33 @@ export function ExpenseForm({
         currency={currency}
         payment={payment}
       />
+
+      {allowRepeat && (
+        <div>
+          <label htmlFor="repeat">Repeat</label>
+          <select
+            id="repeat"
+            value={repeatInterval ?? ""}
+            onChange={(e) =>
+              setRepeatInterval(e.target.value === "" ? null : (e.target.value as RepeatInterval))
+            }
+          >
+            <option value="">Does not repeat</option>
+            {REPEAT_INTERVALS.map((interval) => (
+              <option key={interval} value={interval}>
+                {repeatLabel(interval)}
+              </option>
+            ))}
+          </select>
+          {repeatInterval && (
+            <p className="muted" style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
+              This bill stays as it is. A copy is created {repeatLabel(repeatInterval).toLowerCase()},
+              starting one interval after {date || "its date"}, and each copy is an ordinary expense
+              you can edit or delete on its own.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Notes only. There is no image upload in this app and there will not be
           one without an explicit decision. See CLAUDE.md. */}

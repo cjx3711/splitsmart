@@ -54,6 +54,56 @@ const swGroups = [
   },
 ];
 
+/**
+ * Comments, in BOTH shapes Splitwise might hand them over in.
+ *
+ * 4001 carries them nested on the expense list (no extra request needed); 4002
+ * only reports a count, so the paged /import/comments step has to go and fetch
+ * them. The importer supports both because the fixture that would settle which
+ * one the real API sends can only be captured against a live account. See
+ * docs/PARITY.md, "Capture what import will need".
+ */
+const swComments: Record<number, unknown[]> = {
+  4001: [
+    {
+      id: 9001,
+      content: "I paid this one in cash",
+      comment_type: "User",
+      created_at: "2026-03-02T16:00:00Z",
+      user: { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com" },
+    },
+    {
+      // The edit history Splitwise generates. The only version of it we can ever
+      // have, which is why System rows are imported rather than dropped.
+      id: 9002,
+      content: "Alice updated this transaction: - The cost changed from $900.00 to $1000.00",
+      comment_type: "System",
+      created_at: "2026-03-02T16:05:00Z",
+      user: { id: ME_SW_ID, first_name: "Alice", last_name: "Anderson", email: "alice@example.com" },
+    },
+  ],
+  4002: [
+    {
+      // An author nobody has seen yet: becomes a placeholder rather than costing
+      // us the comment.
+      id: 9003,
+      content: "Was this the place by the station?",
+      comment_type: "User",
+      created_at: "2026-03-03T09:00:00Z",
+      user: { id: 2003, first_name: "Dave", last_name: "Doe", email: "dave@example.com" },
+    },
+    {
+      // Deleted at the source: skipped, exactly like a deleted expense.
+      id: 9004,
+      content: "never mind",
+      comment_type: "User",
+      created_at: "2026-03-03T09:05:00Z",
+      deleted_at: "2026-03-03T09:06:00Z",
+      user: { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com" },
+    },
+  ],
+};
+
 const swExpenses = [
   {
     id: 4001,
@@ -64,6 +114,16 @@ const swExpenses = [
     date: "2026-03-01T00:00:00Z",
     created_at: "2026-03-02T15:30:00Z",
     category: { id: 13, name: "Dining out" },
+    // Nested, and a count that agrees with the array.
+    comments_count: 2,
+    comments: swComments[4001],
+    // A recurring series in Splitwise. Imported as the bill that happened, never
+    // as a live template: originating future copies is not importing.
+    repeats: true,
+    repeat_interval: "monthly",
+    next_repeat: "2026-04-01T00:00:00Z",
+    // Receipts are never imported. One preview warning, not a skip per expense.
+    receipt: { original: "https://splitwise.example/receipt.jpg", large: null },
     users: [
       { user: swGroups[1]!.members[0], paid_share: "1000.00", owed_share: "333.34" },
       { user: swFriends[0], paid_share: "0.00", owed_share: "333.33" },
@@ -78,6 +138,8 @@ const swExpenses = [
     cost: "3400",
     currency_code: "JPY",
     date: "2026-03-02T00:00:00Z",
+    // A count with no nested array: this is the shape that needs step 4.
+    comments_count: 2,
     users: [
       { user: swGroups[1]!.members[0], paid_share: "3400", owed_share: "1700" },
       { user: swFriends[0], paid_share: "0", owed_share: "1700" },
@@ -154,6 +216,10 @@ function startFakeSplitwise(): Promise<{ server: Server; base: string }> {
         return send(200, { friends: swFriends });
       case "/api/v3.0/get_groups":
         return send(200, { groups: swGroups });
+      case "/api/v3.0/get_comments": {
+        const expenseId = Number(url.searchParams.get("expense_id"));
+        return send(200, { comments: swComments[expenseId] ?? [] });
+      }
       case "/api/v3.0/get_expenses": {
         const offset = Number(url.searchParams.get("offset") ?? 0);
         const limit = Number(url.searchParams.get("limit") ?? 100);
@@ -202,6 +268,39 @@ async function post(path: string, body: unknown, token = apiToken) {
     body: JSON.stringify(body),
   });
   return { status: res.status, body: (await res.json()) as any };
+}
+
+/** Edits an expense the way a person would, so a re-import can see local work. */
+async function patchExpense(expenseId: string, description: string) {
+  const current = await db
+    .selectFrom("expenses")
+    .select(["cost_minor", "currency_code", "date", "group_id", "is_payment"])
+    .where("id", "=", expenseId)
+    .executeTakeFirstOrThrow();
+  const shares = await db
+    .selectFrom("expense_users")
+    .select(["user_id", "paid_share_minor", "owed_share_minor"])
+    .where("expense_id", "=", expenseId)
+    .execute();
+
+  const res = await app.request(`/api/v1/expenses/${expenseId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      groupId: current.group_id,
+      description,
+      costMinor: current.cost_minor,
+      currencyCode: current.currency_code,
+      date: current.date,
+      splitType: "exact",
+      participants: shares.map((s) => ({
+        userId: s.user_id,
+        paidMinor: s.paid_share_minor,
+        input: s.owed_share_minor,
+      })),
+    }),
+  });
+  if (res.status !== 200) throw new Error(`patch failed: ${res.status} ${await res.text()}`);
 }
 
 async function get(path: string, token = apiToken) {
@@ -532,6 +631,136 @@ describe("expenses", () => {
   });
 });
 
+describe("comments", () => {
+  test("nested comments come in with their expense, User and System alike", async () => {
+    const rent = await db
+      .selectFrom("expenses")
+      .select(["id", "metadata"])
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+
+    const comments = await db
+      .selectFrom("comments")
+      .select(["id", "kind", "content", "user_id", "metadata", "created_at"])
+      .where("expense_id", "=", rent.id)
+      .orderBy("created_at")
+      .execute();
+
+    assert.equal(comments.length, 2);
+    assert.equal(comments[0]!.kind, "user");
+    assert.equal(comments[0]!.user_id, bobId, "authored by the person Splitwise says wrote it");
+    assert.equal(splitwiseIdOf(comments[0]!.metadata), 9001);
+    assert.ok(isUlid(comments[0]!.id));
+    assert.equal(
+      ulidTime(comments[0]!.id),
+      Date.parse("2026-03-02T16:00:00Z"),
+      "the ULID carries the original instant, so a thread sorts as it was written",
+    );
+
+    // Splitwise's own edit history, kept as a system row: not deletable, and not
+    // written by any HTTP route.
+    assert.equal(comments[1]!.kind, "system");
+    assert.match(comments[1]!.content, /The cost changed from/);
+  });
+
+  test("an imported comment is not a feed event", async () => {
+    const events = await db
+      .selectFrom("activity")
+      .select("id")
+      .where("action", "like", "comment.%")
+      .execute();
+    assert.deepEqual(events, [], "one summary entry per run, not one per comment");
+  });
+
+  test("the paged step fetches the comments Splitwise did not nest", async () => {
+    const { status, body } = await post("/import/comments", { apiKey: API_KEY });
+    assert.equal(status, 200);
+    assert.equal(body.imported, 1, "one live comment on the Ramen expense");
+
+    const ramen = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where(splitwiseIdSql(), "=", 4002)
+      .executeTakeFirstOrThrow();
+
+    const comments = await db
+      .selectFrom("comments")
+      .select(["content", "user_id", "metadata"])
+      .where("expense_id", "=", ramen.id)
+      .execute();
+
+    assert.equal(comments.length, 1, "the source-deleted one was skipped, not imported");
+    assert.equal(splitwiseIdOf(comments[0]!.metadata), 9003);
+
+    // An author nobody had seen became a placeholder rather than being dropped.
+    const dave = await db
+      .selectFrom("users")
+      .select(["id", "first_name", "is_ghost"])
+      .where("id", "=", comments[0]!.user_id)
+      .executeTakeFirstOrThrow();
+    assert.equal(dave.first_name, "Dave");
+    assert.equal(dave.is_ghost, 1);
+  });
+
+  test("running the comments step again fetches nothing and writes nothing", async () => {
+    const before = await db.selectFrom("comments").select("id").execute();
+    const requestsBefore = seen.filter((r) => r.path.endsWith("/get_comments")).length;
+
+    const { body } = await post("/import/comments", { apiKey: API_KEY });
+    assert.equal(body.imported, 0);
+    assert.ok(body.alreadyPresent > 0, "already-synced expenses are skipped on their stamp");
+
+    const after = await db.selectFrom("comments").select("id").execute();
+    assert.equal(after.length, before.length);
+    assert.equal(
+      seen.filter((r) => r.path.endsWith("/get_comments")).length,
+      requestsBefore,
+      "a second run must not re-fetch every expense",
+    );
+  });
+
+  test("an imported comment is visible on the expense it hangs off", async () => {
+    const rent = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+
+    const { status, body } = await get(`/expenses/${rent.id}/comments`);
+    assert.equal(status, 200);
+    assert.equal(body.comments.length, 2);
+    assert.ok(body.comments.some((c: any) => c.kind === "system"));
+  });
+});
+
+describe("recurrence and receipts", () => {
+  test("a Splitwise recurring expense does NOT become a live template here", async () => {
+    const rent = await db
+      .selectFrom("expenses")
+      .select(["repeat_interval", "next_repeat", "repeat_of"])
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+
+    // Splitwise says repeats: true, monthly, next 2026-04-01. Importing that as a
+    // schedule would start generating bills this account never asked us to
+    // originate. It arrives as the bill that already happened, and nothing else.
+    assert.equal(rent.repeat_interval, null);
+    assert.equal(rent.next_repeat, null);
+    assert.equal(rent.repeat_of, null);
+  });
+
+  test("the preview says so, and says receipts are not imported", async () => {
+    const { body } = await post("/import/preview", { apiKey: API_KEY });
+    assert.ok(
+      body.warnings.some((w: string) => /future repeats are not scheduled/i.test(w)),
+      "a user must be told before, not discover it afterwards",
+    );
+    assert.ok(body.warnings.some((w: string) => /receipt images are not imported/i.test(w)));
+    assert.ok(body.warnings.some((w: string) => /comments come across/i.test(w)));
+    assert.ok(body.counts.comments >= 2, "the count is a floor from the first page");
+  });
+});
+
 describe("balances after import", () => {
   test("agree with the imported shares", async () => {
     const { body } = await get("/friends");
@@ -585,5 +814,107 @@ describe("guests", () => {
 
     const { status } = await post("/import/preview", { apiKey: API_KEY }, ghostToken);
     assert.equal(status, 403);
+  });
+});
+
+describe("re-import as update", () => {
+  test("an upstream change lands when nothing has edited the local row", async () => {
+    const before = await db
+      .selectFrom("expenses")
+      .select(["id", "created_at", "updated_at", "cost_minor", "metadata"])
+      .where(splitwiseIdSql(), "=", 4003)
+      .executeTakeFirstOrThrow();
+    // "Untouched" is either never edited at all (updated_at == created_at, which
+    // createExpense guarantees for an imported row) or last written by the
+    // importer itself, which stamps splitwise_synced_at as it goes.
+    assert.equal(
+      before.updated_at === before.created_at ||
+        before.updated_at === JSON.parse(before.metadata).splitwise_synced_at,
+      true,
+      "an imported row nobody has edited must still look untouched",
+    );
+
+    // Splitwise's copy changes.
+    const payment = swExpenses.find((e) => e.id === 4003)! as any;
+    payment.cost = "60.00";
+    payment.users[0].paid_share = "60.00";
+    payment.users[1].owed_share = "60.00";
+
+    const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
+    assert.equal(body.refreshed, 1);
+
+    const after = await db
+      .selectFrom("expenses")
+      .select(["cost_minor", "updated_at", "created_at", "metadata"])
+      .where(splitwiseIdSql(), "=", 4003)
+      .executeTakeFirstOrThrow();
+    assert.equal(after.cost_minor, 6000);
+
+    // The refresh stamps itself, so the NEXT run can still tell an import from a
+    // person having edited the bill here.
+    const synced = JSON.parse(after.metadata).splitwise_synced_at;
+    assert.equal(after.updated_at, synced);
+
+    const shares = await db
+      .selectFrom("expense_users")
+      .select(["paid_share_minor", "owed_share_minor"])
+      .where("expense_id", "=", before.id)
+      .execute();
+    assert.equal(shares.reduce((sum, s) => sum + s.owed_share_minor, 0), 6000);
+  });
+
+  test("a second refresh of the same row is a no-op, not a rewrite", async () => {
+    const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
+    assert.equal(body.refreshed, 0, "nothing changed upstream this time");
+    assert.equal(body.alreadyPresent, 3);
+  });
+
+  test("a locally edited row is skipped with a reason, never overwritten", async () => {
+    const local = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where(splitwiseIdSql(), "=", 4003)
+      .executeTakeFirstOrThrow();
+
+    // Somebody fixes the description here, the way a person would.
+    await patchExpense(local.id, "Payment, by bank transfer");
+
+    const payment = swExpenses.find((e) => e.id === 4003)! as any;
+    payment.cost = "70.00";
+    payment.users[0].paid_share = "70.00";
+    payment.users[1].owed_share = "70.00";
+
+    const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
+    assert.equal(body.refreshed, 0);
+    const skip = body.skipped.find((s: any) => s.splitwiseId === 4003);
+    assert.match(String(skip.reason), /local edits, not refreshed/i);
+
+    const after = await db
+      .selectFrom("expenses")
+      .select(["cost_minor", "description"])
+      .where("id", "=", local.id)
+      .executeTakeFirstOrThrow();
+    assert.equal(after.cost_minor, 6000, "the local amount stands");
+    assert.equal(after.description, "Payment, by bank transfer", "and so does the local wording");
+  });
+
+  test("local comments are never deleted by a re-import", async () => {
+    const rent = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+
+    await post(`/expenses/${rent.id}/comments`, { content: "Ours, not Splitwise's" });
+    await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
+    await post("/import/comments", { apiKey: API_KEY });
+
+    const mine = await db
+      .selectFrom("comments")
+      .select("id")
+      .where("expense_id", "=", rent.id)
+      .where("content", "=", "Ours, not Splitwise's")
+      .execute();
+    assert.equal(mine.length, 1, "Splitwise never saw it, so it is not Splitwise's to remove");
   });
 });

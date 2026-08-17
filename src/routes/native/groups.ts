@@ -10,10 +10,18 @@ import { z } from "zod";
 import { db, transaction } from "../../db/index.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
-import { createExpense, updateExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
+import {
+  createExpense,
+  updateExpense,
+  deleteExpense,
+  restoreExpense,
+  createPayment,
+} from "../../domain/expenses.ts";
+import { commentCountSql } from "../../domain/comments.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { revokeMemberLinks } from "../../domain/access-links.ts";
 import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
+import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 
@@ -170,22 +178,30 @@ groupRoutes.get("/:id/expenses", async (c) => {
 
   const limit = Math.min(Number(c.req.query("limit") ?? 50) || 50, 500);
   const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
+  const filters = parseExpenseFilters(c.req.query());
 
-  const expenses = await db
+  let query = db
     .selectFrom("expenses")
     .leftJoin("categories", "categories.id", "expenses.category_id")
     .select([
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
-      "expenses.split_type", "expenses.split_meta", "categories.name as category_name",
+      "expenses.split_type", "expenses.split_meta", "expenses.repeat_interval",
+      "expenses.repeat_of", "categories.name as category_name",
     ])
+    .select(commentCountSql().as("comment_count"))
     .where("expenses.group_id", "=", groupId)
     .where("expenses.deleted_at", "is", null)
     .orderBy("expenses.date", "desc")
     .orderBy("expenses.id", "desc")
     .limit(limit)
-    .offset(offset)
-    .execute();
+    .offset(offset);
+
+  // Applied on top of the group scope above, never instead of it: a `group_id`
+  // filter here can only narrow this group down to itself or to nothing.
+  if (hasFilters(filters)) query = query.where(expenseFilterWhere(filters));
+
+  const expenses = await query.execute();
 
   if (expenses.length === 0) return c.json({ expenses: [] });
 
@@ -500,8 +516,9 @@ expenseRoutes.get("/", async (c) => {
   const auth = c.get("user");
   const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
   const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
+  const filters = parseExpenseFilters(c.req.query());
 
-  const expenses = await db
+  let query = db
     .selectFrom("expenses")
     .innerJoin("expense_users", "expense_users.expense_id", "expenses.id")
     .leftJoin("categories", "categories.id", "expenses.category_id")
@@ -510,15 +527,20 @@ expenseRoutes.get("/", async (c) => {
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.group_id",
+      "expenses.repeat_interval", "expenses.repeat_of",
       "categories.name as category_name", "groups.name as group_name",
     ])
+    .select(commentCountSql().as("comment_count"))
     .where("expense_users.user_id", "=", auth.id)
     .where("expenses.deleted_at", "is", null)
     .orderBy("expenses.date", "desc")
     .orderBy("expenses.id", "desc")
     .limit(limit)
-    .offset(offset)
-    .execute();
+    .offset(offset);
+
+  if (hasFilters(filters)) query = query.where(expenseFilterWhere(filters));
+
+  const expenses = await query.execute();
 
   if (expenses.length === 0) return c.json({ expenses: [] });
 
@@ -596,6 +618,7 @@ expenseRoutes.get("/:id", async (c) => {
       "expenses.id", "expenses.description", "expenses.details", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.category_id", "expenses.group_id",
+      "expenses.repeat_interval", "expenses.next_repeat", "expenses.repeat_of",
       "categories.name as category_name", "groups.name as group_name",
     ])
     .where("expenses.id", "=", expenseId)
@@ -610,7 +633,23 @@ expenseRoutes.get("/:id", async (c) => {
     .where("expense_id", "=", expenseId)
     .execute();
 
-  return c.json({ expense: { ...expense, shares } });
+  // How many bills this series has produced, or where this one came from. The
+  // template id plus `repeat_of` IS the bundle; there is no bundle table.
+  const seriesCount =
+    expense.repeat_interval === null
+      ? 0
+      : Number(
+          (
+            await db
+              .selectFrom("expenses")
+              .select((eb) => eb.fn.countAll<number>().as("n"))
+              .where("repeat_of", "=", expenseId)
+              .where("deleted_at", "is", null)
+              .executeTakeFirstOrThrow()
+          ).n,
+        );
+
+  return c.json({ expense: { ...expense, shares, series_count: seriesCount } });
 });
 
 /** Replaces an expense's contents via the domain layer's updateExpense. */
@@ -666,6 +705,29 @@ expenseRoutes.delete("/:id", async (c) => {
 
   await deleteExpense(expenseId, auth.id);
   return c.json({ ok: true });
+});
+
+/**
+ * Undoes a delete.
+ *
+ * Participant-only, exactly like delete, and deliberately reachable for a row
+ * that is already a tombstone: `assertParticipant` reads `expense_users`, which a
+ * soft delete never touches. That is the whole reason soft deletes were worth
+ * having, and until now there was no way to use it.
+ */
+expenseRoutes.post("/:id/restore", async (c) => {
+  const auth = c.get("user");
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+
+  try {
+    await restoreExpense(expenseId, auth.id);
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "Could not restore expense" }, 400);
+  }
 });
 
 export const categoryRoutes = new Hono<AppEnv>();

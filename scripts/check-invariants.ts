@@ -186,6 +186,43 @@ const CHECKS: Check[] = [
     `,
   },
   {
+    name: "known_comment_kinds",
+    description: "A comment is either something somebody typed or a generated system note",
+    sql: `SELECT id, kind FROM comments WHERE kind NOT IN ('user', 'system')`,
+  },
+  {
+    name: "repeat_series_are_one_level_deep",
+    description:
+      "An occurrence must point at a template, never at another occurrence: the template id plus repeat_of IS the bundle",
+    sql: `
+      SELECT child.id, child.repeat_of
+      FROM expenses child
+      JOIN expenses parent ON parent.id = child.repeat_of
+      WHERE child.repeat_of IS NOT NULL AND parent.repeat_of IS NOT NULL
+    `,
+  },
+  {
+    name: "recurring_templates_are_scheduled",
+    description:
+      "A live template must have a next_repeat, or it is a series that silently never runs",
+    sql: `
+      SELECT id, description FROM expenses
+      WHERE repeat_interval IS NOT NULL AND next_repeat IS NULL AND deleted_at IS NULL
+    `,
+  },
+  {
+    name: "no_duplicate_occurrences",
+    description:
+      "One occurrence per template per due date; two means the scheduler generated a bill twice",
+    sql: `
+      SELECT repeat_of, date, COUNT(*) AS n
+      FROM expenses
+      WHERE repeat_of IS NOT NULL AND deleted_at IS NULL
+      GROUP BY repeat_of, date
+      HAVING COUNT(*) > 1
+    `,
+  },
+  {
     name: "known_currencies_only",
     description: "Every expense currency must exist in the currencies table",
     sql: `
@@ -233,12 +270,18 @@ function main(): void {
       `SELECT
          (SELECT COUNT(*) FROM users)    AS users,
          (SELECT COUNT(*) FROM groups)   AS groups,
-         (SELECT COUNT(*) FROM expenses WHERE deleted_at IS NULL) AS expenses`,
+         (SELECT COUNT(*) FROM expenses WHERE deleted_at IS NULL) AS expenses,
+         (SELECT COUNT(*) FROM expenses WHERE deleted_at IS NOT NULL) AS deleted,
+         (SELECT COUNT(*) FROM comments WHERE deleted_at IS NULL) AS comments,
+         (SELECT COUNT(*) FROM expenses
+           WHERE repeat_interval IS NOT NULL AND deleted_at IS NULL) AS series`,
     )
     .get() as Record<string, number>;
 
   console.log(
-    `\n${counts.users} users, ${counts.groups} groups, ${counts.expenses} live expenses`,
+    `\n${counts.users} users, ${counts.groups} groups, ${counts.expenses} live expenses ` +
+      `(${counts.deleted} deleted and restorable), ${counts.comments} comments, ` +
+      `${counts.series} recurring series`,
   );
 
   db.close();
