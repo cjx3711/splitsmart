@@ -1,41 +1,35 @@
 /**
  * Friends list. Adding one lives on its own page. See NewFriend.tsx.
+ *
+ * Read from the mirror, so the list and its balances are there with no network.
+ * Adding and removing are online-only: both write a row the server owns, and a
+ * placeholder person invented twice offline is two people where there should be
+ * one, with every expense attached to the loser stranded (docs/OFFLINE.md).
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fullName, type Friend } from "../api.ts";
 import { Ledger } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useSidebarRefresh } from "../App.tsx";
+import { useFriends, useMirrorReady } from "../localData.ts";
+import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 
 export function Friends() {
-  const [friends, setFriends] = useState<Friend[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Friend | null>(null);
   const [busy, setBusy] = useState(false);
   const refreshSidebar = useSidebarRefresh();
   const navigate = useNavigate();
-
-  async function load() {
-    try {
-      const data = await api.listFriends();
-      setFriends(data.friends);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load friends");
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
+  const friends = useFriends()?.friends ?? null;
+  const ready = useMirrorReady();
 
   async function handleRemove(friend: Friend) {
     setError(null);
     setBusy(true);
     try {
       const result = await api.removeFriend(friend.id);
-      await load();
       refreshSidebar();
       if (result.stillVisible) {
         setError(
@@ -55,7 +49,9 @@ export function Friends() {
       <div className="page-head">
         <h1>Friends</h1>
         <div className="page-actions">
-          <button onClick={() => navigate("/friends/new")}>+ Add friend</button>
+          <OnlineOnly what="Adding a friend">
+            <button onClick={() => navigate("/friends/new")}>+ Add friend</button>
+          </OnlineOnly>
         </div>
       </div>
 
@@ -65,8 +61,14 @@ export function Friends() {
         <p className="muted">Loading…</p>
       ) : friends.length === 0 ? (
         <p className="empty">
-          No friends yet. <Link to="/friends/new">Add someone</Link> to start tracking what you
-          split.
+          {ready ? (
+            <>
+              No friends yet. <Link to="/friends/new">Add someone</Link> to start tracking what
+              you split.
+            </>
+          ) : (
+            "Waiting for the first sync."
+          )}
         </p>
       ) : (
         <div className="list">
@@ -86,14 +88,16 @@ export function Friends() {
               </Link>
               <Ledger balances={friend.balances} />
               {friend.is_explicit ? (
-                <button
-                  className="icon"
-                  onClick={() => setRemoving(friend)}
-                  aria-label={`Remove ${fullName(friend)}`}
-                  title="Remove friend"
-                >
-                  ✕
-                </button>
+                <OnlineOnly what="Removing a friend">
+                  <button
+                    className="icon"
+                    onClick={() => setRemoving(friend)}
+                    aria-label={`Remove ${fullName(friend)}`}
+                    title="Remove friend"
+                  >
+                    ✕
+                  </button>
+                </OnlineOnly>
               ) : (
                 <span className="muted" title="From a shared group or expense">
                   shared

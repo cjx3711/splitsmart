@@ -11,6 +11,7 @@ import { api, type ActivityEntry } from "../api.ts";
 import { Amount } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
+import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 
 const VERBS: Record<string, string> = {
   "expense.created": "added",
@@ -26,6 +27,7 @@ const VERBS: Record<string, string> = {
 
 export function Activity() {
   const { user } = useAuth();
+  const online = useOnline();
   const [entries, setEntries] = useState<ActivityEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -56,6 +58,20 @@ export function Activity() {
     } finally {
       setRestoring(null);
     }
+  }
+
+  if (!online && !entries) {
+    return (
+      <>
+        <div className="page-head">
+          <h1>Recent activity</h1>
+        </div>
+        <NeedsConnection what="Recent activity" />
+        <p className="muted">
+          Restoring a deleted expense from its own page still works offline.
+        </p>
+      </>
+    );
   }
 
   if (error) return <p className="error">{error}</p>;

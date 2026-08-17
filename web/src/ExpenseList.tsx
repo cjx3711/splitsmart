@@ -14,6 +14,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Fragment } from "react";
 import { fullName, type ExpenseSummary, type GroupMember } from "./api.ts";
 import { Amount } from "./money.tsx";
+import { SyncBadge } from "./SyncStatusBar.tsx";
 
 export interface PersonLookup {
   (userId: string): string;
@@ -78,6 +79,7 @@ export function ExpenseList({
             <div className="list-item-body">
               <div className="list-item-title">
                 {expense.is_payment === 1 ? "Settle up" : expense.description}
+                <SyncBadge state={expense.syncState} />
               </div>
               <div className="muted">
                 {expense.date.slice(0, 10)}

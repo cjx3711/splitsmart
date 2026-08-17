@@ -6,16 +6,23 @@
  * differently. What varies is which controls are offered: the group screen has no
  * use for a group picker, and the friend screen has no use for a person picker.
  *
- * Filtering happens SERVER-SIDE (src/routes/native/expense-filters.ts), not by
- * hiding rows the client already fetched. A list is capped at 100 rows, so
- * filtering locally would search the most recent hundred expenses and quietly
- * call that "no results".
+ * Filtering runs over the WHOLE local mirror, not over a page of rows already
+ * fetched — which is what the old server-side-only version was protecting against,
+ * since a capped list would have searched the most recent hundred expenses and
+ * quietly called that "no results". The rules are the same ones the server
+ * applies, from the same module (src/domain/expense-query.ts), so a filter cannot
+ * mean one thing here and another in a download.
  *
- * The download link carries the same filters, so the CSV is what is on screen.
+ * The CSV carries the same filters, and is built from the mirror through the same
+ * pure formatter the server uses, so the file is byte-identical either way and
+ * downloading works offline.
  */
 import { useEffect, useState } from "react";
-import { api, type ExpenseQuery, type Friend, type Group } from "./api.ts";
+import { type ExpenseQuery, type Friend, type Group } from "./api.ts";
 import { useCategories } from "./categories.tsx";
+import { useAuth } from "./App.tsx";
+import { useLocalDb } from "./sync/SyncProvider.tsx";
+import { localExpenseCsv } from "./db/queries.ts";
 
 export function ExpenseFilters({
   value,
@@ -43,6 +50,8 @@ export function ExpenseFilters({
   csvFilename?: string;
 }) {
   const categories = useCategories();
+  const db = useLocalDb();
+  const { user } = useAuth();
   // Typing is local so every keystroke does not fire a request; the parent is
   // told once the box settles. 250ms is short enough to feel immediate.
   const [q, setQ] = useState(value.q ?? "");
@@ -167,16 +176,32 @@ export function ExpenseFilters({
         </button>
       )}
 
-      {/* A plain link, not a fetch: the browser downloads it with the session
-          cookie attached, and there is nothing for JavaScript to add. */}
-      <a
+      {/* Built from the mirror and handed to the browser as a blob, rather than a
+          link to /api/v1/expenses.csv. That endpoint still exists and still works
+          — it is what curl and the API docs use — but a link to it is the one
+          thing on this bar that would fail with no network, and the document it
+          returns is identical to this one by construction. */}
+      <button
+        type="button"
         className="link"
-        href={api.expensesCsvUrl({ ...csvScope, ...value })}
-        download={`${csvFilename}.csv`}
         title="Download these expenses as CSV"
+        disabled={!db || !user}
+        onClick={() => {
+          if (!db || !user) return;
+          void localExpenseCsv(db, user.id, { ...csvScope, ...value }).then((csv) => {
+            const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+            const anchor = document.createElement("a");
+            anchor.href = url;
+            anchor.download = `${csvFilename}.csv`;
+            anchor.click();
+            // Revoked immediately: the click has already handed the blob to the
+            // download, and leaving it alive holds the whole file in memory.
+            URL.revokeObjectURL(url);
+          });
+        }}
       >
         Download CSV
-      </a>
+      </button>
     </div>
   );
 }

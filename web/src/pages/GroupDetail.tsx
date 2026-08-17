@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+/**
+ * One group: balances, suggested settle-up, expenses, members, guest links.
+ *
+ * Everything on the left of the offline/online line in docs/OFFLINE.md is read
+ * from the mirror and written through the outbox — the balances and the settle-up
+ * suggestions are derived here with the same pure functions the server uses, not
+ * fetched. Adding a member and minting a guest link stay online-only, and say so.
+ */
+import { useState } from "react";
 import { useParams } from "react-router-dom";
-import {
-  api,
-  fullName,
-  type Group,
-  type GroupMember,
-  type ExpenseSummary,
-  type ExpenseQuery,
-  type CurrencyAmount,
-} from "../api.ts";
+import { api, fullName, type GroupMember, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { AddMemberForm } from "../AddMemberForm.tsx";
@@ -22,58 +22,34 @@ import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
+import { OnlineOnly } from "../OnlineOnly.tsx";
+import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
+import { useSync } from "../sync/SyncProvider.tsx";
+import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [group, setGroup] = useState<Group | null>(null);
-  const [role, setRole] = useState<string>("member");
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [balances, setBalances] = useState<Array<{ userId: string; balances: CurrencyAmount[] }>>([]);
-  const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
-  const [settle, setSettle] = useState<
-    Array<{
-      currencyCode: string;
-      transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
-    }>
-  >([]);
-  const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
+  const { engine, syncNow } = useSync();
 
-  async function load() {
-    if (!id) return;
-    try {
-      const [detail, expenseList, suggestions] = await Promise.all([
-        api.getGroup(id),
-        api.getGroupExpenses(id, filters),
-        api.getSettleSuggestions(id),
-      ]);
-      setGroup(detail.group);
-      setRole(detail.role);
-      setMembers(detail.members);
-      setBalances(detail.balances);
-      setExpenses(expenseList.expenses);
-      setSettle(suggestions.suggestions);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load group");
-    }
-  }
+  // Live queries: a sync landing, or a queued write, re-renders this screen
+  // without anything having to invalidate anything.
+  const view = useGroupView(id);
+  const expenses = useGroupExpenses(id, filters)?.expenses ?? [];
+  const settle = useSettleSuggestions(id)?.suggestions ?? [];
 
-  useEffect(() => {
-    if (id) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on a new group or a new filter
-  }, [id, filters]);
+  if (view === undefined || !user) return <p className="muted">Loading…</p>;
+  if (view === null) return <p className="empty">This group is not on this device.</p>;
 
-  if (error) return <p className="error">{error}</p>;
-  if (!group || !user) return <p className="muted">Loading…</p>;
-
+  const { group, members, balances, role } = view;
   const nameOf = makeLookup(members, user.id);
   const people = members.map((m) => ({
     id: m.id,
@@ -159,7 +135,6 @@ export function GroupDetail() {
         title={`Add Expense to ${group.name}`}
         initialGroupId={group.id}
         onClose={() => setOpenDialog(null)}
-        onCreated={load}
       />
 
       <Modal
@@ -222,9 +197,29 @@ export function GroupDetail() {
                     }
             }
             onSubmit={async (payment) => {
-              await api.createGroupPayment(group.id, payment);
+              // A payment is an ordinary expense with is_payment set: the payer
+              // fronts the whole cost and the recipient owes all of it, which is
+              // what cancels an equivalent slice of the balance. Queued like any
+              // other write, so settling up works at the table.
+              if (!engine) throw new Error("Not ready to save yet.");
+              await engine.enqueue({
+                kind: "payment.create",
+                id: ulid(),
+                payload: {
+                  groupId: group.id,
+                  description: "Payment",
+                  costMinor: payment.amountMinor,
+                  currencyCode: payment.currencyCode,
+                  date: payment.date ?? new Date().toISOString(),
+                  splitType: "exact",
+                  isPayment: true,
+                  participants: [
+                    { userId: payment.fromUserId, paidMinor: payment.amountMinor, input: 0 },
+                    { userId: payment.toUserId, paidMinor: 0, input: payment.amountMinor },
+                  ],
+                },
+              });
               closeSettle();
-              await load();
             }}
           />
         )}
@@ -322,23 +317,27 @@ export function GroupDetail() {
               </div>
             </div>
             {isOwner && m.id !== user.id && (
-              <button
-                className="link"
-                onClick={() => setRemovingMember(m)}
-              >
-                Remove
-              </button>
+              <OnlineOnly what="Removing someone from a group">
+                <button
+                  className="link"
+                  onClick={() => setRemovingMember(m)}
+                >
+                  Remove
+                </button>
+              </OnlineOnly>
             )}
           </div>
         ))}
       </div>
 
       {isOwner && (
-        <AddMemberForm
-          groupId={group.id}
-          existingIds={members.map((m) => m.id)}
-          onAdded={load}
-        />
+        <OnlineOnly what="Adding someone to a group">
+          <AddMemberForm
+            groupId={group.id}
+            existingIds={members.map((m) => m.id)}
+            onAdded={syncNow}
+          />
+        </OnlineOnly>
       )}
 
       <ConfirmDialog
@@ -357,7 +356,7 @@ export function GroupDetail() {
           setRemovingBusy(true);
           try {
             await api.removeGroupMember(group.id, removingMember.id);
-            await load();
+            syncNow();
             setRemovingMember(null);
           } finally {
             setRemovingBusy(false);

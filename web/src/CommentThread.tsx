@@ -1,10 +1,17 @@
 /**
  * The comment thread on an expense. One component, both shells.
  *
- * The logged-in page and the guest page pass their own three functions, because
- * the only difference between them is which API answers; the conversation itself,
- * and the rule that a system comment is quieter than a real one, must not be
- * reimplemented twice and allowed to drift.
+ * The guest page passes its own three functions, because a guest link is live-only
+ * (docs/GUEST.md) and talks to /api/v1/guest. The logged-in page passes NOTHING and
+ * gets the offline path: the thread is read from the Dexie mirror and a new comment
+ * goes into the outbox, so writing one at a restaurant table with no signal works.
+ * Either way the conversation itself, and the rule that a system comment is quieter
+ * than a real one, exists once.
+ *
+ * A comment is not part of the expense. It has no `version`, it cannot conflict,
+ * and posting one must never bump `expenses.version` — otherwise an offline note
+ * would fight an offline edit of the split. There is no edit, only create and
+ * delete.
  *
  * Two kinds of row, as they come off the wire:
  *
@@ -17,6 +24,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Comment } from "./api.ts";
 import { Avatar } from "./Avatar.tsx";
+import { useComments } from "./localData.ts";
+import { useSync } from "./sync/SyncProvider.tsx";
+import { ulid } from "../../src/domain/ulid.ts";
 
 export interface CommentThreadApi {
   list: (expenseId: string) => Promise<{ comments: Comment[] }>;
@@ -32,27 +42,39 @@ export function CommentThread({
   expenseId: string;
   /** Whose comments get a delete button, and who reads as "You". */
   currentUserId: string;
-  api: CommentThreadApi;
+  /**
+   * The guest shell's live-only functions. Omit them for the logged-in shell,
+   * which reads the mirror and queues writes.
+   */
+  api?: CommentThreadApi;
 }) {
-  const [comments, setComments] = useState<Comment[] | null>(null);
+  const [fetched, setFetched] = useState<Comment[] | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { engine } = useSync();
+
+  // Both hooks always run — React forbids a conditional hook — but only one of
+  // them is the source. Passing `undefined` makes the live query a no-op.
+  const local = useComments(api ? undefined : expenseId);
 
   const load = useCallback(async () => {
+    if (!api) return;
     try {
       const result = await api.list(expenseId);
-      setComments(result.comments);
+      setFetched(result.comments);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the comments");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the api object is a literal at the call site
-  }, [expenseId]);
+  }, [expenseId, api !== undefined]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const comments = api ? fetched : (local?.comments ?? null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -62,11 +84,22 @@ export function CommentThread({
     setBusy(true);
     setError(null);
     try {
-      await api.add(expenseId, content);
-      // Cleared only after the server took it, so a failed post does not lose
-      // what somebody typed.
+      if (api) {
+        await api.add(expenseId, content);
+        await load();
+      } else {
+        // The client mints the comment ULID, so a retry of a lost response is the
+        // same comment rather than a second one.
+        if (!engine) throw new Error("Not ready to save yet.");
+        await engine.enqueue({
+          kind: "comment.create",
+          id: ulid(),
+          payload: { expenseId, content },
+        });
+      }
+      // Cleared only once the write is recorded — on the server, or in the outbox —
+      // so a failure does not lose what somebody typed.
       setDraft("");
-      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not post that comment");
     } finally {
@@ -78,8 +111,13 @@ export function CommentThread({
     setBusy(true);
     setError(null);
     try {
-      await api.remove(commentId);
-      await load();
+      if (api) {
+        await api.remove(commentId);
+        await load();
+      } else {
+        if (!engine) throw new Error("Not ready to save yet.");
+        await engine.enqueue({ kind: "comment.delete", id: commentId });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete that comment");
     } finally {

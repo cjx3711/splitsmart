@@ -1,40 +1,46 @@
-import { useEffect, useState } from "react";
+/**
+ * Every group you are in.
+ *
+ * Read from the offline mirror, so this screen works with no network. Creating a
+ * group is online-only (docs/OFFLINE.md): it mints a server-side id that two
+ * devices could not agree on, so the button says so rather than queueing.
+ */
 import { Link, useNavigate } from "react-router-dom";
-import { api, type Group } from "../api.ts";
 import { groupTypeLabel } from "../groupTypes.tsx";
+import { useGroups, useMirrorReady } from "../localData.ts";
+import { OnlineOnly } from "../OnlineOnly.tsx";
 
 export function Groups() {
-  const [groups, setGroups] = useState<Group[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const data = useGroups();
+  const ready = useMirrorReady();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    void api
-      .listGroups()
-      .then((data) => setGroups(data.groups))
-      .catch((err) => setError(err instanceof Error ? err.message : "Could not load groups"));
-  }, []);
 
   return (
     <>
       <div className="page-head">
         <h1>Groups</h1>
         <div className="page-actions">
-          <button onClick={() => navigate("/groups/new")}>+ Add group</button>
+          <OnlineOnly what="Creating a group">
+            <button onClick={() => navigate("/groups/new")}>+ Add group</button>
+          </OnlineOnly>
         </div>
       </div>
 
-      {error && <p className="error" style={{ marginBottom: "1rem" }}>{error}</p>}
-
-      {groups === null ? (
+      {data === undefined ? (
         <p className="muted">Loading…</p>
-      ) : groups.length === 0 ? (
+      ) : data.groups.length === 0 ? (
         <p className="empty">
-          No groups yet. <Link to="/groups/new">Create one</Link>.
+          {ready ? (
+            <>
+              No groups yet. <Link to="/groups/new">Create one</Link>.
+            </>
+          ) : (
+            "Waiting for the first sync."
+          )}
         </p>
       ) : (
         <div className="list">
-          {groups.map((group) => (
+          {data.groups.map((group) => (
             <Link key={group.id} to={`/groups/${group.id}`} className="list-item">
               <div className="list-item-body">
                 <div className="list-item-title">{group.name}</div>

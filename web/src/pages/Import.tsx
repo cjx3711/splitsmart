@@ -30,6 +30,7 @@ import {
   type ImportSkip,
 } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
+import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 
 type Step = "key" | "review" | "running" | "done";
 
@@ -56,6 +57,7 @@ interface Outcome {
 
 export function Import() {
   const refreshSidebar = useSidebarRefresh();
+  const online = useOnline();
   const [step, setStep] = useState<Step>("key");
   const [apiKey, setApiKey] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
@@ -165,9 +167,11 @@ export function Import() {
     <>
       <h1>Import from Splitwise</h1>
 
+      {!online && <NeedsConnection what="Importing from Splitwise" />}
+
       {error && <p className="error">{error}</p>}
 
-      {step === "key" && (
+      {online && step === "key" && (
         <KeyStep
           apiKey={apiKey}
           setApiKey={setApiKey}

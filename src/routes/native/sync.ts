@@ -26,7 +26,8 @@
  * (docs/OFFLINE.md, decision 3).
  */
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { compress } from "hono/compress";
+import { gunzipSync } from "node:zlib";
 import { sql } from "kysely";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
@@ -59,6 +60,10 @@ import {
 
 export const syncRoutes = new Hono<AppEnv>();
 syncRoutes.use("*", requireAuth);
+// Pull / bootstrap / snapshot can be large. The browser decompresses gzip
+// automatically; we do not gzip them in the client. Push bodies are gzipped
+// the other way — see readPushBody.
+syncRoutes.use("*", compress());
 
 /**
  * Expenses per bootstrap page.
@@ -743,9 +748,31 @@ const pushSchema = z.object({
 
 type PushOp = z.infer<typeof pushOpSchema>;
 
-syncRoutes.post("/push", zValidator("json", pushSchema), async (c) => {
+/**
+ * Reads the push body, gunzipping when the client said it did.
+ *
+ * CompressionStream in the browser, zlib here. A threshold lives on the client;
+ * anything that arrives with the header is inflated, small bodies included.
+ */
+async function readPushBody(c: { req: { header: (name: string) => string | undefined; arrayBuffer: () => Promise<ArrayBuffer>; json: () => Promise<unknown> } }): Promise<unknown> {
+  const encoding = (c.req.header("content-encoding") ?? "").toLowerCase();
+  if (encoding !== "gzip") return c.req.json();
+  const inflated = gunzipSync(Buffer.from(await c.req.arrayBuffer()));
+  return JSON.parse(inflated.toString("utf8"));
+}
+
+syncRoutes.post("/push", async (c) => {
+  let raw: unknown;
+  try {
+    raw = await readPushBody(c);
+  } catch {
+    return c.json({ error: "Could not read body" }, 400);
+  }
+  const parsed = pushSchema.safeParse(raw);
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
   const auth = c.get("user");
-  const { ops } = c.req.valid("json");
+  const { ops } = parsed.data;
 
   const results: PushResult[] = [];
 

@@ -1048,3 +1048,21 @@ describe("claim / merge", () => {
     assert.deepEqual(body.catchUp, [{ entity: "group", id: trip }]);
   });
 });
+
+describe("gzip", () => {
+  test("a gzipped push body is inflated and applied", async () => {
+    const { gzipSync } = await import("node:zlib");
+    const id = ulid();
+    const json = JSON.stringify({
+      ops: [{ kind: "expense.create", id, payload: expenseBody([aliceId]) }],
+    });
+    const { status, body } = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      headers: { "Content-Encoding": "gzip" },
+      body: gzipSync(Buffer.from(json)),
+    });
+    assert.equal(status, 200);
+    assert.equal(body.results[0].status, "applied");
+    assert.equal(body.results[0].id, id);
+  });
+});

@@ -193,6 +193,9 @@ export function ExpenseForm({
       return setError(err instanceof Error ? err.message : "Invalid split");
     }
 
+    const initialRepeat = initial?.repeatInterval ?? null;
+    const repeatTouched = (repeatInterval ?? null) !== initialRepeat;
+
     setBusy(true);
     try {
       await onSubmit({
@@ -202,8 +205,12 @@ export function ExpenseForm({
         currencyCode: currency,
         date,
         categoryId,
-        // Absent, not null, when the control is hidden: see `allowRepeat`.
-        ...(allowRepeat ? { repeatInterval } : {}),
+        // THREE-STATE, and sending the current interval is a *set* which
+        // recomputes next_repeat. Absent leaves the schedule; only include it
+        // when this is a create, or the user actually changed the control.
+        ...(allowRepeat && (initial === undefined || repeatTouched)
+          ? { repeatInterval }
+          : {}),
         ...split,
       });
       setDescription("");

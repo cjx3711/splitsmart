@@ -9,27 +9,23 @@
  * (it appears only when there are ≥2 currencies and rates loaded), dated, and
  * additive to the stack, not a replacement for it.
  */
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, fullName, type Friend, type CurrencyAmount } from "../api.ts";
+import { fullName, type Friend, type CurrencyAmount } from "../api.ts";
 import { Amount, Amounts, sumByCurrency } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
+import { useFriends } from "../localData.ts";
+import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function Dashboard() {
   const { user } = useAuth();
-  const [friends, setFriends] = useState<Friend[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Every figure below is derived here from the shares in the mirror, through the
+  // same pure deriveRepayments the server runs. Balances are never replicated:
+  // a pairwise net taken from two people's paid/owed on a three-way bill is
+  // wrong, and expense_repayments is a write-time cache, not a source of truth.
+  const friends = useFriends()?.friends ?? null;
 
-  useEffect(() => {
-    api
-      .listFriends()
-      .then((r) => setFriends(r.friends))
-      .catch((err) => setError(err instanceof Error ? err.message : "Could not load balances"));
-  }, []);
-
-  if (error) return <p className="error">{error}</p>;
   if (!friends || !user) return <p className="muted">Loading…</p>;
 
   // Someone can owe you in one currency while you owe them in another, so a
@@ -47,12 +43,16 @@ export function Dashboard() {
       <div className="page-head">
         <h1>Dashboard</h1>
         <div className="page-actions">
-          <Link to="/groups/new">
-            <button className="secondary inline">New group</button>
-          </Link>
-          <Link to="/friends/new">
-            <button className="inline">Add a friend</button>
-          </Link>
+          <OnlineOnly what="Creating a group">
+            <Link to="/groups/new">
+              <button className="secondary inline">New group</button>
+            </Link>
+          </OnlineOnly>
+          <OnlineOnly what="Adding a friend">
+            <Link to="/friends/new">
+              <button className="inline">Add a friend</button>
+            </Link>
+          </OnlineOnly>
         </div>
       </div>
 

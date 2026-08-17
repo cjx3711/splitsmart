@@ -5,17 +5,12 @@
  * so every route here is for someone who has, or is about to have, a session.
  * Paths below are relative to /app: `/groups` renders at /app/groups.
  */
-import {
-  useEffect,
-  useState,
-  createContext,
-  useContext,
-  useCallback,
-  type ReactNode,
-} from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
-import { api, type ApiUser } from "./api.ts";
 import { CurrencyProvider } from "./money.tsx";
+import { SyncProvider, useSync } from "./sync/SyncProvider.tsx";
+import { SyncStatusBar } from "./SyncStatusBar.tsx";
+import { Conflicts } from "./pages/Conflicts.tsx";
 import { Logo } from "./Logo.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { Login } from "./pages/Login.tsx";
@@ -37,64 +32,43 @@ import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 import { Footer } from "./Footer.tsx";
 
-interface AuthContextValue {
-  user: ApiUser | null;
-  setUser: (user: ApiUser | null) => void;
-  loading: boolean;
-}
-
-const AuthContext = createContext<AuthContextValue>({
-  user: null,
-  setUser: () => {},
-  loading: true,
-});
-
+/**
+ * The session, as every screen has always read it.
+ *
+ * Now a view onto `SyncProvider`, which owns it along with the mirror the user id
+ * namespaces and the loop that fills it — see web/src/sync/SyncProvider.tsx for
+ * why those three cannot be resolved apart. Kept under this name and shape so the
+ * pages did not all have to change to gain an offline session.
+ */
 export function useAuth() {
-  return useContext(AuthContext);
+  const { user, setUser, loading } = useSync();
+  return { user, setUser, loading };
 }
 
 /**
- * Lets any page tell the sidebar its group/friend lists are stale.
+ * "I have just changed something the server owns; catch up."
  *
- * The sidebar owns those lists so they survive navigation, but the screens that
- * change them are elsewhere in the tree. A bumped counter is enough; no shared
- * cache, no state library.
+ * The sidebar's lists used to be state a page had to invalidate by bumping a
+ * counter. They are Dexie live queries now, so anything that reaches the mirror
+ * shows up on its own and no page has to say so. What still needs saying is the
+ * opposite: the ONLINE-ONLY writes — adding a friend, creating a group, adding a
+ * member — land on the server and would otherwise not appear until the next
+ * five-minute tick. This pulls immediately instead.
+ *
+ * Kept under the old name because the call sites mean exactly what they always
+ * meant; only the mechanism underneath is different.
  */
-const RefreshContext = createContext<{ version: number; refresh: () => void }>({
-  version: 0,
-  refresh: () => {},
-});
-
 export function useSidebarRefresh() {
-  return useContext(RefreshContext).refresh;
-}
-
-export function useSidebarVersion() {
-  return useContext(RefreshContext).version;
+  return useSync().syncNow;
 }
 
 export function App() {
-  const [user, setUser] = useState<ApiUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [version, setVersion] = useState(0);
-  const refresh = useCallback(() => setVersion((v) => v + 1), []);
-
-  useEffect(() => {
-    api
-      .me()
-      .then((r) => setUser(r.user))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, []);
-
   return (
-    <AuthContext.Provider value={{ user, setUser, loading }}>
-      <RefreshContext.Provider value={{ version, refresh }}>
-        <CurrencyProvider>
-          <Shell />
-        </CurrencyProvider>
-      </RefreshContext.Provider>
-    </AuthContext.Provider>
+    <SyncProvider>
+      <CurrencyProvider>
+        <Shell />
+      </CurrencyProvider>
+    </SyncProvider>
   );
 }
 
@@ -129,6 +103,9 @@ function Shell() {
       <Route path="/expenses" element={<Protected><AllExpenses /></Protected>} />
       <Route path="/expenses/:id" element={<Protected><ExpenseDetail /></Protected>} />
       <Route path="/activity" element={<Protected><Activity /></Protected>} />
+      {/* Writes the server refused or overtook. Non-negotiable: an expense that
+          silently vanishes between devices is worse than an error message. */}
+      <Route path="/conflicts" element={<Protected><Conflicts /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/import" element={<Protected><Import /></Protected>} />
       <Route path="*" element={<p className="muted">Not found.</p>} />
@@ -143,6 +120,7 @@ function Shell() {
         appChrome={appChrome}
       />
       {appChrome && <EmailVerificationBanner />}
+      {appChrome && <SyncStatusBar />}
       {appChrome ? (
         <div className="shell">
           <Sidebar className={menuOpen ? "rail open" : "rail"} />
@@ -158,6 +136,16 @@ function Shell() {
   );
 }
 
+/**
+ * The gate.
+ *
+ * `loading` is now only the moment before the CACHED profile answers, which offline
+ * is a few milliseconds of IndexedDB rather than a round trip. And `!user` really
+ * does mean "no session and nothing cached": a failed or 401'd `/auth/me` while a
+ * profile exists locally is `reconnecting`, not a logout, because throwing the
+ * outbox away over a dropped connection would lose somebody's unsynced dinner.
+ * See web/src/sync/SyncProvider.tsx.
+ */
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();

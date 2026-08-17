@@ -7,16 +7,13 @@
  *
  * Adding and settling live in dialogs off the header rather than inline, so the
  * page stays a view of the balance instead of a stack of forms.
+ *
+ * Read from the mirror and written through the outbox, so both dialogs work with
+ * no network. Only the guest-link panel is online-only.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import {
-  api,
-  fullName,
-  type Friend,
-  type ExpenseQuery,
-  type ExpenseSummary,
-} from "../api.ts";
+import { fullName, type ExpenseQuery } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
@@ -25,6 +22,9 @@ import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
+import { useFriend, useFriendExpenses } from "../localData.ts";
+import { useSync } from "../sync/SyncProvider.tsx";
+import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { LinkPanel } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
@@ -33,35 +33,19 @@ export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [friend, setFriend] = useState<Friend | null>(null);
-  const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
+  const { engine } = useSync();
 
-  async function load() {
-    if (!id) return;
-    try {
-      const [detail, list] = await Promise.all([
-        api.getFriend(id),
-        api.getFriendExpenses(id, filters),
-      ]);
-      setFriend(detail.friend);
-      setExpenses(list.expenses);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load this friend");
-    }
-  }
+  const loaded = useFriend(id);
+  const expenses = useFriendExpenses(id, filters)?.expenses ?? [];
 
-  useEffect(() => {
-    if (id) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on a new friend or a new filter
-  }, [id, filters]);
+  if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
+  if (loaded === null) return <p className="empty">This person is not on this device.</p>;
 
-  if (error) return <p className="error">{error}</p>;
-  if (!friend || !user) return <p className="muted">Loading…</p>;
+  const friend = loaded.friend;
 
   const name = fullName(friend);
   const people = [
@@ -123,7 +107,7 @@ export function FriendDetail() {
         title={`Add Expense with ${name}`}
         initialFriendId={friend.id}
         onClose={() => setOpenDialog(null)}
-        onCreated={load}
+
       />
 
       <Modal
@@ -164,16 +148,29 @@ export function FriendDetail() {
               }
             }
             onSubmit={async (payment) => {
-              await api.createFriendPayment(friend.id, {
-                // The friend endpoint takes a direction rather than a pair, since
-                // a one-on-one payment can only run between the two of you.
-                direction: payment.fromUserId === user.id ? "you_paid" : "they_paid",
-                amountMinor: payment.amountMinor,
-                currencyCode: payment.currencyCode,
-                date: payment.date,
+              // A payment is an expense with is_payment set, so the outbox carries
+              // it like any other. The pair is spelled out rather than sent as a
+              // direction: the queue is a batch of writes, not a set of endpoints,
+              // and "you_paid" would need the recipient inferred at replay time.
+              if (!engine) throw new Error("Not ready to save yet.");
+              await engine.enqueue({
+                kind: "payment.create",
+                id: ulid(),
+                payload: {
+                  groupId: null,
+                  description: "Payment",
+                  costMinor: payment.amountMinor,
+                  currencyCode: payment.currencyCode,
+                  date: payment.date ?? new Date().toISOString(),
+                  splitType: "exact",
+                  isPayment: true,
+                  participants: [
+                    { userId: payment.fromUserId, paidMinor: payment.amountMinor, input: 0 },
+                    { userId: payment.toUserId, paidMinor: 0, input: payment.amountMinor },
+                  ],
+                },
               });
               closeSettle();
-              await load();
             }}
           />
         )}

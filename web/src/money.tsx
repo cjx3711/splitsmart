@@ -6,7 +6,11 @@
  * guess moves the decimal point on someone's balance.
  *
  * Until the table has loaded, amounts render as a dash rather than a
- * provisionally-wrong number.
+ * provisionally-wrong number. THE MIRROR IS READ FIRST, precisely because of
+ * that: with no network and no cached currencies, every screen is a wall of
+ * dashes, which is why the bootstrap carries this table rather than leaving it to
+ * a separate fetch that may never land. See docs/OFFLINE.md, "Boot without the
+ * network".
  */
 import {
   createContext,
@@ -17,6 +21,8 @@ import {
   type ReactNode,
 } from "react";
 import { api, formatMoney, parseMoney, type Currency, type CurrencyAmount } from "./api.ts";
+import { useLocalDb } from "./sync/SyncProvider.tsx";
+import { useLiveQuery } from "dexie-react-hooks";
 
 interface CurrencyContextValue {
   currencies: Currency[];
@@ -37,20 +43,56 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [frequentCodes, setFrequentCodes] = useState<string[]>([]);
+  const db = useLocalDb();
+
+  // Live, so a bootstrap that fills the table after this component first rendered
+  // still paints amounts rather than dashes. A one-shot read on mount would miss
+  // that, which is exactly the first-login case.
+  const mirrored = useLiveQuery(() => (db ? db.currencies.toArray() : []), [db]);
+
+  useEffect(() => {
+    if (!mirrored || mirrored.length === 0) return;
+    setCurrencies(
+      mirrored.map((row) => ({
+        code: row.code,
+        decimal_places: row.decimalPlaces,
+        symbol: row.symbol,
+        name: row.name ?? row.code,
+      })),
+    );
+    setLoaded(true);
+  }, [mirrored]);
 
   useEffect(() => {
     api
       .listCurrencies()
-      .then((r) => setCurrencies(r.currencies))
-      .catch(() => setCurrencies([]))
-      .finally(() => setLoaded(true));
+      .then((r) => {
+        setCurrencies(r.currencies);
+        setLoaded(true);
+        // Refresh the mirror so the next offline reload has the table. The
+        // mapping is the only translation: the API speaks snake_case, Dexie
+        // stores the sync document.
+        if (db) {
+          void db.currencies.bulkPut(
+            r.currencies.map((c) => ({
+              code: c.code,
+              decimalPlaces: c.decimal_places,
+              symbol: c.symbol,
+              name: c.name,
+            })),
+          );
+        }
+      })
+      // Deliberately does NOT clear what the mirror supplied: offline, that copy
+      // is the only thing standing between the user and a screen of dashes.
+      .catch(() => {});
     // Fails silently when signed out; the picker just falls back to a
     // popular-currencies default in that case.
     api
       .frequentCurrencies()
       .then((r) => setFrequentCodes(r.codes))
       .catch(() => setFrequentCodes([]));
-  }, []);
+  }, [db]);
 
   const value = useMemo<CurrencyContextValue>(() => {
     const byCode = new Map(currencies.map((c) => [c.code, c.decimal_places]));

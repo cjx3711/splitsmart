@@ -4,10 +4,12 @@ import { api } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { GROUP_TYPE_LABELS, GROUP_TYPES, type GroupType } from "../groupTypes.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
+import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 
 export function NewGroup() {
   const navigate = useNavigate();
   const refreshSidebar = useSidebarRefresh();
+  const online = useOnline();
 
   const [name, setName] = useState("");
   const [groupType, setGroupType] = useState<GroupType>("trip");
@@ -37,6 +39,9 @@ export function NewGroup() {
         <h1>New group</h1>
       </div>
 
+      {!online ? (
+        <NeedsConnection what="Creating a group" />
+      ) : (
       <form onSubmit={handleSubmit} className="card stack">
         {error && <p className="error">{error}</p>}
         <div className="form-grid">
@@ -72,6 +77,7 @@ export function NewGroup() {
           </button>
         </div>
       </form>
+      )}
     </>
   );
 }

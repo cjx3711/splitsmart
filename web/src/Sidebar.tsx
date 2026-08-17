@@ -1,15 +1,18 @@
 /**
  * The left rail: dashboard, activity, all expenses, then groups and friends.
  *
- * It owns the group and friend lists rather than each page fetching its own,
- * because they are visible on every screen. Pages that change either list call
- * useSidebarRefresh(). See App.tsx.
+ * It reads the group and friend lists from the offline mirror, which is also why
+ * it no longer needs telling when they change: a Dexie live query re-runs itself
+ * when a sync lands or a write is queued. useSidebarRefresh() survives for the
+ * screens that still do an online-only write (adding a friend, creating a group)
+ * and want the rail to catch up before the next sync tick.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { LuSettings } from "react-icons/lu";
-import { api, fullName, type Group, type Friend } from "./api.ts";
-import { useAuth, useSidebarVersion } from "./App.tsx";
+import { fullName } from "./api.ts";
+import { useAuth } from "./App.tsx";
+import { useFriends, useGroups } from "./localData.ts";
 import { Avatar } from "./Avatar.tsx";
 import { GroupTypeIcon } from "./groupTypes.tsx";
 
@@ -23,15 +26,9 @@ function byNewestId<T extends { id: string }>(items: T[]): T[] {
 
 export function Sidebar({ className }: { className: string }) {
   const { user } = useAuth();
-  const version = useSidebarVersion();
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
   const [filter, setFilter] = useState("");
-
-  useEffect(() => {
-    void api.listGroups().then((r) => setGroups(r.groups)).catch(() => {});
-    void api.listFriends().then((r) => setFriends(r.friends)).catch(() => {});
-  }, [version]);
+  const groups = useGroups()?.groups ?? [];
+  const friends = useFriends()?.friends ?? [];
 
   const query = filter.trim().toLowerCase();
   const filteredGroups = useMemo(

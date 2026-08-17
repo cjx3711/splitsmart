@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AccessLink } from "./api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { NeedsConnection, useOnline } from "./OnlineOnly.tsx";
 
 export function CopyLinkButton({ url, label = "Copy link" }: { url: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -49,6 +50,8 @@ export function LinkPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const online = useOnline();
+  const manage = canManage && online;
 
   const key = "groupId" in query ? query.groupId : query.friendId;
 
@@ -114,6 +117,7 @@ export function LinkPanel({
         <p className="muted" style={{ margin: 0 }}>
           {intro}
         </p>
+        {canManage && !online && <NeedsConnection what="Managing guest links" />}
         {error && <p className="error">{error}</p>}
 
         {slots.map((slot) => {
@@ -156,7 +160,7 @@ export function LinkPanel({
                 </p>
               )}
 
-              {canManage && (
+              {manage && (
                 <div className="link-slot-actions">
                   <button
                     className="secondary inline"

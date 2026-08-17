@@ -25,6 +25,8 @@ import {
 import type { IconType } from "react-icons";
 import { api } from "./api.ts";
 import { Modal } from "./Modal.tsx";
+import { useLocalDb } from "./sync/SyncProvider.tsx";
+import { useLiveQuery } from "dexie-react-hooks";
 
 /** Splitwise's leaf id -> our glyph. Parents are keyed here too, for headings. */
 const ICONS: Record<number, IconType> = {
@@ -59,34 +61,56 @@ export interface Category {
   name: string;
 }
 
+let cached: Promise<Category[]> | null = null;
+
 export function CategoryIcon({ id, size = 20 }: { id: number | null; size?: number }) {
   const Icon = (id !== null && ICONS[id]) || LuTag;
   return <Icon size={size} aria-hidden="true" />;
 }
 
 /**
- * The category list, fetched once per page load and shared.
+ * The category list: mirror first, network as a refresh.
  *
- * 50 rows that change only when the database is reseeded; refetching them per
- * dialog would be three requests to render one icon.
+ * 50 rows that change only when the database is reseeded. The picker cannot
+ * render without them, so they ride along on bootstrap rather than being a
+ * separate fetch that may never land.
  */
-let cached: Promise<Category[]> | null = null;
-
 export function useCategories(): Category[] {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const db = useLocalDb();
+  const mirrored = useLiveQuery(() => (db ? db.categories.toArray() : []), [db]);
+  const [fetched, setFetched] = useState<Category[]>([]);
 
   useEffect(() => {
     cached ??= api.listCategories().then((r) => r.categories).catch(() => []);
     let live = true;
     void cached.then((list) => {
-      if (live) setCategories(list);
+      if (!live) return;
+      setFetched(list);
+      if (db && list.length > 0) {
+        void db.categories.bulkPut(
+          list.map((c) => ({
+            id: c.id,
+            parentId: c.parent_id,
+            name: c.name,
+            icon: null,
+            isDefault: c.id === DEFAULT_CATEGORY_ID,
+          })),
+        );
+      }
     });
     return () => {
       live = false;
     };
-  }, []);
+  }, [db]);
 
-  return categories;
+  if (mirrored && mirrored.length > 0) {
+    return mirrored.map((row) => ({
+      id: row.id,
+      parent_id: row.parentId,
+      name: row.name,
+    }));
+  }
+  return fetched;
 }
 
 /**

@@ -1,9 +1,8 @@
 # Offline-first SplitSmart
 
-A plan for the remaining work. The logged-in app should install as a PWA, hold
-the user's visible ledger locally, stay fully usable with no network, and write
-back when the connection returns — with an honest unsynced count and last-synced
-time in the UI.
+The logged-in app installs as a PWA, holds the user's visible ledger locally,
+stays fully usable with no network, and writes back when the connection returns —
+with an honest unsynced count and last-synced time in the UI.
 
 The reference *shape* is DumberTime (`~/development/DumberTime`, `CLOUD_SYNC.md`):
 Dexie, an explicit outbox, receive-then-send, gzip over HTTP. That skeleton is
@@ -15,7 +14,7 @@ no local ledger, no outbox, and no offline UI. See "Link access is online-only".
 
 ## Context
 
-Already in place, and this plan assumes them:
+Already in place before this work, and the design assumes them:
 
 - ULID primary keys (`docs/ULIDS.md`). The client may mint an expense or comment
   id; `createExpense` / `createComment` already take optional `id` and treat a
@@ -28,11 +27,12 @@ Already in place, and this plan assumes them:
   `deriveRepayments` / `simplifyDebts`. `web/src/money.tsx` already requires
   `decimalPlaces`.
 
-Not built: `expenses.version`, `sync_log`, `/api/v1/sync/*`, Dexie, the outbox,
-cached profile/currencies so a logged-in reload without the network is the app.
+Shipped with this work: `expenses.version`, `sync_log`, `/api/v1/sync/*`, the
+Dexie mirror namespaced by user id, the outbox reducer, and cached profile /
+currencies so a logged-in reload without the network is the app.
 
-The canonical use case — a restaurant or a trip with no signal — is exactly
-what fails today.
+The canonical use case — a restaurant or a trip with no signal — is what this
+is for.
 
 ---
 
@@ -556,8 +556,9 @@ comments are never pushed.
 rejected expense goes to a quarantine list. An expense that silently vanishes
 between devices is worse than an error message.
 
-Gzip the push body with `pako` above a size threshold — that needs a matching
-server gunzip. Pull responses get gzip from the HTTP layer.
+Gzip the push body with `CompressionStream` above a kilobyte — the server
+gunzips with `node:zlib` when it sees `Content-Encoding: gzip`. Pull responses
+get gzip from the HTTP layer (`hono/compress` on `/api/v1/sync`).
 
 ---
 
@@ -573,10 +574,9 @@ multi-store transactions and compound indexes. Skip `dexie-syncable` and skip
 ### Local schema
 
 ```ts
-// web/src/db/local.ts — sketch
+// web/src/db/local.ts
 const db = new Dexie(`splitsmart-${userId}`) as Dexie & {
   expenses:      EntityTable<LocalExpense, "id">;
-  expenseUsers:  EntityTable<LocalExpenseUser, "key">;  // `${expenseId}:${userId}`
   comments:      EntityTable<LocalComment, "id">;
   groups:        EntityTable<LocalGroup, "id">;
   groupMembers:  EntityTable<LocalGroupMember, "key">;
@@ -589,13 +589,12 @@ const db = new Dexie(`splitsmart-${userId}`) as Dexie & {
 };
 
 db.version(1).stores({
-  expenses:     "id, groupId, date, deletedAt, syncState, repeatOf",
-  expenseUsers: "key, expenseId, userId, [expenseId+userId]",
-  comments:     "id, expenseId, createdAt, deletedAt, syncState",
+  expenses:     "id, groupId, date, syncState, repeatOf",
+  comments:     "id, expenseId, createdAt, syncState",
   groups:       "id, name",
-  groupMembers: "key, groupId, userId, [groupId+userId]",
+  groupMembers: "key, groupId, userId",
   users:        "id, email",
-  friendships:  "key, otherUserId",
+  friendships:  "key, userAId, userBId",
   currencies:   "code",
   categories:   "id, parentId",
   outbox:       "++seq, id, kind, status",
@@ -606,8 +605,10 @@ db.version(1).stores({
 Indexed fields are not the whole row. `LocalExpense` also carries `version`,
 `currencyCode`, `costMinor`, `splitType`, `splitMeta`, `details`, `categoryId`,
 `isPayment`, `paymentMethod`, `repeatInterval`, `nextRepeat`, `repeatOf`,
-`createdBy` — everything the editor needs to reopen a bill. Groups need
-`default_currency` and `simplify_by_default`.
+`createdBy` — everything the editor needs to reopen a bill. Shares and the
+people they name stay **nested on the expense document** rather than a join
+table: they are always read with the bill and rewritten wholesale on every
+write. Groups need `default_currency` and `simplify_by_default`.
 
 `LocalComment` carries `expenseId`, `userId`, `content`, `kind` (`'user'` |
 `'system'`), `createdAt`, `deletedAt`, `syncState`. Applying an expense
@@ -736,9 +737,10 @@ Already claimed, on purpose, so a later worker cannot sit at `/`:
 Do not add `vite-plugin-pwa` on top of this unless it replaces the hand-rolled
 files entirely. Two workers fighting for `/app/` is worse than none.
 
-Still to do: PNG icon set from `web/src/Logo.tsx`, cached profile + currencies
-so a logged-in reload with no network is the app, and the guest worker must
-**not** `caches.delete` the origin (see above).
+Still to do: nothing structural. PNG icons ship from `web/src/Logo.tsx` via
+`yarn icons`. Cached profile + currencies are in Dexie `meta` / `currencies`, so
+a logged-in reload with no network is the app. The guest worker must **not**
+`caches.delete` the origin (see above) — it does not.
 
 The app worker already serves the cached `/app` document for navigations under
 `/app` when the network fails — that *is* `navigateFallback`. Keep denying
@@ -751,45 +753,40 @@ Outbox in IDB survives; the form does not. Acceptable for v1, not invisible.
 
 ## Phasing
 
-Each phase ships on its own and is useful alone.
+Each phase shipped on its own.
 
-### Phase 0 — Foundations
+### Phase 0 — Foundations ✅
 `version` + `sync_log` in `001` (entity CHECK includes `comment` and
 `user_merge`; op CHECK includes `merge`), hand-updated `db/types.ts`,
 `expectedVersion` on update/delete/restore, `sync_log` writes inside
 `expenses.ts` (including restore, `advanceRepeatSchedule`, participant-diff
 `forget` **and** non-group gain-access catch-up), `comments.ts`,
 group/friend/member mutations, and `mergeUsers`. Local balance path via
-`deriveRepayments`. No client changes. `yarn db:check` must still pass.
+`deriveRepayments`. `yarn db:check` still passes.
 
-### Phase 1 — PWA shell
+### Phase 1 — PWA shell ✅
 Icons, cached profile + currencies for a **logged-in** reload, guest worker
-must not wipe the app cache. No sync yet.
+does not wipe the app cache.
 
-### Phase 2 — Local read mirror
+### Phase 2 — Local read mirror ✅
 Dexie schema, `/sync/bootstrap`, reference-data cache, pages converted to
-`useLiveQuery`, local balance computation. **The app becomes fully usable
-offline, read-only.** Online writes in this phase must write-through to Dexie
-from the existing API responses. CSV can be built from the mirror with the
-same filters as `expense-filters.ts`.
+`useLiveQuery`, local balance computation. **The app is fully usable
+offline.** CSV is built from the mirror with the same filters as
+`expense-filters.ts`.
 
-### Phase 3 — Incremental pull
+### Phase 3 — Incremental pull ✅
 `/sync/pull`, `/sync/snapshot` (group **and** expense), `catchUp`, audience
-query, seq cursor, `user_merge` remap, drain `more`. Test
-already-synced-then-joined-a-group, already-synced-then-added-to-a-non-group
-bill (comments present), and claim-then-other-device (ghost id gone, shares
-combined, outbox intact).
+query, seq cursor, `user_merge` remap, drain `more`. Covered in
+`src/routes/native/sync.test.ts`.
 
-### Phase 4 — Offline writes
+### Phase 4 — Offline writes ✅
 Outbox reducer (including restore and merge remap), `/sync/push` through the
 existing domain writers, four-status contract, conflict + quarantine.
-**This is where the risk in the project lives.**
+`web/src/sync/outbox.test.ts` pins the reducer without a browser.
 
-### Phase 5 — Status and polish
+### Phase 5 — Status and polish ✅
 Unsynced count, last-synced time, per-expense badges, conflict resolution
 screen, online-only affordances disabled with an explanation.
-
-Rough shape: phases 0–3 are a few days each; phase 4 is where the week goes.
 
 ---
 

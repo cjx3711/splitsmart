@@ -7,10 +7,15 @@
  * now that there is a restore endpoint the honest thing is to stay on the page and
  * offer the undo, rather than bouncing to the group and leaving the tombstone
  * unreachable. Leaving the page is the user's next click, not ours.
+ *
+ * Delete, undo, edit and commenting all go through the outbox, so all four work
+ * with no network. The delete/undo pair is also the reason the mirror keeps
+ * tombstones: `GET /expenses/:id` filters them and the local read deliberately
+ * does not, because this is the only screen that can offer the undo.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, fullName, type ExpenseDetail as ExpenseDetailData, type Friend } from "../api.ts";
+import { fullName } from "../api.ts";
 import { Amount } from "../money.tsx";
 import { makeLookup } from "../ExpenseList.tsx";
 import { EditExpenseDialog } from "../EditExpenseDialog.tsx";
@@ -18,56 +23,49 @@ import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote } from "../RepeatNote.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import { useAuth, useSidebarRefresh } from "../App.tsx";
+import { SyncBadge } from "../SyncStatusBar.tsx";
+import { useAuth } from "../App.tsx";
+import { useExpense, useFriends } from "../localData.ts";
+import { useSync } from "../sync/SyncProvider.tsx";
+import { useLocal } from "../sync/useLocal.ts";
 
 export function ExpenseDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const refreshSidebar = useSidebarRefresh();
+  const { engine } = useSync();
 
-  const [expense, setExpense] = useState<ExpenseDetailData | null>(null);
-  const [friends, setFriends] = useState<Friend[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
-  /** True between a delete and either the undo or navigating away. */
-  const [deleted, setDeleted] = useState(false);
 
-  async function load() {
-    if (!id) return;
-    try {
-      const [detail, friendList] = await Promise.all([
-        api.getExpense(id),
-        api.listFriends(),
-      ]);
-      setExpense(detail.expense);
-      setFriends(friendList.friends);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load this expense");
-    }
-  }
+  const loaded = useExpense(id);
+  const friends = useFriends()?.friends ?? [];
+  const local = useLocalExpenseRow(id);
 
-  useEffect(() => {
-    if (id) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the id in the URL changes
-  }, [id]);
+  if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
+  if (loaded === null) return <p className="empty">This expense is not on this device.</p>;
+
+  const expense = loaded.expense;
+  // The tombstone IS the state now, rather than a flag held next to a row the
+  // server would refuse to hand back. The undo works offline for the same reason.
+  const deleted = expense.deleted_at !== null;
 
   function back() {
-    navigate(expense?.group_id ? `/groups/${expense.group_id}` : "/expenses");
+    navigate(expense.group_id ? `/groups/${expense.group_id}` : "/expenses");
   }
 
   async function handleDelete() {
     if (!id) return;
+    if (!engine) throw new Error("Not ready to save yet.");
     setBusy(true);
     try {
-      await api.deleteExpense(id);
-      refreshSidebar();
-      // The expense object stays in state deliberately: `GET /expenses/:id`
-      // filters tombstones, so reloading now would 404 and there would be
-      // nothing left on screen to undo from.
-      setDeleted(true);
+      await engine.enqueue({
+        kind: "expense.delete",
+        id,
+        baseVersion: expense.version ?? 1,
+      });
       setConfirmingDelete(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete this expense");
@@ -81,19 +79,20 @@ export function ExpenseDetail() {
     if (!id) return;
     setBusy(true);
     try {
-      await api.restoreExpense(id);
-      refreshSidebar();
-      setDeleted(false);
-      await load();
+      // A local delete that never left the device folds away entirely — the
+      // reducer drops both ops rather than sending a delete and an undo.
+      if (!engine) throw new Error("Not ready to save yet.");
+      await engine.enqueue({
+        kind: "expense.restore",
+        id,
+        baseVersion: expense.version ?? 1,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not restore this expense");
     } finally {
       setBusy(false);
     }
   }
-
-  if (error) return <p className="error">{error}</p>;
-  if (!expense || !user) return <p className="muted">Loading…</p>;
 
   const nameOf = makeLookup(friends, user.id);
   const title = expense.is_payment === 1 ? "Settle up" : expense.description;
@@ -114,7 +113,9 @@ export function ExpenseDetail() {
 
       <div className="page-head">
         <div>
-          <h1>{title}</h1>
+          <h1>
+            {title} <SyncBadge state={local?.syncState} />
+          </h1>
           <p className="muted" style={{ margin: 0 }}>
             {expense.date.slice(0, 10)}
             {expense.category_name && ` · ${expense.category_name}`}
@@ -131,6 +132,8 @@ export function ExpenseDetail() {
           )}
         </div>
       </div>
+
+      {error && <p className="error">{error}</p>}
 
       {deleted ? (
         <div className="notice stack">
@@ -189,15 +192,7 @@ export function ExpenseDetail() {
             ))}
           </div>
 
-          <CommentThread
-            expenseId={expense.id}
-            currentUserId={user.id}
-            api={{
-              list: api.listComments,
-              add: api.addComment,
-              remove: api.deleteComment,
-            }}
-          />
+          <CommentThread expenseId={expense.id} currentUserId={user.id} />
         </>
       )}
 
@@ -205,10 +200,7 @@ export function ExpenseDetail() {
         expense={expense}
         open={editing}
         onClose={() => setEditing(false)}
-        onSaved={async () => {
-          setEditing(false);
-          await load();
-        }}
+        onSaved={() => setEditing(false)}
       />
 
       <ConfirmDialog
@@ -226,4 +218,15 @@ export function ExpenseDetail() {
       </ConfirmDialog>
     </>
   );
+}
+
+/**
+ * The mirror's own row, for its sync badge.
+ *
+ * Separate from `useExpense` because that returns the API-shaped detail every
+ * screen reads, and `syncState` is not part of that shape: it is a fact about this
+ * device, not about the expense.
+ */
+function useLocalExpenseRow(id: string | undefined) {
+  return useLocal((db) => (id ? db.expenses.get(id) : Promise.resolve(undefined)), [id]);
 }

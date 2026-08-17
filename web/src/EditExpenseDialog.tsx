@@ -7,13 +7,21 @@
  * `split_input` and, for itemized splits, `split_meta` are exactly what lets
  * the split reopen as typed rather than being re-derived from the stored
  * amounts. See src/domain/expenses.ts.
+ *
+ * The save is queued, not posted, and carries `baseVersion` — the version this
+ * form was opened against. A mismatch on the server is a CONFLICT rather than an
+ * overwrite: somebody else edited the same bill while this one was waiting, and
+ * only a person can say which number is right. See web/src/pages/Conflicts.tsx.
  */
 import { useEffect, useMemo, useState } from "react";
-import { api, fullName, type ExpenseDetail, type Friend, type Group } from "./api.ts";
+import { fullName, type ExpenseDetail } from "./api.ts";
 import { Modal } from "./Modal.tsx";
 import { ExpenseForm, type ExpenseFormInit } from "./ExpenseForm.tsx";
 import type { Person } from "./PeoplePicker.tsx";
-import { useAuth, useSidebarRefresh } from "./App.tsx";
+import { useAuth } from "./App.tsx";
+import { useFriends, useGroups, useGroupView } from "./localData.ts";
+import { useSync } from "./sync/SyncProvider.tsx";
+import { useOnline } from "./OnlineOnly.tsx";
 import { useCurrencies } from "./money.tsx";
 import { reconstructExpenseForm } from "./reopenExpense.ts";
 
@@ -29,40 +37,19 @@ export function EditExpenseDialog({
   onSaved: () => void | Promise<void>;
 }) {
   const { user } = useAuth();
-  const refreshSidebar = useSidebarRefresh();
+  const { engine } = useSync();
+  const online = useOnline();
   const { decimalsFor } = useCurrencies();
 
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [groupId, setGroupId] = useState<string | null>(expense.group_id);
-  const [members, setMembers] = useState<Person[] | null>(null);
+
+  const friends = useFriends()?.friends ?? [];
+  const groups = useGroups()?.groups ?? [];
+  const groupView = useGroupView(groupId ?? undefined);
 
   useEffect(() => {
-    if (!open) return;
-    setGroupId(expense.group_id);
-    void api.listFriends().then((r) => setFriends(r.friends)).catch(() => setFriends([]));
-    void api.listGroups().then((r) => setGroups(r.groups)).catch(() => setGroups([]));
+    if (open) setGroupId(expense.group_id);
   }, [open, expense.group_id]);
-
-  useEffect(() => {
-    if (!open || groupId === null || !user) {
-      setMembers(null);
-      return;
-    }
-    let live = true;
-    void api
-      .getGroup(groupId)
-      .then((r) => {
-        if (!live) return;
-        setMembers(
-          r.members.map((m) => ({ id: m.id, label: m.id === user.id ? "You" : fullName(m) })),
-        );
-      })
-      .catch(() => live && setMembers([]));
-    return () => {
-      live = false;
-    };
-  }, [open, groupId, user]);
 
   const initialParticipantIds = useMemo(
     () => expense.shares.map((s) => s.user_id).sort(),
@@ -76,6 +63,14 @@ export function EditExpenseDialog({
   );
 
   if (!user) return null;
+
+  const members: Person[] | null =
+    groupId === null || !groupView
+      ? null
+      : groupView.members.map((m) => ({
+          id: m.id,
+          label: m.id === user.id ? "You" : fullName(m),
+        }));
 
   const you: Person = { id: user.id, label: "You" };
   const candidates: Person[] =
@@ -96,11 +91,16 @@ export function EditExpenseDialog({
         onGroupChange={setGroupId}
         submitLabel="Save changes"
         initial={initial}
-        allowRepeat
+        allowRepeat={online}
         onSubmit={async (input) => {
-          await api.updateExpense(expense.id, { ...input, groupId });
+          if (!engine) throw new Error("Not ready to save yet.");
+          await engine.enqueue({
+            kind: "expense.update",
+            id: expense.id,
+            baseVersion: expense.version ?? 1,
+            payload: { ...input, groupId },
+          });
           onClose();
-          refreshSidebar();
           await onSaved();
         }}
       />

@@ -4,44 +4,26 @@
  * Names come from the friends list because an expense can involve people from
  * several groups at once and there is no single member roster to read from.
  *
- * Filtering is server-side. The list is capped, so narrowing the rows already
- * fetched would search the most recent hundred expenses and call the rest
- * "no results".
+ * Read from the offline mirror, and filtered over ALL of it rather than over a
+ * fetched page — the cap that used to make local filtering dishonest is gone
+ * along with the fetch. The rules are the server's own (docs/OFFLINE.md).
  */
-import { useEffect, useState } from "react";
-import { api, type ExpenseQuery, type ExpenseSummary, type Friend, type Group } from "../api.ts";
+import { useState } from "react";
+import { type ExpenseQuery } from "../api.ts";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
 import { useAuth } from "../App.tsx";
+import { useExpenses, useFriends, useGroups, useMirrorReady } from "../localData.ts";
 
 export function AllExpenses() {
   const { user } = useAuth();
-  const [expenses, setExpenses] = useState<ExpenseSummary[] | null>(null);
-  const [friends, setFriends] = useState<Friend[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [filters, setFilters] = useState<ExpenseQuery>({});
-  const [error, setError] = useState<string | null>(null);
 
-  // The reference data behind the filter bar's pickers, loaded once.
-  useEffect(() => {
-    void api.listFriends().then((r) => setFriends(r.friends)).catch(() => setFriends([]));
-    void api.listGroups().then((r) => setGroups(r.groups)).catch(() => setGroups([]));
-  }, []);
+  const expenses = useExpenses(filters)?.expenses ?? null;
+  const friends = useFriends()?.friends ?? [];
+  const groups = useGroups()?.groups ?? [];
+  const ready = useMirrorReady();
 
-  useEffect(() => {
-    let live = true;
-    void api
-      .listExpenses(filters)
-      .then((r) => live && setExpenses(r.expenses))
-      .catch((err) => {
-        if (live) setError(err instanceof Error ? err.message : "Could not load expenses");
-      });
-    return () => {
-      live = false;
-    };
-  }, [filters]);
-
-  if (error) return <p className="error">{error}</p>;
   if (!user) return <p className="muted">Loading…</p>;
 
   const nameOf = makeLookup(friends, user.id);
@@ -72,7 +54,9 @@ export function AllExpenses() {
           empty={
             filtering
               ? "Nothing matches those filters."
-              : "You haven't split anything yet."
+              : ready
+                ? "You haven't split anything yet."
+                : "Waiting for the first sync."
           }
         />
       )}

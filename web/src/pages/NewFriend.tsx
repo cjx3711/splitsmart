@@ -9,9 +9,11 @@ import { api, fullName } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { CopyLinkButton } from "../LinkPanel.tsx";
+import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 
 export function NewFriend() {
   const refreshSidebar = useSidebarRefresh();
+  const online = useOnline();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -60,6 +62,9 @@ export function NewFriend() {
         <h1>Add a friend</h1>
       </div>
 
+      {!online ? (
+        <NeedsConnection what="Adding a friend" />
+      ) : (
       <form onSubmit={handleSubmit} className="card stack">
         {error && <p className="error">{error}</p>}
         {result && (
@@ -139,6 +144,7 @@ export function NewFriend() {
           </button>
         </div>
       </form>
+      )}
     </>
   );
 }

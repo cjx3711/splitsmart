@@ -4,6 +4,7 @@ import { api } from "../api.ts";
 import { useAuth } from "../App.tsx";
 import { CurrencySelect } from "../CurrencySelect.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
+import { OnlineOnly, useOnline } from "../OnlineOnly.tsx";
 
 /**
  * Account settings and API tokens.
@@ -14,6 +15,7 @@ import { ConfirmDialog } from "../ConfirmDialog.tsx";
  */
 export function Settings() {
   const { user, setUser } = useAuth();
+  const online = useOnline();
   const navigate = useNavigate();
   const [tokens, setTokens] = useState<
     Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>
@@ -33,8 +35,8 @@ export function Settings() {
   }
 
   useEffect(() => {
-    void load();
-  }, []);
+    if (online) void load();
+  }, [online]);
 
   async function handleCreate(event: FormEvent) {
     event.preventDefault();
@@ -71,18 +73,20 @@ export function Settings() {
       {user && (
         <div style={{ maxWidth: "16rem" }}>
           <label htmlFor="preferredCurrency">Currency</label>
-          <CurrencySelect
-            id="preferredCurrency"
-            value={user.defaultCurrency}
-            onChange={(code) => {
-              void api
-                .updateMe({ defaultCurrency: code })
-                .then((result) => setUser(result.user))
-                .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not save preferred currency"),
-                );
-            }}
-          />
+          <OnlineOnly what="Changing your preferred currency">
+            <CurrencySelect
+              id="preferredCurrency"
+              value={user.defaultCurrency}
+              onChange={(code) => {
+                void api
+                  .updateMe({ defaultCurrency: code })
+                  .then((result) => setUser(result.user))
+                  .catch((err) =>
+                    setError(err instanceof Error ? err.message : "Could not save preferred currency"),
+                  );
+              }}
+            />
+          </OnlineOnly>
         </div>
       )}
 
@@ -92,7 +96,9 @@ export function Settings() {
         key; it is used for that import only and never stored. People are matched to existing
         accounts by email address, and you see exactly who matched before anything is written.
       </p>
-      <Link to="/import">Start an import</Link>
+      <OnlineOnly what="Importing from Splitwise">
+        <Link to="/import">Start an import</Link>
+      </OnlineOnly>
 
       <h2>API tokens</h2>
       <p className="muted">
@@ -123,13 +129,15 @@ export function Settings() {
               </div>
             </div>
             {!token.revoked_at && (
-              <button
-                className="secondary"
-                style={{ width: "auto" }}
-                onClick={() => setRevoking({ id: token.id, name: token.name })}
-              >
-                Revoke
-              </button>
+              <OnlineOnly what="Revoking an API token">
+                <button
+                  className="secondary"
+                  style={{ width: "auto" }}
+                  onClick={() => setRevoking({ id: token.id, name: token.name })}
+                >
+                  Revoke
+                </button>
+              </OnlineOnly>
             )}
           </div>
         ))}
@@ -140,7 +148,9 @@ export function Settings() {
           <label htmlFor="tokenName">New token name</label>
           <input id="tokenName" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
-        <button type="submit">Create token</button>
+        <OnlineOnly what="Creating an API token">
+          <button type="submit">Create token</button>
+        </OnlineOnly>
       </form>
 
       <ConfirmDialog

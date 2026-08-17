@@ -15,6 +15,16 @@
  */
 import type { SplitItem, SplitType } from "../../src/domain/split.ts";
 import type { RepeatInterval } from "../../src/domain/recurring.ts";
+import type {
+  SyncCategory,
+  SyncComment,
+  SyncCurrency,
+  SyncExpense,
+  SyncFriendship,
+  SyncGroup,
+  SyncGroupMember,
+  SyncUser,
+} from "../../src/domain/sync-types.ts";
 
 export type { SplitItem, SplitType, RepeatInterval };
 
@@ -311,6 +321,30 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   return res.json() as Promise<T>;
+}
+
+/**
+ * POST /sync/push, gzipping the body above a kilobyte.
+ *
+ * A restaurant bill's itemized payload is small; a catch-up of fifty edits is
+ * not. The server gunzips when it sees `Content-Encoding: gzip` (node:zlib).
+ * Pull responses are gzipped by the HTTP layer instead — we do not compress
+ * them here.
+ */
+const GZIP_THRESHOLD = 1024;
+
+async function pushRequest<T>(path: string, payload: unknown): Promise<T> {
+  const json = JSON.stringify(payload);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  let body: BodyInit = json;
+
+  if (json.length >= GZIP_THRESHOLD && typeof CompressionStream !== "undefined") {
+    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
+    body = await new Response(stream).arrayBuffer();
+    headers["Content-Encoding"] = "gzip";
+  }
+
+  return request<T>(path, { method: "POST", body, headers });
 }
 
 /**
@@ -674,7 +708,90 @@ export const api = {
       expensesTransferred: number;
       groupsMerged: number;
     }>("/claim", { method: "POST", body: JSON.stringify({ linkToken, userId }) }),
+
+  // --- sync -----------------------------------------------------------------
+  //
+  // The replication endpoints behind the offline mirror. Nothing else in this
+  // file should be called by web/src/sync/engine.ts, and nothing in the sync
+  // layer should be called by a screen: the screens read Dexie.
+
+  syncBootstrap: (cursor?: string | null) =>
+    request<BootstrapResponse>(`/sync/bootstrap${cursor ? `?cursor=${cursor}` : ""}`),
+
+  syncPull: (since: number, limit?: number) =>
+    request<PullResponse>(
+      `/sync/pull?since=${since}${limit === undefined ? "" : `&limit=${limit}`}`,
+    ),
+
+  syncSnapshotGroup: (groupId: string) =>
+    request<SnapshotResponse>(`/sync/snapshot?group_id=${groupId}`),
+
+  syncSnapshotExpense: (expenseId: string) =>
+    request<SnapshotResponse>(`/sync/snapshot?expense_id=${expenseId}`),
+
+  syncPush: (ops: PushOpWire[]) => pushRequest<{ results: PushResultWire[]; seq: number }>("/sync/push", { ops }),
 };
+
+// --- sync wire types --------------------------------------------------------
+
+export interface BootstrapResponse {
+  seq: number;
+  self?: SyncUser | null;
+  groups?: SyncGroup[];
+  members?: SyncGroupMember[];
+  friendships?: SyncFriendship[];
+  expenses?: SyncExpense[];
+  comments?: SyncComment[];
+  currencies?: SyncCurrency[];
+  categories?: SyncCategory[];
+  nextCursor: string | null;
+}
+
+export interface SnapshotResponse {
+  groups?: SyncGroup[];
+  members?: SyncGroupMember[];
+  expenses?: SyncExpense[];
+  comments?: SyncComment[];
+}
+
+/** One change from a pull page. `data` is whichever entity `entity` names. */
+export interface PullChange {
+  seq: number;
+  entity:
+    | "expense"
+    | "comment"
+    | "group"
+    | "group_member"
+    | "friendship"
+    | "user"
+    | "user_merge";
+  op: "upsert" | "delete" | "forget" | "merge";
+  data: unknown;
+}
+
+export interface PullResponse {
+  changes: PullChange[];
+  seq: number;
+  more: boolean;
+  remaining: number;
+  catchUp: Array<{ entity: "group" | "expense"; id: string }>;
+}
+
+export interface PushOpWire {
+  kind: string;
+  id: string;
+  baseVersion?: number;
+  payload?: unknown;
+}
+
+export interface PushResultWire {
+  id: string;
+  kind: string;
+  status: "applied" | "duplicate" | "conflict" | "rejected";
+  version?: number;
+  reason?: string;
+  server?: unknown;
+}
 
 // --- money formatting -------------------------------------------------------
 
