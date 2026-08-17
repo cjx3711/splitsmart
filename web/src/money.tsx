@@ -22,17 +22,21 @@ interface CurrencyContextValue {
   currencies: Currency[];
   loaded: boolean;
   decimalsFor: (code: string) => number | null;
+  /** This user's own most-used currencies, most-used first. Empty when signed out or unused. */
+  frequentCodes: string[];
 }
 
 const CurrencyContext = createContext<CurrencyContextValue>({
   currencies: [],
   loaded: false,
   decimalsFor: () => null,
+  frequentCodes: [],
 });
 
 export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [frequentCodes, setFrequentCodes] = useState<string[]>([]);
 
   useEffect(() => {
     api
@@ -40,6 +44,12 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       .then((r) => setCurrencies(r.currencies))
       .catch(() => setCurrencies([]))
       .finally(() => setLoaded(true));
+    // Fails silently when signed out — the picker just falls back to a
+    // popular-currencies default in that case.
+    api
+      .frequentCurrencies()
+      .then((r) => setFrequentCodes(r.codes))
+      .catch(() => setFrequentCodes([]));
   }, []);
 
   const value = useMemo<CurrencyContextValue>(() => {
@@ -48,8 +58,9 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       currencies,
       loaded,
       decimalsFor: (code) => byCode.get(code.toUpperCase()) ?? null,
+      frequentCodes,
     };
-  }, [currencies, loaded]);
+  }, [currencies, loaded, frequentCodes]);
 
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>;
 }

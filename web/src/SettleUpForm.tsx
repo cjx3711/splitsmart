@@ -11,6 +11,7 @@
  */
 import { useState, type FormEvent } from "react";
 import { useCurrencies, useParseMoney } from "./money.tsx";
+import { CurrencySelect } from "./CurrencySelect.tsx";
 import { type Payer } from "./ExpenseForm.tsx";
 
 export interface SettlePayment {
@@ -128,17 +129,7 @@ export function SettleUpForm({
         </div>
         <div>
           <label htmlFor="settleCurrency">Currency</label>
-          <select
-            id="settleCurrency"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-          >
-            {currencies.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
+          <CurrencySelect id="settleCurrency" value={currency} onChange={setCurrency} codes={currencies} />
         </div>
       </div>
 
