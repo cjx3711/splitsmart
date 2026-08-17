@@ -1,6 +1,89 @@
 import { Link } from "react-router-dom";
 
 /**
+ * Things Splitwise markets that this app does not do. Sourced from their
+ * homepage, Pro page, and app-store feature lists. The right-hand column is
+ * supposed to be the worse one.
+ */
+const MISSING: { feature: string; them: string; us: string }[] = [
+  {
+    feature: "Native iOS and Android apps",
+    them: "Yes",
+    us: "A website. You can put it on the home screen.",
+  },
+  {
+    feature: "Splitwise Pay, Pay by Bank",
+    them: "Yes, US",
+    us: "We are not a bank.",
+  },
+  {
+    feature: "PayPal, Venmo, Paytm",
+    them: "Yes",
+    us: "Record that you paid. The money still moves wherever you already send it.",
+  },
+  {
+    feature: "Push notifications",
+    them: "Yes",
+    us: "None. Open the page.",
+  },
+  {
+    feature: "Email when someone adds a bill",
+    them: "Yes",
+    us: "They can tell you. Or you can look.",
+  },
+  {
+    feature: "Monthly email reports",
+    them: "Yes",
+    us: "No newsletter of who owes whom.",
+  },
+  {
+    feature: "Receipt scanning",
+    them: "Pro",
+    us: "Type the number. Storing other people's photos is a product I don't want to run.",
+  },
+  {
+    feature: "Charts and graphs",
+    them: "Pro",
+    us: "It's a ledger, not Mint.",
+  },
+  {
+    feature: "Saved default splits",
+    them: "Pro",
+    us: "Set it each time.",
+  },
+  {
+    feature: "Import from a credit card",
+    them: "Pro, US",
+    us: "Type it.",
+  },
+  {
+    feature: "Comments on expenses",
+    them: "Yes",
+    us: "The group chat still exists.",
+  },
+  {
+    feature: "Export to CSV",
+    them: "Yes",
+    us: "Not yet.",
+  },
+  {
+    feature: "7+ languages",
+    them: "Yes",
+    us: "English.",
+  },
+  {
+    feature: "Avatars and group cover photos",
+    them: "Yes",
+    us: "Names.",
+  },
+  {
+    feature: "Someone to email when it breaks",
+    them: "Yes",
+    us: "A GitHub issue, if I see it.",
+  },
+];
+
+/**
  * Logged-out landing page. The app chrome (sidebar, add-expense) is for people
  * who already have a session; this is the page that explains what the thing is.
  */
@@ -137,6 +220,40 @@ export function Home() {
           <li>Installable as a PWA, and the ledger stays on the device</li>
           <li>A native JSON API, plus compatibility with the basic Splitwise API shapes</li>
         </ul>
+      </section>
+
+      <section className="mkt-compare" aria-labelledby="mkt-compare-heading">
+        <div className="mkt-compare-intro">
+          <h2 id="mkt-compare-heading">What we don&apos;t have</h2>
+          <p className="muted">
+            Splitwise has a company, two phone apps, and a payments product.
+            This is a ledger. The column on the right is the honest one.
+          </p>
+        </div>
+        <div className="mkt-compare-scroll">
+          <table className="mkt-compare-table">
+            <thead>
+              <tr>
+                <th scope="col">Feature</th>
+                <th scope="col">Splitwise</th>
+                <th scope="col">SplitSmart</th>
+              </tr>
+            </thead>
+            <tbody>
+              {MISSING.map((row) => (
+                <tr key={row.feature}>
+                  <th scope="row">{row.feature}</th>
+                  <td className="mkt-compare-them">{row.them}</td>
+                  <td className="mkt-compare-us">{row.us}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mkt-compare-foot muted">
+          If any of those are the reason you use Splitwise, stay there. That is
+          a real product with a team. This writes down who paid for dinner.
+        </p>
       </section>
 
       <section className="mkt-close">
