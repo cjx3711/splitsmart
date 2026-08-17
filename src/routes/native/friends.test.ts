@@ -135,8 +135,8 @@ describe("friendships are stored canonically", () => {
   });
 
   test("adding the same friendship twice is a no-op, not an error", async () => {
-    await addFriendship(db, aliceId, bobId);
-    await addFriendship(db, bobId, aliceId);
+    await addFriendship(aliceId, bobId);
+    await addFriendship(bobId, aliceId);
 
     const { userAId, userBId } = friendPair(aliceId, bobId);
     const rows = await db
@@ -363,7 +363,7 @@ describe("one-on-one expenses", () => {
 
 describe("removing a friend", () => {
   test("never moves a balance, and a shared group keeps them visible", async () => {
-    await addFriendship(db, aliceId, bobId);
+    await addFriendship(aliceId, bobId);
 
     const beforeBalance = await balanceWith(bobId);
     const res = await authed(`/api/v1/friends/${bobId}`, { method: "DELETE" });

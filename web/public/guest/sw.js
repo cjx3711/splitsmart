@@ -22,11 +22,10 @@ self.addEventListener("install", () => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      // Belt and braces: if an earlier build ever cached anything under this
-      // origin, none of it should survive here.
-      if (self.caches) {
-        for (const key of await caches.keys()) await caches.delete(key);
-      }
+      // Do NOT caches.delete() here. caches.keys() is origin-wide, so wiping
+      // it would destroy the logged-in app shell (splitsmart-app-shell-v1)
+      // the moment someone opens a claim/guest link. This worker caches
+      // nothing; it should not touch what it did not create.
       await self.clients.claim();
     })(),
   );

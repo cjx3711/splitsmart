@@ -27,6 +27,7 @@ import { db, transaction } from "../db/index.ts";
 import { formatAmount } from "./money.ts";
 import { isUlid, ulid } from "./ulid.ts";
 import { serializeMetadata, type EntityMetadata } from "./metadata.ts";
+import { logChange } from "./sync-log.ts";
 
 export type CommentKind = "user" | "system";
 
@@ -242,6 +243,16 @@ export async function createComment(input: CreateCommentInput): Promise<string> 
       });
     }
 
+    // System rows are logged too, even though no client ever pushes one. They
+    // are the bill's history and other devices have to receive them; the
+    // asymmetry is only in which direction they travel.
+    await logCommentChange(trx, {
+      commentId: id,
+      expenseId: input.expenseId,
+      op: "upsert",
+      actorId: input.userId,
+    });
+
     return id;
   });
 }
@@ -293,6 +304,43 @@ export async function deleteComment(commentId: string, deletedBy: string): Promi
       commentId,
       action: "comment.deleted",
     });
+
+    await logCommentChange(trx, {
+      commentId,
+      expenseId: comment.expense_id,
+      op: "delete",
+      actorId: deletedBy,
+    });
+  });
+}
+
+/**
+ * A `sync_log` row for a comment.
+ *
+ * The parent's `group_id` is COPIED onto the row rather than left to a join at
+ * pull time: the pull query has to decide whether a group's members may see this
+ * comment, and the expense it hangs off may itself be a tombstone by then.
+ * Denormalising one column beats an outer join in the hot path of every sync.
+ *
+ * A comment never touches `expenses.version`. That is load-bearing rather than
+ * an oversight — see the module header — so there is nothing to bump here.
+ */
+async function logCommentChange(
+  trx: DB,
+  input: { commentId: string; expenseId: string; op: "upsert" | "delete"; actorId: string },
+): Promise<void> {
+  const expense = await trx
+    .selectFrom("expenses")
+    .select("group_id")
+    .where("id", "=", input.expenseId)
+    .executeTakeFirst();
+
+  await logChange(trx, {
+    entity: "comment",
+    entityId: input.commentId,
+    op: input.op,
+    groupId: expense?.group_id ?? null,
+    actorUserId: input.actorId,
   });
 }
 
@@ -529,16 +577,29 @@ export async function recordExpenseEvent(
       content = `${who} restored this expense.`;
     }
 
+    const id = ulid();
+
     await trx
       .insertInto("comments")
       .values({
-        id: ulid(),
+        id,
         expense_id: input.expenseId,
         user_id: input.actorId,
         kind: "system",
         content,
       })
       .execute();
+
+    // Inside the same try, so this inherits best-effort as well. The worst case
+    // is one generated sentence that other devices never receive; the ledger
+    // write this describes is never at risk, which is the trade the contract
+    // above already makes.
+    await logCommentChange(trx, {
+      commentId: id,
+      expenseId: input.expenseId,
+      op: "upsert",
+      actorId: input.actorId,
+    });
   } catch (err) {
     console.error(
       `Could not record a system comment on expense ${input.expenseId}:`,

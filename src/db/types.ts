@@ -143,6 +143,12 @@ export interface ExpensesTable {
   next_repeat: string | null;
   /** The template this occurrence came from. NULL on templates and one-offs. */
   repeat_of: string | null;
+  /**
+   * Optimistic-concurrency counter. Bumped by writes a human could have made
+   * (update / delete / restore / merge), NOT by the scheduler or the importer's
+   * re-sync stamp. See docs/OFFLINE.md and migrations/001_initial_schema.sql.
+   */
+  version: Generated<number>;
   created_by: string | null;
   updated_by: string | null;
   created_at: Generated<string>;
@@ -191,6 +197,30 @@ export interface EmailTokensTable {
   used_at: string | null;
 }
 
+/**
+ * The append-only change log offline clients pull from.
+ *
+ * `seq` is Generated because it is AUTOINCREMENT and is the sync cursor; never
+ * insert one by hand. See migrations/001_initial_schema.sql for what
+ * `entity_id`, `other_user_id` and `audience_user_id` mean for each entity, and
+ * docs/OFFLINE.md for why audience is resolved at read time.
+ */
+export interface SyncLogTable {
+  seq: Generated<number>;
+  /** 'expense' | 'comment' | 'group' | 'group_member' | 'friendship' | 'user' | 'user_merge'. */
+  entity: string;
+  entity_id: string;
+  /** Friendship: user_b_id. user_merge: the survivor. NULL otherwise. */
+  other_user_id: string | null;
+  /** 'upsert' | 'delete' | 'forget' | 'merge'. */
+  op: string;
+  group_id: string | null;
+  actor_user_id: string | null;
+  /** "This row is for you specifically": forget rows, and merge fan-out. */
+  audience_user_id: string | null;
+  server_ts: Generated<string>;
+}
+
 export interface ActivityTable {
   id: string;
   user_id: string | null;
@@ -216,6 +246,7 @@ export interface Database {
   expense_repayments: ExpenseRepaymentsTable;
   comments: CommentsTable;
   activity: ActivityTable;
+  sync_log: SyncLogTable;
   email_tokens: EmailTokensTable;
 }
 
@@ -233,6 +264,9 @@ export type AccessLink = Selectable<AccessLinksTable>;
 
 export type Comment = Selectable<CommentsTable>;
 export type NewComment = Insertable<CommentsTable>;
+
+export type SyncLog = Selectable<SyncLogTable>;
+export type NewSyncLog = Insertable<SyncLogTable>;
 
 export type ExpenseUser = Selectable<ExpenseUsersTable>;
 export type Category = Selectable<CategoriesTable>;

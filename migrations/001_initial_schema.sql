@@ -415,6 +415,19 @@ CREATE TABLE expenses (
   next_repeat     TEXT,
   repeat_of       TEXT    REFERENCES expenses(id),
 
+  -- --- optimistic concurrency ----------------------------------------------
+  -- Bumped by every write a HUMAN could also have made: update, delete,
+  -- restore, and a merge's share rewrite. NOT bumped by the scheduler moving
+  -- `next_repeat`, and NOT bumped by the importer's re-sync stamp; neither is
+  -- somebody editing a bill, and a monthly tick must not conflict with a
+  -- pending typo fix. See docs/OFFLINE.md, "When `version` bumps".
+  --
+  -- An offline client stores the version it edited from and sends it back as
+  -- `baseVersion`; the writers compare it inside the transaction, so a stale
+  -- edit is a conflict rather than an overwrite. The ULID primary key is the
+  -- idempotency key for creates, which is why there is no `client_uuid`.
+  version        INTEGER NOT NULL DEFAULT 1,
+
   created_by     TEXT    REFERENCES users(id),
   updated_by     TEXT    REFERENCES users(id),
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -423,6 +436,7 @@ CREATE TABLE expenses (
   -- filter on it, so never hard-delete an expense.
   deleted_at     TEXT,
 
+  CHECK (version >= 1),
   CHECK (cost_minor >= 0),
   CHECK (is_payment IN (0, 1)),
   CHECK (split_type IN ('equal', 'exact', 'percent', 'shares', 'adjustment', 'itemized')),
@@ -575,6 +589,84 @@ CREATE TABLE activity (
 
 CREATE INDEX idx_activity_group_id ON activity(group_id, created_at DESC);
 CREATE INDEX idx_activity_user_id ON activity(user_id, created_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- sync_log: the change log offline clients pull from
+-- ---------------------------------------------------------------------------
+-- Append-only. One row per accepted write, inserted in the SAME transaction as
+-- the write it describes: a committed change without a log row is a change no
+-- other device will ever learn about. Never updated, never deleted.
+--
+-- `seq` is the ONLY sync cursor. An integer, not a timestamp and not a ULID,
+-- because a cursor has to be totally ordered by the thing that assigned it:
+-- `datetime('now')` has second resolution and two writes in one second would
+-- make "everything after :since" either skip a row or repeat one forever.
+--
+-- This is NOT the activity feed. `activity` is a human-readable story with its
+-- own visibility and suppression rules (the importer writes one summary entry
+-- for a thousand expenses); this is a replication log and every write is in it.
+--
+-- WHO MAY READ A ROW IS DECIDED AT READ TIME, not fanned out at write time.
+-- There is no per-recipient copy: `/api/v1/sync/pull` joins the caller's
+-- current ACL against this table (see src/routes/native/sync.ts). Fan-out
+-- would mean N rows per write and a rewrite of history whenever somebody
+-- joined a group. The exceptions are the two columns below, which exist
+-- precisely because read-time resolution cannot answer their question:
+--
+--   audience_user_id  "this row is for you and only you". A `forget` (you were
+--                     removed from an expense, so you no longer match the
+--                     participant subquery that would have shown it to you)
+--                     and the fan-out of a merge.
+--   other_user_id     the second half of a pair: a friendship's `user_b_id`,
+--                     or a merge's survivor.
+--
+-- Composite keys have no surrogate ULID, so they are encoded:
+--
+--   expense / comment / group / user   that row's own ULID
+--   group_member                       member's user ULID, plus group_id
+--   friendship                         user_a_id, other_user_id = user_b_id
+--   user_merge                         the ghost, other_user_id = survivor
+--
+-- A `comment` row copies `group_id` from its parent expense so the pull query
+-- does not have to join a parent that may itself be deleted. The payload the
+-- endpoint builds still carries `expense_id`.
+CREATE TABLE sync_log (
+  seq                INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity             TEXT    NOT NULL,
+  -- ULID of the entity, or the subject user for group_member / friendship /
+  -- user_merge (the ghost being consumed).
+  entity_id          TEXT    NOT NULL,
+  -- Friendship: user_b_id. user_merge: the survivor. NULL otherwise.
+  other_user_id      TEXT    REFERENCES users(id),
+  op                 TEXT    NOT NULL,
+  group_id           TEXT    REFERENCES groups(id),
+  actor_user_id      TEXT    REFERENCES users(id),
+  -- Extra viewer: forget rows, and the fan-out of user_merge.
+  audience_user_id   TEXT    REFERENCES users(id),
+  server_ts          TEXT    NOT NULL DEFAULT (datetime('now')),
+
+  -- 'delete' is a ledger tombstone (the row still exists, deleted_at is set);
+  -- 'forget' means drop THIS caller's replica of a row they can no longer see;
+  -- 'merge' is a claim (ghost -> survivor); 'upsert' is everything else,
+  -- including a restore (the row is live again) and a scheduler tick moving a
+  -- template's next_repeat.
+  CHECK (op IN ('upsert', 'delete', 'forget', 'merge')),
+  -- SQLite cannot ALTER a CHECK, and changing one means rebuilding the table
+  -- with foreign_keys OFF. Every entity this log will ever carry is listed
+  -- from day one for that reason, including the two that are not written by a
+  -- client at all: 'comment' and 'user_merge'.
+  CHECK (entity IN (
+    'expense','comment','group','group_member','friendship','user','user_merge'
+  )),
+  CHECK (LENGTH(entity_id) = 26)
+) STRICT;
+
+-- The three shapes the pull query actually runs. The audience index is not
+-- optional: `audience_user_id = :me` is the branch that delivers a forget, and
+-- without it that branch is a full scan of the log on every sync.
+CREATE INDEX idx_sync_log_group ON sync_log(group_id, seq);
+CREATE INDEX idx_sync_log_entity ON sync_log(entity, entity_id);
+CREATE INDEX idx_sync_log_audience ON sync_log(audience_user_id, seq);
 
 -- ---------------------------------------------------------------------------
 -- updated_at triggers

@@ -24,6 +24,7 @@ import { isUlid, ulid } from "./ulid.ts";
 import { parseMetadata, serializeMetadata, type EntityMetadata } from "./metadata.ts";
 import { recordExpenseEvent, snapshotExpense } from "./comments.ts";
 import { nextOccurrence, type RepeatInterval } from "./recurring.ts";
+import { logChange, logExpenseAudience, participantIds } from "./sync-log.ts";
 
 export interface CreateExpenseInput {
   /**
@@ -94,6 +95,63 @@ export interface CreateExpenseInput {
 }
 
 export class ExpenseError extends Error {}
+
+/**
+ * A write whose `expectedVersion` no longer matches the stored row.
+ *
+ * Somebody else has edited, deleted or restored this expense since the version
+ * the caller was working from. That is a CONFLICT, not something to resolve by
+ * guessing: `/api/v1/sync/push` hands the caller the server's row and its own
+ * queued op back, and a person decides. See docs/OFFLINE.md, "Conflicts are
+ * surfaced, not silently resolved".
+ *
+ * Assigned in the constructor body rather than as parameter properties;
+ * `--experimental-strip-types` rejects those.
+ */
+export class ExpenseConflictError extends ExpenseError {
+  readonly expenseId: string;
+  readonly expectedVersion: number;
+  readonly currentVersion: number;
+
+  constructor(expenseId: string, expectedVersion: number, currentVersion: number) {
+    super(
+      `Expense ${expenseId} has changed since you last saw it (you had version ${expectedVersion}, it is now ${currentVersion})`,
+    );
+    this.expenseId = expenseId;
+    this.expectedVersion = expectedVersion;
+    this.currentVersion = currentVersion;
+  }
+}
+
+/** What `deleteExpense` / `restoreExpense` report back. */
+export interface ExpenseStateResult {
+  /** The row's `version` after the write. */
+  version: number;
+  /**
+   * The row was already in the state the caller asked for, so nothing was
+   * written and no version was consumed. Push maps this to `duplicate`, which is
+   * why deleting or restoring twice is not an error.
+   */
+  noop: boolean;
+}
+
+/**
+ * Checks `expectedVersion` against the stored row, inside the caller's
+ * transaction.
+ *
+ * Absent means "I am not doing optimistic concurrency" — the ordinary
+ * online path, where the client read the row a moment ago and the last write
+ * wins as it always has. Only the sync layer sends one.
+ */
+function assertVersion(
+  expenseId: string,
+  expected: number | undefined,
+  current: number,
+): void {
+  if (expected !== undefined && expected !== current) {
+    throw new ExpenseConflictError(expenseId, expected, current);
+  }
+}
 
 /**
  * Creates an expense with its shares and derived repayments, atomically.
@@ -185,6 +243,17 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
         .execute();
     }
 
+    // Unconditional, unlike the feed entry above: `recordActivity: false` means
+    // "do not narrate this to a person", and the importer sets it for a thousand
+    // rows at a time. Other devices still have to receive all thousand.
+    await logChange(trx, {
+      entity: "expense",
+      entityId: id,
+      op: "upsert",
+      groupId: input.groupId ?? null,
+      actorUserId: input.createdBy,
+    });
+
     return id;
   });
 }
@@ -192,6 +261,13 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
 export interface UpdateExpenseInput
   extends Omit<CreateExpenseInput, "createdBy" | "id" | "repeatOf" | "createdAt"> {
   updatedBy: string;
+  /**
+   * The `version` the caller believes it is editing. Absent skips the check,
+   * which is the ordinary online path; `/api/v1/sync/push` always sends one, and
+   * a mismatch throws `ExpenseConflictError` rather than overwriting somebody
+   * else's edit. See docs/OFFLINE.md.
+   */
+  expectedVersion?: number;
   /**
    * Overrides the `updated_at` stamp. The Splitwise importer passes one and
    * records it in `metadata.splitwise_synced_at`, which is how a later run tells
@@ -222,12 +298,14 @@ export interface UpdateExpenseInput
  * participant behind the way a partial update can.
  *
  * Returns the `updated_at` it wrote, so a caller that has to remember when it
- * last touched a row does not have to read it back and guess.
+ * last touched a row does not have to read it back and guess, and the new
+ * `version`, so `/api/v1/sync/push` can tell the client what to base its next
+ * edit on without a second read that a concurrent write could poison.
  */
 export async function updateExpense(
   expenseId: string,
   input: UpdateExpenseInput,
-): Promise<string> {
+): Promise<{ updatedAt: string; version: number }> {
   const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
     items: input.items,
   });
@@ -239,17 +317,25 @@ export async function updateExpense(
   const splitMeta = serialiseSplitMeta(input);
   const updatedAt = input.updatedAt ?? new Date().toISOString().replace("T", " ").slice(0, 19);
 
-  await transaction(async (trx) => {
+  const version = await transaction(async (trx) => {
     const existing = await trx
       .selectFrom("expenses")
-      .select(["id", "deleted_at", "repeat_interval", "next_repeat", "repeat_of", "date"])
+      .select([
+        "id", "deleted_at", "repeat_interval", "next_repeat", "repeat_of", "date",
+        "group_id", "version",
+      ])
       .where("id", "=", expenseId)
       .executeTakeFirst();
 
     if (!existing) throw new ExpenseError(`Expense ${expenseId} not found`);
     if (existing.deleted_at) throw new ExpenseError(`Expense ${expenseId} is deleted`);
+    assertVersion(expenseId, input.expectedVersion, existing.version);
 
     await assertParticipantsAreMembers(trx, input.groupId ?? null, shares.map((s) => s.userId));
+
+    // Read before the rewrite below throws them away, so the audience diff can
+    // tell "removed from the bill" from "was never on it".
+    const participantsBefore = await participantIds(trx, expenseId);
 
     // Snapshotted before the write so the system comment can describe what
     // actually changed rather than what the request asked for.
@@ -277,7 +363,12 @@ export async function updateExpense(
             existing.next_repeat
           : nextOccurrence(date, repeatInterval);
 
-    await trx
+    // `version = version + 1` in the statement, and `version = :expected` in the
+    // WHERE, rather than a read-then-write of a number we already have. The
+    // check above would be enough on its own under SQLite's write locking, but
+    // making the guard part of the UPDATE means the row cannot be edited between
+    // the two even if this ever runs somewhere with looser isolation.
+    const written = await trx
       .updateTable("expenses")
       .set({
         group_id: input.groupId ?? null,
@@ -293,19 +384,46 @@ export async function updateExpense(
         payment_method: input.paymentMethod ?? null,
         repeat_interval: repeatInterval,
         next_repeat: nextRepeat,
+        version: sql<number>`version + 1`,
         updated_by: input.updatedBy,
         updated_at: updatedAt,
         ...(input.metadata ? { metadata: serializeMetadata(input.metadata) } : {}),
       })
       .where("id", "=", expenseId)
-      .execute();
+      .$if(input.expectedVersion !== undefined, (qb) =>
+        qb.where("version", "=", input.expectedVersion!),
+      )
+      .executeTakeFirst();
+
+    if (Number(written?.numUpdatedRows ?? 0) === 0) {
+      throw new ExpenseConflictError(expenseId, input.expectedVersion ?? 0, existing.version);
+    }
 
     await trx.deleteFrom("expense_users").where("expense_id", "=", expenseId).execute();
     await trx.deleteFrom("expense_repayments").where("expense_id", "=", expenseId).execute();
 
     await writeSharesAndRepayments(trx, expenseId, shares, repayments);
 
-    if (input.recordActivity === false) return;
+    await logChange(trx, {
+      entity: "expense",
+      entityId: expenseId,
+      op: "upsert",
+      groupId: input.groupId ?? null,
+      actorUserId: input.updatedBy,
+    });
+
+    // Who can no longer see this bill, and who has just been handed one whose
+    // conversation they have never pulled. See logExpenseAudience.
+    await logExpenseAudience(trx, {
+      expenseId,
+      actorId: input.updatedBy,
+      groupId: input.groupId ?? null,
+      previousGroupId: existing.group_id,
+      before: participantsBefore,
+      after: shares.map((s) => s.userId),
+    });
+
+    if (input.recordActivity === false) return existing.version + 1;
 
     await trx
       .insertInto("activity")
@@ -329,9 +447,11 @@ export async function updateExpense(
         event: { kind: "updated", before, after },
       });
     }
+
+    return existing.version + 1;
   });
 
-  return updatedAt;
+  return { updatedAt, version };
 }
 
 /**
@@ -346,21 +466,37 @@ export async function updateExpense(
  * Deleting a TEMPLATE stops the series and nothing else: the scheduler only
  * looks at live rows, and the bills it already generated are real money that
  * somebody still owes.
+ *
+ * The version bump is what makes delete-wins work rather than being a silent
+ * rejection: a device holding a queued edit at the old version pushes it, gets a
+ * conflict, and is told the row is a tombstone now — instead of quietly
+ * resurrecting somebody else's deletion.
  */
-export async function deleteExpense(expenseId: string, deletedBy: string): Promise<void> {
-  await transaction(async (trx) => {
+export async function deleteExpense(
+  expenseId: string,
+  deletedBy: string,
+  options: { expectedVersion?: number } = {},
+): Promise<ExpenseStateResult> {
+  return transaction(async (trx) => {
     const expense = await trx
       .selectFrom("expenses")
-      .select(["id", "group_id", "deleted_at"])
+      .select(["id", "group_id", "deleted_at", "version"])
       .where("id", "=", expenseId)
       .executeTakeFirst();
 
     if (!expense) throw new ExpenseError(`Expense ${expenseId} not found`);
-    if (expense.deleted_at) return; // already gone; deleting twice is not an error
+    assertVersion(expenseId, options.expectedVersion, expense.version);
+    // Already gone. Deleting twice is not an error, and it consumes no version:
+    // push reports it as `duplicate` and the client drops its queued op.
+    if (expense.deleted_at) return { version: expense.version, noop: true };
 
     await trx
       .updateTable("expenses")
-      .set({ deleted_at: sql`datetime('now')`, updated_by: deletedBy })
+      .set({
+        deleted_at: sql`datetime('now')`,
+        version: sql<number>`version + 1`,
+        updated_by: deletedBy,
+      })
       .where("id", "=", expenseId)
       .execute();
 
@@ -376,6 +512,19 @@ export async function deleteExpense(expenseId: string, deletedBy: string): Promi
       .execute();
 
     await recordExpenseEvent(trx, { expenseId, actorId: deletedBy, event: { kind: "deleted" } });
+
+    // `delete`, not `forget`: this is a ledger tombstone. Every device keeps the
+    // row and stops counting it, which is what makes the undo below possible
+    // from any of them.
+    await logChange(trx, {
+      entity: "expense",
+      entityId: expenseId,
+      op: "delete",
+      groupId: expense.group_id,
+      actorUserId: deletedBy,
+    });
+
+    return { version: expense.version + 1, noop: false };
   });
 }
 
@@ -389,17 +538,28 @@ export async function deleteExpense(expenseId: string, deletedBy: string): Promi
  * restored expense cannot come back with a stale derivation attached.
  *
  * Restoring twice is a no-op, so a double-tapped undo is not an error.
+ *
+ * A FIRST-CLASS WRITE, not an update that happens to clear `deleted_at`:
+ * `updateExpense` refuses deleted rows and that stays. It bumps `version` for
+ * the same reason delete does — otherwise the restored row still looks like the
+ * tombstone it replaced, and a stale edit at the old version would overwrite
+ * somebody else's undo.
  */
-export async function restoreExpense(expenseId: string, restoredBy: string): Promise<void> {
-  await transaction(async (trx) => {
+export async function restoreExpense(
+  expenseId: string,
+  restoredBy: string,
+  options: { expectedVersion?: number } = {},
+): Promise<ExpenseStateResult> {
+  return transaction(async (trx) => {
     const expense = await trx
       .selectFrom("expenses")
-      .select(["id", "group_id", "deleted_at"])
+      .select(["id", "group_id", "deleted_at", "version"])
       .where("id", "=", expenseId)
       .executeTakeFirst();
 
     if (!expense) throw new ExpenseError(`Expense ${expenseId} not found`);
-    if (!expense.deleted_at) return; // already live
+    assertVersion(expenseId, options.expectedVersion, expense.version);
+    if (!expense.deleted_at) return { version: expense.version, noop: true }; // already live
 
     const shares = await trx
       .selectFrom("expense_users")
@@ -417,6 +577,7 @@ export async function restoreExpense(expenseId: string, restoredBy: string): Pro
       .updateTable("expenses")
       .set({
         deleted_at: null,
+        version: sql<number>`version + 1`,
         updated_by: restoredBy,
         updated_at: new Date().toISOString().replace("T", " ").slice(0, 19),
       })
@@ -461,6 +622,19 @@ export async function restoreExpense(expenseId: string, restoredBy: string): Pro
       .execute();
 
     await recordExpenseEvent(trx, { expenseId, actorId: restoredBy, event: { kind: "restored" } });
+
+    // `upsert`: the row is live again. A tombstone is not a second identity, so
+    // there is nothing here for a client to un-delete separately — it replaces
+    // its local copy with this one and starts counting it again.
+    await logChange(trx, {
+      entity: "expense",
+      entityId: expenseId,
+      op: "upsert",
+      groupId: expense.group_id,
+      actorUserId: restoredBy,
+    });
+
+    return { version: expense.version + 1, noop: false };
   });
 }
 
@@ -536,21 +710,48 @@ export async function markImportSynced(
  * downtime is meant to stay behind and be worked through one bill per tick, each
  * dated the day it was due; the alternative is three months of rent appearing at
  * once, all dated today.
+ *
+ * DOES NOT BUMP `version`. This is the server's clock moving, not a person
+ * editing a bill: if a monthly tick bumped the version, everyone with a pending
+ * offline typo fix on their rent template would get a conflict once a month, for
+ * a change to a column they cannot even edit. It still writes a `sync_log` row,
+ * because other devices do need the new `next_repeat` — it is what the UI reads
+ * to say a series is behind. See docs/OFFLINE.md, "Scheduler".
  */
 export async function advanceRepeatSchedule(
   templateId: string,
   from: string,
   interval: RepeatInterval,
 ): Promise<boolean> {
-  const result = await db
-    .updateTable("expenses")
-    .set({ next_repeat: nextOccurrence(from, interval) })
-    .where("id", "=", templateId)
-    .where("next_repeat", "=", from)
-    .where("repeat_interval", "=", interval)
-    .executeTakeFirst();
+  return transaction(async (trx) => {
+    const result = await trx
+      .updateTable("expenses")
+      .set({ next_repeat: nextOccurrence(from, interval) })
+      .where("id", "=", templateId)
+      .where("next_repeat", "=", from)
+      .where("repeat_interval", "=", interval)
+      .executeTakeFirst();
 
-  return Number(result?.numUpdatedRows ?? 0) > 0;
+    if (Number(result?.numUpdatedRows ?? 0) === 0) return false;
+
+    const template = await trx
+      .selectFrom("expenses")
+      .select("group_id")
+      .where("id", "=", templateId)
+      .executeTakeFirst();
+
+    await logChange(trx, {
+      entity: "expense",
+      entityId: templateId,
+      op: "upsert",
+      groupId: template?.group_id ?? null,
+      // Nobody did this. The scheduler is not a person, and an actor id here
+      // would name whoever happened to create the series.
+      actorUserId: null,
+    });
+
+    return true;
+  });
 }
 
 /**

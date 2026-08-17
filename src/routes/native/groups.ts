@@ -19,6 +19,7 @@ import {
 } from "../../domain/expenses.ts";
 import { commentCountSql } from "../../domain/comments.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
+import { logChange } from "../../domain/sync-log.ts";
 import { revokeMemberLinks } from "../../domain/access-links.ts";
 import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
 import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
@@ -95,6 +96,21 @@ groupRoutes.post(
         .insertInto("group_members")
         .values({ group_id: created.id, user_id: auth.id, role: "owner", joined_via: "creator" })
         .execute();
+
+      // Two rows, because they are two entities the client stores separately.
+      // The membership one is also what tells the creator's OTHER devices to
+      // catch up on the group (docs/OFFLINE.md, "Snapshot on access grant"),
+      // which is how a group created on a phone reaches the laptop.
+      await logChange(
+        trx,
+        { entity: "group", entityId: created.id, groupId: created.id, actorUserId: auth.id },
+        {
+          entity: "group_member",
+          entityId: auth.id,
+          groupId: created.id,
+          actorUserId: auth.id,
+        },
+      );
 
       return created;
     });
@@ -340,20 +356,33 @@ groupRoutes.post(
       .where("user_id", "=", userId)
       .executeTakeFirst();
 
-    if (existing) {
-      if (existing.left_at === null) return c.json({ error: "Already a member" }, 409);
-      await db
-        .updateTable("group_members")
-        .set({ left_at: null })
-        .where("group_id", "=", groupId)
-        .where("user_id", "=", userId)
-        .execute();
-    } else {
-      await db
-        .insertInto("group_members")
-        .values({ group_id: groupId, user_id: userId, role: "member", joined_via: "added" })
-        .execute();
-    }
+    if (existing?.left_at === null) return c.json({ error: "Already a member" }, 409);
+
+    await transaction(async (trx) => {
+      if (existing) {
+        await trx
+          .updateTable("group_members")
+          .set({ left_at: null })
+          .where("group_id", "=", groupId)
+          .where("user_id", "=", userId)
+          .execute();
+      } else {
+        await trx
+          .insertInto("group_members")
+          .values({ group_id: groupId, user_id: userId, role: "member", joined_via: "added" })
+          .execute();
+      }
+
+      // No separate `user` row for the person added. Other people's names travel
+      // nested on the membership payload; a standalone `user` log row is for
+      // your own profile. See docs/OFFLINE.md, Migration notes.
+      await logChange(trx, {
+        entity: "group_member",
+        entityId: userId,
+        groupId,
+        actorUserId: auth.id,
+      });
+    });
 
     const member = await db
       .selectFrom("users")
@@ -408,6 +437,18 @@ groupRoutes.delete("/:id/members/:userId", async (c) => {
       .execute();
 
     await revokeMemberLinks(trx, groupId, userId);
+
+    // An `upsert` carrying `left_at`, not a `forget`. The departing member has to
+    // RECEIVE this row, and after `left_at` is set they no longer match the
+    // membership clause in the pull query — which is why that query also matches
+    // `entity = 'group_member' AND entity_id = :me`. They apply it, drop the
+    // group's expenses they are not a participant of, and keep the ones they are.
+    await logChange(trx, {
+      entity: "group_member",
+      entityId: userId,
+      groupId,
+      actorUserId: auth.id,
+    });
   });
 
   return c.json({ ok: true });

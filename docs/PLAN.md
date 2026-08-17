@@ -275,21 +275,24 @@ domain writers, installable PWA shell scoped to `/app/`, unsynced count and
 last-synced time in the UI.
 
 Guest-link visitors under `/guest` are **not** offline-capable, and the shell
-already enforces it: its service worker is network-only and clears any cache it
-finds, and losing the network shows a needs-connection screen. A link is a
+already enforces it: its service worker is network-only and does not cache,
+and losing the network shows a needs-connection screen. A link is a
 revocable capability; a local copy would outlive the owner expiring it.
 
-- ⬜ Foundations: `expenses.version`, `sync_log` (entity CHECK includes
-      `comment` from day one — see `docs/OFFLINE.md`; comments now exist, so
-      that entity is a real one and `src/domain/comments.ts` is where its log
-      rows go), local balances via `deriveRepayments`
-- 🚧 PWA shell: manifest and an app-shell service worker scoped to `/app/`
-      already exist (phase 9 needed the scope). Still to do: icons, cached
-      profile + currencies
+- ⬜ Foundations: `expenses.version` + `sync_log` folded into `001` (entity
+      CHECK includes `comment` and `user_merge`; op CHECK includes `merge`),
+      `expectedVersion` on update/delete/restore, log writes in `expenses.ts`
+      (including restore and `advanceRepeatSchedule`), `comments.ts`,
+      group/friend/member mutations, and `mergeUsers`. See `docs/OFFLINE.md`
+- 🚧 PWA shell: manifest (`start_url` `/app/`) and an app-shell service worker
+      scoped to `/app/` already exist. Still to do: icons, cached profile +
+      currencies
 - ⬜ Local read mirror: the app becomes fully usable offline, read-only (write-through while online), including comments
-- ⬜ Incremental pull: `/api/v1/sync/pull`, snapshot on join, seq cursor
-- ⬜ Offline writes: outbox reducer, `/api/v1/sync/push`, conflict + quarantine UI
-      (comment create/delete are their own ops, not nested in `expense.update`)
+- ⬜ Incremental pull: `/api/v1/sync/pull`, snapshot on join **and** on being
+      added to a non-group expense (comments), `user_merge` remap, seq cursor
+- ⬜ Offline writes: outbox reducer (including restore), `/api/v1/sync/push`,
+      conflict + quarantine UI (comment create/delete are their own ops, not
+      nested in `expense.update`)
 - ⬜ Status UI: unsynced count, last synced, per-expense sync badges
 
 Adding a friend, adding a group member, and creating a group stay

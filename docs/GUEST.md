@@ -151,11 +151,12 @@ at the root. Crossing shells is a document load, so those links are plain
 404s, which is why `Footer.tsx` says so at the top.
 
 Guest SW exists so a future or leftover SW at `/` cannot control `/guest/`:
-longer matching scope wins. It is network-only and clears any cache it finds -
-navigate with no network is a needs-connection screen, not last week's
-balances. That is the whole point of revocable links, and it is why the guest
-SW registers in dev too: the case it protects against is a stale worker that is
-already installed.
+longer matching scope wins. It is network-only and never touches `caches` —
+`caches.keys()` is origin-wide, so deleting them would wipe the logged-in app
+shell the moment someone opens a claim link. Navigate with no network is a
+needs-connection screen, not last week's balances. That is the whole point of
+revocable links, and it is why the guest SW registers in dev too: the case it
+protects against is a stale worker that is already installed.
 
 Production Hono: `/app` and `/app/*` → `app.html`; `/guest` and `/guest/*` →
 `guest.html`; everything else → `index.html`. `serveStatic` is registered

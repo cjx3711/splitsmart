@@ -24,6 +24,7 @@ import {
   issueVerificationToken,
   consumeVerificationToken,
 } from "../../email/verification.ts";
+import { logChange } from "../../domain/sync-log.ts";
 import { ulid } from "../../domain/ulid.ts";
 
 export const authRoutes = new Hono<AppEnv>();
@@ -271,11 +272,19 @@ authRoutes.patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c
     return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
   }
 
-  await db
-    .updateTable("users")
-    .set({ default_currency: input.defaultCurrency })
-    .where("id", "=", auth.id)
-    .execute();
+  await transaction(async (trx) => {
+    await trx
+      .updateTable("users")
+      .set({ default_currency: input.defaultCurrency })
+      .where("id", "=", auth.id)
+      .execute();
+
+    // The one place a standalone `user` log row is written. Everybody ELSE's name
+    // travels nested on the expense, membership and friendship payloads they
+    // appear in (docs/OFFLINE.md); this is your own profile, which your other
+    // devices cache and render before the network answers.
+    await logChange(trx, { entity: "user", entityId: auth.id, actorUserId: auth.id });
+  });
 
   return c.json({ user: meUser({ ...auth, defaultCurrency: input.defaultCurrency }) });
 });

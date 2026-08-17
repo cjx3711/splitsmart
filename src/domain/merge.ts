@@ -21,7 +21,8 @@ import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
 import { transaction } from "../db/index.ts";
 import { deriveRepayments } from "./split.ts";
-import { friendPair } from "./friends.ts";
+import { friendPair, listRelatedUserIds } from "./friends.ts";
+import { logChange } from "./sync-log.ts";
 import { ulid } from "./ulid.ts";
 
 export class MergeError extends Error {}
@@ -204,9 +205,15 @@ export async function mergeExpenseParticipants(
     .execute();
 
   // Stored split becomes a literal statement of the amounts. See the doc block.
+  //
+  // The version bump is the one place a merge behaves like a person editing the
+  // bill, and it should: somebody's shares are different afterwards. A device
+  // holding a queued edit of this expense will push it, get a conflict, and be
+  // shown the new numbers — which is right, because its edit was written against
+  // a participant list that no longer exists.
   await trx
     .updateTable("expenses")
-    .set({ split_type: "exact", split_meta: null })
+    .set({ split_type: "exact", split_meta: null, version: sql<number>`version + 1` })
     .where("id", "=", expenseId)
     .execute();
 
@@ -260,6 +267,24 @@ export async function mergeExpenseParticipants(
     .where("id", "=", expenseId)
     .where("updated_by", "=", fromUserId)
     .execute();
+
+  // The shares on this bill are different now, so every device that holds it
+  // needs the new row. Whole-entity upsert, as always: the client must NOT add
+  // the two people's shares locally — that logic lives in this function and a
+  // second copy in the browser would drift.
+  const group = await trx
+    .selectFrom("expenses")
+    .select("group_id")
+    .where("id", "=", expenseId)
+    .executeTakeFirst();
+
+  await logChange(trx, {
+    entity: "expense",
+    entityId: expenseId,
+    op: "upsert",
+    groupId: group?.group_id ?? null,
+    actorUserId: toUserId,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +339,37 @@ export async function mergeUsers(
     if (from.is_ghost !== 1) {
       throw new MergeError("That person already has an account of their own");
     }
+
+    // --- who has to be told -----------------------------------------------
+    // COLLECTED BEFORE ANYTHING MOVES. This is the one place read-time audience
+    // resolution cannot work: by the time anybody else pulls, the ghost is gone
+    // from expense_users, group_members and friendships, so "who had this person
+    // in their replica" is a question the log can no longer answer. It has to be
+    // answered now and written down as `audience_user_id`. See docs/OFFLINE.md,
+    // "Claim / merge".
+    const audience = new Set(await listRelatedUserIds(trx, fromUserId));
+    audience.delete(fromUserId);
+    // The survivor matches `other_user_id = :me` in the pull query, but include
+    // them anyway when they were not already related to the ghost, so a claim of
+    // a placeholder they shared nothing with still reaches their other devices.
+    audience.add(toUserId);
+
+    // Written FIRST, so these rows carry the lowest `seq` of anything this
+    // transaction produces. A client applies a pull page in seq order, and the
+    // remap has to run before the rows that name the survivor arrive: otherwise
+    // an outbox op still pointing at the ghost would be pushed against a user
+    // who no longer exists.
+    await logChange(
+      trx,
+      ...[...audience].map((userId) => ({
+        entity: "user_merge" as const,
+        entityId: fromUserId,
+        otherUserId: toUserId,
+        op: "merge" as const,
+        actorUserId: toUserId,
+        audienceUserId: userId,
+      })),
+    );
 
     // --- expenses ---------------------------------------------------------
     // Every expense the ghost is on, deleted ones included: a soft-deleted
@@ -391,6 +447,18 @@ export async function mergeUsers(
           .where("group_id", "=", membership.group_id)
           .where("user_id", "=", fromUserId)
           .execute();
+
+        // A membership the survivor did not have before. Their other devices
+        // have never seen this group, and this row is what makes them ask for it:
+        // a `group_member` upsert naming the caller triggers a group snapshot
+        // (docs/OFFLINE.md). That is how they acquire the history rather than by
+        // throwing the local database away and starting again.
+        await logChange(trx, {
+          entity: "group_member",
+          entityId: toUserId,
+          groupId: membership.group_id,
+          actorUserId: toUserId,
+        });
         continue;
       }
 
@@ -417,6 +485,16 @@ export async function mergeUsers(
         .where("user_id", "=", fromUserId)
         .execute();
 
+      // The survivor's own row changed (role, or left_at), so it goes out too.
+      // The ghost's row is dropped by the remap every client does when it applies
+      // the `user_merge` below; there is no separate delete for it.
+      await logChange(trx, {
+        entity: "group_member",
+        entityId: toUserId,
+        groupId: membership.group_id,
+        actorUserId: toUserId,
+      });
+
       groupsMerged++;
     }
 
@@ -442,6 +520,18 @@ export async function mergeUsers(
         .where("user_b_id", "=", row.user_b_id)
         .execute();
 
+      // The ghost's pair is gone. Clients also drop it as part of the remap, but
+      // the log has to say so for the same reason it says everything else: a
+      // device that syncs the merge and nothing else must end up in the same
+      // state as one that bootstraps fresh.
+      await logChange(trx, {
+        entity: "friendship",
+        entityId: row.user_a_id,
+        otherUserId: row.user_b_id,
+        op: "delete",
+        actorUserId: toUserId,
+      });
+
       // The owner who created the placeholder is very often already a friend
       // of the claiming account, and is always the same person as `other`
       // when they added the ghost themselves. Self-pairs just disappear.
@@ -453,6 +543,14 @@ export async function mergeUsers(
         .values({ user_a_id: userAId, user_b_id: userBId })
         .onConflict((oc) => oc.columns(["user_a_id", "user_b_id"]).doNothing())
         .execute();
+
+      await logChange(trx, {
+        entity: "friendship",
+        entityId: userAId,
+        otherUserId: userBId,
+        op: "upsert",
+        actorUserId: toUserId,
+      });
     }
 
     // --- comments and the activity feed -----------------------------------

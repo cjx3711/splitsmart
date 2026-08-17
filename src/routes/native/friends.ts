@@ -156,7 +156,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
   // Someone with that address already has an account: link to them rather than
   // creating a duplicate person. Their name is theirs, not whatever was typed.
   if (existing) {
-    await addFriendship(db, auth.id, existing.id);
+    await addFriendship(auth.id, existing.id);
 
     const invite = friendInviteEmail({
       firstName: existing.first_name,
@@ -214,7 +214,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     return { friend: created, inviteUrl: link.url };
   });
 
-  await addFriendship(db, auth.id, friend.id);
+  await addFriendship(auth.id, friend.id);
 
   let emailDelivered = false;
   if (input.email) {
@@ -444,7 +444,7 @@ friendRoutes.delete("/:id", async (c) => {
   const friendId = c.req.param("id");
   if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
-  await removeFriendship(db, auth.id, friendId);
+  await removeFriendship(auth.id, friendId);
 
   const stillVisible = (await listRelatedUserIds(db, auth.id)).includes(friendId);
   return c.json({ ok: true, stillVisible });

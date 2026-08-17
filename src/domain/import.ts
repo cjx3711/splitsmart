@@ -473,7 +473,7 @@ export async function importFriends(
   for (const friend of await client.getFriends()) {
     if (friend.id === swMe.id) continue;
     const person = await resolver.resolve(friend);
-    await addFriendship(db, userId, localId(person));
+    await addFriendship(userId, localId(person), userId);
     people.push(person);
   }
 

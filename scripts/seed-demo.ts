@@ -193,7 +193,7 @@ async function main(): Promise<void> {
 
   // Explicit friendships (removable in the UI).
   for (const friendId of [samId, morganId, rileyId, caseyId, jordanId, blakeId, drewId, averyId]) {
-    await addFriendship(db, userId, friendId);
+    await addFriendship(userId, friendId);
   }
 
   // Groups oldest-first so the sidebar shows the five newest names.

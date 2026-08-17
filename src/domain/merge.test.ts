@@ -385,7 +385,7 @@ describe("mergeUsers: expenses both are on", () => {
   test("a settle-up between the two of them nets to nothing", async () => {
     const ghost = await makeGhost("Alice");
     const account = await makeAccount("Alicia");
-    await addFriendship(db, ghost, account);
+    await addFriendship(ghost, account);
 
     const expenseId = await createExpense({
       description: "Payment",
@@ -503,12 +503,12 @@ describe("mergeUsers: friendships", () => {
     const account = await makeAccount("Alicia");
 
     // The owner added the placeholder, and also knows a third party.
-    await addFriendship(db, owner, ghost);
-    await addFriendship(db, third, ghost);
+    await addFriendship(owner, ghost);
+    await addFriendship(third, ghost);
     // The account is already friends with the owner: a duplicate after merge.
-    await addFriendship(db, owner, account);
+    await addFriendship(owner, account);
     // And is friends with the ghost, which becomes friends-with-yourself.
-    await addFriendship(db, account, ghost);
+    await addFriendship(account, ghost);
 
     await mergeUsers(ghost, account);
 

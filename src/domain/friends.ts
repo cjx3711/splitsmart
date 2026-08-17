@@ -20,6 +20,8 @@
  */
 import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
+import { transaction } from "../db/index.ts";
+import { logChange } from "./sync-log.ts";
 
 /** Canonical column order for the `friendships` primary key. */
 export function friendPair(
@@ -34,18 +36,43 @@ export function friendPair(
     : { userAId: otherUserId, userBId: userId };
 }
 
-/** Idempotent: adding an existing friendship is a no-op, not an error. */
+/**
+ * Idempotent: adding an existing friendship is a no-op, not an error.
+ *
+ * Opens its own transaction rather than taking a handle, like the writers in
+ * src/domain/expenses.ts and src/domain/comments.ts, because the row and its
+ * `sync_log` entry have to land together — a friendship the other devices never
+ * hear about is a friend who is missing from the picker on the phone.
+ *
+ * `actorId` is who did it, which is not always one of the pair: the Splitwise
+ * importer adds friendships on its own behalf.
+ */
 export async function addFriendship(
-  db: DB,
   userId: string,
   otherUserId: string,
+  actorId?: string,
 ): Promise<void> {
   const { userAId, userBId } = friendPair(userId, otherUserId);
-  await db
-    .insertInto("friendships")
-    .values({ user_a_id: userAId, user_b_id: userBId })
-    .onConflict((oc) => oc.columns(["user_a_id", "user_b_id"]).doNothing())
-    .execute();
+
+  await transaction(async (trx) => {
+    const inserted = await trx
+      .insertInto("friendships")
+      .values({ user_a_id: userAId, user_b_id: userBId })
+      .onConflict((oc) => oc.columns(["user_a_id", "user_b_id"]).doNothing())
+      .executeTakeFirst();
+
+    // Nothing changed, so nothing to replicate. Logging an unchanged row would
+    // wake every device up to re-apply what it already has.
+    if (Number(inserted?.numInsertedOrUpdatedRows ?? 0) === 0) return;
+
+    await logChange(trx, {
+      entity: "friendship",
+      entityId: userAId,
+      otherUserId: userBId,
+      op: "upsert",
+      actorUserId: actorId ?? userId,
+    });
+  });
 }
 
 /**
@@ -54,18 +81,36 @@ export async function addFriendship(
  * Deliberately does not touch expenses or group membership, so this never moves
  * a balance. Someone you still share a group with stays visible as a DERIVED
  * friend afterwards. See `listRelatedUserIds`.
+ *
+ * The log row is a `delete`, not a `forget`: the *friendship* is gone, the
+ * person is not. They may well still be visible through a shared group or an
+ * old expense, and a client that dropped their `users` row would lose the name
+ * on every bill they are on.
  */
 export async function removeFriendship(
-  db: DB,
   userId: string,
   otherUserId: string,
+  actorId?: string,
 ): Promise<void> {
   const { userAId, userBId } = friendPair(userId, otherUserId);
-  await db
-    .deleteFrom("friendships")
-    .where("user_a_id", "=", userAId)
-    .where("user_b_id", "=", userBId)
-    .execute();
+
+  await transaction(async (trx) => {
+    const removed = await trx
+      .deleteFrom("friendships")
+      .where("user_a_id", "=", userAId)
+      .where("user_b_id", "=", userBId)
+      .executeTakeFirst();
+
+    if (Number(removed?.numDeletedRows ?? 0) === 0) return;
+
+    await logChange(trx, {
+      entity: "friendship",
+      entityId: userAId,
+      otherUserId: userBId,
+      op: "delete",
+      actorUserId: actorId ?? userId,
+    });
+  });
 }
 
 export async function areFriends(
