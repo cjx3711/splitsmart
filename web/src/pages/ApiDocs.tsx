@@ -302,22 +302,23 @@ export function ApiDocs() {
         1:1 expenses with them).
       </p>
       <p>
-        Only the SHA-256 of the secret is stored, so the URL comes back exactly
-        once, from the mint call. There is no way to read it again; mint the
-        same slot to rotate, which kills the old secret in the same transaction.
+        Guest links expire after 3 months by default. The URL is returned from
+        mint and from list, so owners can copy it again. Minting the same slot
+        rotates, which kills the old secret in the same transaction.
       </p>
       <Endpoint method="GET" path="/api/v1/links?groupId=…">
         <p>
-          Live links, without their secrets: <code>{`{ links }`}</code>. Also
-          accepts <code>friendId</code>.
+          Live links with their URLs: <code>{`{ links }`}</code>. Also accepts{" "}
+          <code>friendId</code>.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/links">
         <Code>{`{ "kind": "group" | "group_member" | "friend",
-  "groupId": "01ARZ…", "userId": "01ARZ…", "expiresAt": null }`}</Code>
+  "groupId": "01ARZ…", "userId": "01ARZ…", "expiresAt": "…" }`}</Code>
         <p>
-          <code>201</code> with <code>{`{ id, url, shownOnce: true }`}</code>.
-          Replaces whatever live link held the same slot.
+          <code>201</code> with <code>{`{ id, url, expiresAt }`}</code>.
+          Replaces whatever live link held the same slot. Expiry defaults to 3
+          months and cannot exceed it.
         </p>
       </Endpoint>
       <Endpoint method="DELETE" path="/api/v1/links/:id">

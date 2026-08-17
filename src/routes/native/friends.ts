@@ -231,10 +231,8 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
       friend: { ...friend, is_explicit: 1, balances: [], breakdown: [] },
       existingAccount: false,
       emailDelivered,
-      // Returned once, and only ever the hash is stored. With no mail provider
-      // configured this is the only way to hand the link over, so the UI has to
-      // surface it rather than discard it. Losing it means rotating, not
-      // recovering: POST /api/v1/links.
+      // Returned so the UI can copy it. The same URL is always available from
+      // the friend's guest-link panel.
       inviteUrl,
     },
     201,

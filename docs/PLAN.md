@@ -4,6 +4,10 @@
 secondary to that. A client written against Splitwise should work against
 SplitSmart by changing only its base URL.
 
+Remaining **product** work (comments, recurring, and what those force on
+import / guest / offline) is `docs/PARITY.md`. The compat layer already
+covers the Toshl endpoints; finishing `/api/sw/v3.0` is not on that plan.
+
 Status legend: ✅ done · 🚧 partial · ⬜ not started
 
 ---
@@ -16,6 +20,12 @@ paywall; once that lands the data is unreachable.
 - ✅ `scripts/export-splitwise.ts`: raw JSON dump, no transformation
 - ⬜ **Actually run it** and verify the output covers every group and expense
 - ⬜ Back up `splitwise-export/` somewhere private (it is gitignored)
+- ⬜ Capture what comment (and recurring) **import** will need, while the API
+      is free — see `docs/PARITY.md`, "Capture what import will need". A
+      `get_expenses` page with `comments_count > 0`, plus `get_comments` or
+      `get_expense/:id` for that expense. If the list payload does not nest
+      complete `comments[]`, extend the export script to dump them per
+      expense before that history is unreadable.
 
 The dump is deliberately raw. The schema will change repeatedly during
 development, and each change would otherwise mean re-hitting an API that may no
@@ -70,29 +80,41 @@ Ordered by how much they matter for day-to-day use.
 - ✅ **Add a friend by email**: creates a placeholder carrying that address and
       emails a guest link (`/guest/l/<secret>`). Works with Postmark
       unconfigured: the URL comes back in the response instead, once.
-- ⬜ Comments (table exists, no routes)
 - ✅ Activity feed: `GET /api/v1/activity`, scoped to groups you're in plus
       expenses you're on
-- ⬜ Recurring expenses
+- ⬜ **Comments** (table exists, no routes). Domain writer, native + guest
+      routes, UI on both expense screens, import, System rows on live edit.
+      Full design in `docs/PARITY.md` slice 1.
+- ⬜ Recurring expenses (`docs/PARITY.md` slice 2). Import past occurrences as
+      ordinary bills; do not auto-schedule Splitwise's future repeats.
 - ⬜ Expense search and filters
 - ⬜ CSV export
+- ⬜ Restore a soft-deleted expense (tombstones are already stored)
 
-## Phase 3: Full API parity 🚧
+How comments and recurring land on import, guest links, and offline is in
+`docs/PARITY.md`. Do not ship a native route without the rest of that list.
 
-`docs/SPLITWISE_COMPAT.md` is the authoritative endpoint list. Summary:
+## Phase 3: Compat API 🚧
+
+The six endpoints `splitwise-to-toshl` uses are done. That is enough for this
+instance. Finishing Splitwise v3.0 is **not** a goal of `docs/PARITY.md`.
 
 **Implemented ✅**
 `get_current_user`, `get_friends`, `get_friend/:id`, `get_categories`,
 `get_expenses`, `create_expense`
 
-**Next up ⬜** (roughly in dependency order)
-- `get_groups`, `get_group/:id`: needed by most third-party clients
-- `create_group`, `add_user_to_group`, `remove_user_from_group`
+**Optional ⬜** if something else you run wants them — wrap native, do not
+invent a second write path. See `docs/PARITY.md`, "Optional: a few more
+compat wrappers".
+
+- `get_groups`, `get_group/:id`
 - `get_expense/:id`, `update_expense/:id`, `delete_expense/:id`
-- `get_currencies`: trivial, the table already exists
-- `create_comment`, `get_comments`
-- `get_notifications`
-- OAuth2 flow: only needed if a third-party client refuses bearer tokens
+- `create_group`, `add_user_to_group`, `remove_user_from_group`
+- `create_friend`, `delete_friend/:id`
+- `get_currencies`
+
+**Not doing** (unless a specific client forces it): comments, notifications,
+OAuth2, `undelete_*`, `split_equally`, recurring fields on this wire.
 
 **Deliberately out of scope**
 - Splitwise Pro features (receipt scanning, currency conversion, charts)
@@ -102,9 +124,8 @@ Ordered by how much they matter for day-to-day use.
 ### Parity testing
 
 `src/routes/compat/v3.test.ts` asserts on exact field names and string formats.
-Extend it for every endpoint added. Where possible, diff responses against real
-Splitwise output captured **while the API is still free**: capturing those
-fixtures now is worth more than any amount of guessing later.
+If you add one of the optional wrappers, extend that file. Do not "improve"
+a response shape.
 
 ## Phase 4: Email 🚧
 
@@ -157,9 +178,14 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
 - ✅ **Currency coverage**: all Splitwise codes present, including demonetised
       ones (HRK, LTL, VEF) that historical expenses still use
 - ⬜ Re-import as **update in place** (today an already-imported expense edited
-      in Splitwise is left alone rather than refreshed)
-- ⬜ Import comments and expense attachments (there is no upload story. See
-      CLAUDE.md, "No file uploads")
+      in Splitwise is left alone rather than refreshed). Rule in
+      `docs/PARITY.md` slice 5: overwrite only if the local row is untouched
+      since import; otherwise skip with a reason. Never re-split.
+- ⬜ **Import comments** (`docs/PARITY.md` slice 1). Fourth step if
+      `get_expenses` does not nest complete `comments[]`; otherwise fold into
+      the expenses page. User *and* System rows, match on `splitwise_id`.
+      Receipt images are not imported (CLAUDE.md, "No file uploads") — one
+      preview warning, not a skip per expense.
 - ⬜ Run `yarn db:check` after import and reconcile every balance against the
       Splitwise UI before trusting it
 
@@ -233,19 +259,23 @@ already enforces it: its service worker is network-only and clears any cache it
 finds, and losing the network shows a needs-connection screen. A link is a
 revocable capability; a local copy would outlive the owner expiring it.
 
-- ⬜ Foundations: `expenses.version`, `sync_log`, local balances via `deriveRepayments`
+- ⬜ Foundations: `expenses.version`, `sync_log` (entity CHECK includes
+      `comment` from day one — see `docs/OFFLINE.md`), local balances via
+      `deriveRepayments`
 - 🚧 PWA shell: manifest and an app-shell service worker scoped to `/app/`
       already exist (phase 9 needed the scope). Still to do: icons, cached
       profile + currencies
-- ⬜ Local read mirror: the app becomes fully usable offline, read-only (write-through while online)
+- ⬜ Local read mirror: the app becomes fully usable offline, read-only (write-through while online), including comments
 - ⬜ Incremental pull: `/api/v1/sync/pull`, snapshot on join, seq cursor
 - ⬜ Offline writes: outbox reducer, `/api/v1/sync/push`, conflict + quarantine UI
+      (comment create/delete are their own ops, not nested in `expense.update`)
 - ⬜ Status UI: unsynced count, last synced, per-expense sync badges
 
 Adding a friend, adding a group member, and creating a group stay
 **online-only** on purpose: they mint server-side identities, and a queued
-identity reconciled by email is how two people become one. Expense ids
-are client-minted ULIDs; that is the whole reason phase 8 exists.
+identity reconciled by email is how two people become one. Expense and
+comment ids are client-minted ULIDs; that is the whole reason phase 8
+exists. Recurring templates are online-only too (`docs/PARITY.md` slice 2).
 
 ---
 

@@ -137,10 +137,6 @@ export interface Currency {
 
 /**
  * A live guest link, as the owner sees it.
- *
- * There is deliberately no `url` field. Only the SHA-256 of the secret is
- * stored, so the plaintext exists exactly once, in the response to minting it.
- * The owner's screen says so; rotating is how you get another.
  */
 export interface AccessLink {
   id: string;
@@ -152,6 +148,8 @@ export interface AccessLink {
   lastUsedAt: string | null;
   /** Expiry has passed. The row is still live, the link is not. */
   expired: boolean;
+  /** Copyable guest URL. Null only for links minted before token_secret existed. */
+  url: string | null;
   person: { id: string; firstName: string | null; lastName: string | null } | null;
 }
 
@@ -508,7 +506,7 @@ export const api = {
     userId?: string | null;
     expiresAt?: string | null;
   }) =>
-    request<{ id: string; url: string; shownOnce: boolean }>("/links", {
+    request<{ id: string; url: string; expiresAt: string }>("/links", {
       method: "POST",
       body: JSON.stringify(input),
     }),

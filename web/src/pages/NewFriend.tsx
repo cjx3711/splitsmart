@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { api, fullName } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
+import { CopyLinkButton } from "../LinkPanel.tsx";
 
 export function NewFriend() {
   const refreshSidebar = useSidebarRefresh();
@@ -77,10 +78,13 @@ export function NewFriend() {
                     ? "Their guest link, in case the email goes astray:"
                     : "No invite was emailed. Send them this link yourself:"}
                 </span>
-                <code>{result.inviteUrl}</code>
+                <div className="link-url-row">
+                  <code className="link-url">{result.inviteUrl}</code>
+                  <CopyLinkButton url={result.inviteUrl} />
+                </div>
                 <span className="field-hint">
-                  Shown once. Only a hash of it is stored, so if you lose it,
-                  make a new one from their page; the old one stops working.
+                  Expires in 3 months. You can always copy it again from their
+                  page. If it is compromised, turn it off and create a new one.
                 </span>
               </>
             )}

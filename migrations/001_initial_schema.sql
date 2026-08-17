@@ -267,9 +267,9 @@ CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 --                 Sees the owner<->ghost non-group expenses, plus every group
 --                 that ghost belongs to, acting as them.
 --
--- As everywhere else, only the SHA-256 of the secret is stored; the plaintext
--- is returned once at mint time and kept by the client. Losing it means
--- rotating (revoke + mint), not recovering it.
+-- token_hash is what guest auth resolves; token_secret is stored so the owner
+-- can copy the link again. expires_at is set at mint (default 3 months, capped in
+-- application code).
 --
 -- A link may only ever act as a GHOST. Once someone claims that person the row
 -- becomes is_ghost = 0 (in practice merged and soft-deleted), and every link
@@ -278,11 +278,12 @@ CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 CREATE TABLE access_links (
   id           TEXT    PRIMARY KEY,            -- ULID
   token_hash   TEXT    NOT NULL UNIQUE,        -- sha256 of the secret
+  token_secret TEXT,                           -- plaintext for owner copy; guest auth uses token_hash
   kind         TEXT    NOT NULL,               -- 'group' | 'group_member' | 'friend'
   group_id     TEXT    REFERENCES groups(id),
   user_id      TEXT    REFERENCES users(id),   -- ghost the link acts as; NULL on kind='group'
   created_by   TEXT    NOT NULL REFERENCES users(id),
-  expires_at   TEXT,                           -- NULL = until revoked
+  expires_at   TEXT,                           -- set at mint; default 3 months in app code
   revoked_at   TEXT,
   created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
   last_used_at TEXT,

@@ -226,10 +226,10 @@ export function FriendDetail() {
                 kind: "friend",
                 userId: friend.id,
                 label: `${name}'s link`,
-                note: `Lets ${name} see what the two of you have split, plus any group they are in, with no account. Turn it off whenever you like.`,
+                note: `They can open this without an account, or create one and claim the link to keep this history. Links expire after 3 months.`,
               },
             ]}
-            intro="This is what an emailed invite carries. It is shown once, so copy it before you leave the page."
+            intro="Share this link so they can view your shared expenses. Links expire after 3 months. If one is compromised, turn it off and create a new one."
           />
         </>
       )}

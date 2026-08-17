@@ -30,6 +30,29 @@ export type LinkKind = "group" | "group_member" | "friend";
 
 export const LINK_KINDS: readonly LinkKind[] = ["group", "group_member", "friend"];
 
+/** Every guest link expires; this is also the longest expiry an owner may set. */
+export const LINK_TTL_DAYS = 90;
+
+const MS_PER_DAY = 86_400_000;
+
+/** Default expiry for a newly minted link: 3 months from now. */
+export function defaultLinkExpiry(from = new Date()): string {
+  return new Date(from.getTime() + LINK_TTL_DAYS * MS_PER_DAY).toISOString();
+}
+
+/**
+ * Picks the expiry for a new link.
+ *
+ * Absent means the default (3 months). A requested time is honoured only if it
+ * is sooner than that cap — owners cannot mint a link that outlives the max.
+ */
+export function resolveLinkExpiry(expiresAt?: string | null, from = new Date()): string {
+  const cap = new Date(from.getTime() + LINK_TTL_DAYS * MS_PER_DAY);
+  if (!expiresAt) return cap.toISOString();
+  const requested = new Date(expiresAt);
+  return requested < cap ? requested.toISOString() : cap.toISOString();
+}
+
 /**
  * Bearer prefix that marks a guest secret.
  *
@@ -86,7 +109,7 @@ export interface MintInput {
   groupId?: string | null;
   userId?: string | null;
   createdBy: string;
-  /** ISO-8601. Absent or null means "until revoked". */
+  /** ISO-8601. Absent means the default (3 months). Capped at LINK_TTL_DAYS. */
   expiresAt?: string | null;
 }
 
@@ -98,8 +121,8 @@ export interface MintInput {
  * also how you rotate: the old secret dies at the same instant the new one is
  * born, and no window exists where both work.
  *
- * The plaintext is returned ONCE. Only its SHA-256 is stored, so a lost link is
- * re-minted, never recovered.
+ * The plaintext secret is stored so the owner can copy the link again later.
+ * Guest auth still resolves via token_hash.
  */
 export async function mintAccessLink(
   trx: DB,
@@ -138,19 +161,22 @@ export async function mintAccessLink(
 
   await revokeSlot(trx, kind, groupId, userId, input.createdBy);
 
-  const secret = generateToken(32);
+  const secret = generateToken(64);
   const id = ulid();
+
+  const expiresAt = resolveLinkExpiry(input.expiresAt);
 
   await trx
     .insertInto("access_links")
     .values({
       id,
       token_hash: hashToken(secret),
+      token_secret: secret,
       kind,
       group_id: groupId,
       user_id: userId,
       created_by: input.createdBy,
-      expires_at: input.expiresAt ?? null,
+      expires_at: expiresAt,
     })
     .execute();
 
@@ -493,6 +519,8 @@ export interface LinkSummary {
   lastUsedAt: string | null;
   /** True once expiry has passed; the row is still live but the link is not. */
   expired: boolean;
+  /** Owner-facing URL. Null only for rows minted before token_secret existed. */
+  url: string | null;
 }
 
 function summarise(row: {
@@ -504,6 +532,7 @@ function summarise(row: {
   created_at: string;
   expires_at: string | null;
   last_used_at: string | null;
+  token_secret: string | null;
 }): LinkSummary {
   return {
     id: row.id,
@@ -515,6 +544,7 @@ function summarise(row: {
     expiresAt: row.expires_at,
     lastUsedAt: row.last_used_at,
     expired: row.expires_at !== null && new Date(row.expires_at) < new Date(),
+    url: row.token_secret ? guestUrl(row.token_secret) : null,
   };
 }
 
@@ -527,7 +557,7 @@ export async function listGroupLinks(
     .selectFrom("access_links")
     .select([
       "id", "kind", "group_id", "user_id", "created_by",
-      "created_at", "expires_at", "last_used_at",
+      "created_at", "expires_at", "last_used_at", "token_secret",
     ])
     .where("group_id", "=", groupId)
     .where("revoked_at", "is", null)
@@ -548,7 +578,7 @@ export async function findFriendLink(
     .selectFrom("access_links")
     .select([
       "id", "kind", "group_id", "user_id", "created_by",
-      "created_at", "expires_at", "last_used_at",
+      "created_at", "expires_at", "last_used_at", "token_secret",
     ])
     .where("kind", "=", "friend")
     .where("created_by", "=", ownerId)

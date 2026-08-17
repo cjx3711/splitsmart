@@ -303,6 +303,19 @@ a {
   margin-bottom: 0.5rem;
 }
 
+.nav-show-more {
+  display: block;
+  padding: 0.35rem 0.6rem 0.15rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.nav-show-more:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 /* --- typography ----------------------------------------------------------- */
 
 h1 {
@@ -2121,7 +2134,20 @@ button.guest-pick.selected {
   margin-top: 0.5rem;
 }
 
-/* Shown exactly once, so it has to be selectable and fully visible. */
+/* URL plus copy button on guest-link panels. */
+.link-url-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.link-url-row .link-url {
+  flex: 1 1 12rem;
+  margin-top: 0;
+}
+
 .link-url {
   display: block;
   margin-top: 0.5rem;

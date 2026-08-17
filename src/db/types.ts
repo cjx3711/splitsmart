@@ -67,6 +67,8 @@ export interface ApiTokensTable {
 export interface AccessLinksTable {
   id: string;
   token_hash: string;
+  /** Plaintext secret for owner copy. Guest auth uses token_hash. */
+  token_secret: string | null;
   /** 'group' | 'group_member' | 'friend'. See src/domain/access-links.ts. */
   kind: string;
   group_id: string | null;

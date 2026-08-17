@@ -16,6 +16,7 @@ import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
+import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
@@ -39,6 +40,8 @@ export function GroupDetail() {
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
+  const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
+  const [removingBusy, setRemovingBusy] = useState(false);
   const formatMoney = useFormatMoney();
 
   async function load() {
@@ -304,10 +307,7 @@ export function GroupDetail() {
             {isOwner && m.id !== user.id && (
               <button
                 className="link"
-                onClick={async () => {
-                  await api.removeGroupMember(group.id, m.id);
-                  await load();
-                }}
+                onClick={() => setRemovingMember(m)}
               >
                 Remove
               </button>
@@ -324,6 +324,35 @@ export function GroupDetail() {
         />
       )}
 
+      <ConfirmDialog
+        open={removingMember !== null}
+        title={
+          removingMember
+            ? `Remove ${fullName(removingMember)} from ${group.name}?`
+            : "Remove member?"
+        }
+        confirmLabel="Remove member"
+        busyLabel="Removing…"
+        busy={removingBusy}
+        onClose={() => setRemovingMember(null)}
+        onConfirm={async () => {
+          if (!removingMember) return;
+          setRemovingBusy(true);
+          try {
+            await api.removeGroupMember(group.id, removingMember.id);
+            await load();
+            setRemovingMember(null);
+          } finally {
+            setRemovingBusy(false);
+          }
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          They will leave this group. Their guest link for this group is turned
+          off. Balances and past expenses are unchanged.
+        </p>
+      </ConfirmDialog>
+
       <h2>Guest links</h2>
       <LinkPanel
         query={{ groupId: group.id }}
@@ -331,7 +360,7 @@ export function GroupDetail() {
         slots={linkSlots}
         intro={
           isOwner
-            ? "A guest link needs no account. Anyone holding one can see and edit this group's expenses, so share it the way you would share the group itself. You can turn one off at any time; it stops working on the next tap."
+            ? "Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime — if a link is compromised, revoke it and create a new one."
             : "Only the group owner can create or turn off guest links."
         }
       />

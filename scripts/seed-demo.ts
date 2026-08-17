@@ -11,9 +11,9 @@ import { hashPassword } from "../src/auth/password.ts";
 import { createExpense, createPayment } from "../src/domain/expenses.ts";
 import { addFriendship } from "../src/domain/friends.ts";
 import { mintAccessLink } from "../src/domain/access-links.ts";
+import type { GroupType } from "../src/domain/group-types.ts";
 import { ulid } from "../src/domain/ulid.ts";
 import { db, transaction } from "../src/db/index.ts";
-import { env } from "../src/env.ts";
 
 const DEFAULT_EMAIL = "test@example.com";
 const DEFAULT_PASSWORD = "password123";
@@ -26,15 +26,15 @@ async function ensureUser(
     defaultCurrency?: string;
     password?: string;
   },
-): Promise<{ id: string; first_name: string }> {
+): Promise<string> {
   const existing = await db
     .selectFrom("users")
-    .select(["id", "first_name"])
+    .select("id")
     .where("email", "=", email)
     .where("deleted_at", "is", null)
     .executeTakeFirst();
 
-  if (existing) return existing;
+  if (existing) return existing.id;
 
   const created = await db
     .insertInto("users")
@@ -48,26 +48,87 @@ async function ensureUser(
       is_ghost: 0,
       email_verified_at: new Date().toISOString(),
     })
-    .returning(["id", "first_name"])
+    .returning("id")
     .executeTakeFirstOrThrow();
 
-  return created;
+  return created.id;
+}
+
+async function createGhost(
+  firstName: string,
+  lastName: string,
+  defaultCurrency = "USD",
+): Promise<string> {
+  const id = ulid();
+  await db
+    .insertInto("users")
+    .values({
+      id,
+      first_name: firstName,
+      last_name: lastName,
+      default_currency: defaultCurrency,
+      is_ghost: 1,
+    })
+    .execute();
+  return id;
+}
+
+async function createGroup(
+  ownerId: string,
+  name: string,
+  groupType: GroupType,
+  defaultCurrency: string,
+  memberIds: string[],
+  simplifyByDefault = false,
+): Promise<string> {
+  const groupId = ulid();
+  await db
+    .insertInto("groups")
+    .values({
+      id: groupId,
+      name,
+      group_type: groupType,
+      default_currency: defaultCurrency,
+      simplify_by_default: simplifyByDefault ? 1 : 0,
+      created_by: ownerId,
+    })
+    .execute();
+
+  await db
+    .insertInto("group_members")
+    .values(
+      memberIds.map((userId) => ({
+        group_id: groupId,
+        user_id: userId,
+        role: userId === ownerId ? "owner" : "member",
+        joined_via: userId === ownerId ? "creator" : "added",
+      })),
+    )
+    .execute();
+
+  return groupId;
 }
 
 async function main(): Promise<void> {
   const email = process.argv[2] ?? DEFAULT_EMAIL;
 
-  const user = await ensureUser(email, {
+  const userId = await ensureUser(email, {
     firstName: "Test",
     lastName: "User",
     defaultCurrency: "USD",
   });
 
+  const user = await db
+    .selectFrom("users")
+    .select("first_name")
+    .where("id", "=", userId)
+    .executeTakeFirstOrThrow();
+
   const existing = await db
     .selectFrom("expenses")
     .innerJoin("expense_users", "expense_users.expense_id", "expenses.id")
     .select("expenses.id")
-    .where("expense_users.user_id", "=", user.id)
+    .where("expense_users.user_id", "=", userId)
     .where("expenses.deleted_at", "is", null)
     .executeTakeFirst();
 
@@ -76,91 +137,133 @@ async function main(): Promise<void> {
     return;
   }
 
-  const jamie = await ensureUser("jamie@example.com", {
+  // Real accounts (can log in with password123). Created oldest-first so the
+  // sidebar's ULID ordering surfaces the later names as "latest".
+  const jamieId = await ensureUser("jamie@example.com", {
     firstName: "Jamie",
     lastName: "Lee",
-    defaultCurrency: "USD",
   });
-  const jamieId = jamie.id;
-
-  const sam = await ensureUser("sam@example.com", {
+  const samId = await ensureUser("sam@example.com", {
     firstName: "Sam",
     lastName: "Rivera",
-    defaultCurrency: "USD",
   });
-  const samId = sam.id;
+  const taylorId = await ensureUser("taylor@example.com", {
+    firstName: "Taylor",
+    lastName: "Kim",
+  });
+  const morganId = await ensureUser("morgan@example.com", {
+    firstName: "Morgan",
+    lastName: "Chen",
+  });
+  const rileyId = await ensureUser("riley@example.com", {
+    firstName: "Riley",
+    lastName: "Brooks",
+  });
+  const caseyId = await ensureUser("casey@example.com", {
+    firstName: "Casey",
+    lastName: "Walsh",
+  });
+  const jordanId = await ensureUser("jordan@example.com", {
+    firstName: "Jordan",
+    lastName: "Lee",
+  });
 
-  const alexId = ulid();
-  await db
-    .insertInto("users")
-    .values({
-      id: alexId,
-      first_name: "Alex",
-      last_name: "Kim",
-      default_currency: "JPY",
-      is_ghost: 1,
-    })
-    .execute();
+  // Guest placeholders (no login). Also oldest-first.
+  const alexId = await createGhost("Alex", "Kim", "JPY");
+  const quinnId = await createGhost("Quinn", "Miller");
+  const reeseId = await createGhost("Reese", "Johnson");
+  const parkerId = await createGhost("Parker", "Davis");
+  const sageId = await createGhost("Sage", "Williams");
+  const blakeId = await createGhost("Blake", "Hart");
+  const drewId = await createGhost("Drew", "Nguyen");
+  const averyId = await createGhost("Avery", "Patel");
 
-  await addFriendship(db, user.id, samId);
+  // Explicit friendships (removable in the UI).
+  for (const friendId of [samId, morganId, rileyId, caseyId, jordanId, blakeId, drewId, averyId]) {
+    await addFriendship(db, userId, friendId);
+  }
 
-  const tripGroupId = ulid();
-  const apartmentGroupId = ulid();
+  // Groups oldest-first so the sidebar shows the five newest names.
+  const bookClubId = await createGroup(userId, "Book Club", "other", "USD", [
+    userId,
+    morganId,
+    rileyId,
+  ]);
+  const lunchClubId = await createGroup(userId, "Office Lunch Club", "work", "USD", [
+    userId,
+    caseyId,
+    jordanId,
+    taylorId,
+  ]);
+  const apartmentId = await createGroup(
+    userId,
+    "Apartment 4B",
+    "home",
+    "USD",
+    [userId, jamieId],
+    true,
+  );
+  const gameNightId = await createGroup(userId, "Game Night Crew", "sports", "USD", [
+    userId,
+    quinnId,
+    reeseId,
+    parkerId,
+  ]);
+  const bbqId = await createGroup(userId, "Summer BBQ", "outing", "USD", [
+    userId,
+    sageId,
+    samId,
+  ]);
+  const campingId = await createGroup(userId, "Yosemite Camping", "trip", "USD", [
+    userId,
+    drewId,
+    averyId,
+    blakeId,
+  ]);
+  const weddingId = await createGroup(userId, "Jess & Marco's Wedding", "event", "USD", [
+    userId,
+    morganId,
+    rileyId,
+    caseyId,
+    jordanId,
+  ]);
+  const hackathonId = await createGroup(userId, "Hackathon Squad", "project", "USD", [
+    userId,
+    taylorId,
+    parkerId,
+    sageId,
+  ]);
+  const skiTripId = await createGroup(userId, "Ski Trip 2026", "trip", "USD", [
+    userId,
+    jamieId,
+    samId,
+  ]);
+  const tokyoId = await createGroup(userId, "Weekend in Tokyo", "trip", "JPY", [
+    userId,
+    jamieId,
+    samId,
+    alexId,
+  ]);
 
-  await db
-    .insertInto("groups")
-    .values([
-      {
-        id: tripGroupId,
-        name: "Weekend in Tokyo",
-        group_type: "trip",
-        default_currency: "JPY",
-        simplify_by_default: 0,
-        created_by: user.id,
-      },
-      {
-        id: apartmentGroupId,
-        name: "Apartment 4B",
-        group_type: "home",
-        default_currency: "USD",
-        simplify_by_default: 1,
-        created_by: user.id,
-      },
-    ])
-    .execute();
-
-  await db
-    .insertInto("group_members")
-    .values([
-      { group_id: tripGroupId, user_id: user.id, role: "owner", joined_via: "creator" },
-      { group_id: tripGroupId, user_id: jamieId, role: "member", joined_via: "added" },
-      { group_id: tripGroupId, user_id: samId, role: "member", joined_via: "added" },
-      { group_id: tripGroupId, user_id: alexId, role: "member", joined_via: "added" },
-      { group_id: apartmentGroupId, user_id: user.id, role: "owner", joined_via: "creator" },
-      { group_id: apartmentGroupId, user_id: jamieId, role: "member", joined_via: "added" },
-    ])
-    .execute();
-
-  // Trip expenses (JPY) — category 13 = Dining out, 32 = Taxi
+  // Tokyo trip
   await createExpense({
-    groupId: tripGroupId,
+    groupId: tokyoId,
     description: "Ramen at Ichiran",
     costMinor: 4800,
     currencyCode: "JPY",
     date: "2026-08-10",
     categoryId: 13,
     splitType: "equal",
-    createdBy: user.id,
+    createdBy: userId,
     participants: [
-      { userId: user.id, paidMinor: 4800 },
+      { userId, paidMinor: 4800 },
       { userId: jamieId, paidMinor: 0 },
       { userId: samId, paidMinor: 0 },
       { userId: alexId, paidMinor: 0 },
     ],
   });
-
   await createExpense({
-    groupId: tripGroupId,
+    groupId: tokyoId,
     description: "TeamLab tickets",
     costMinor: 9600,
     currencyCode: "JPY",
@@ -169,58 +272,90 @@ async function main(): Promise<void> {
     splitType: "equal",
     createdBy: jamieId,
     participants: [
-      { userId: user.id, paidMinor: 0 },
+      { userId, paidMinor: 0 },
       { userId: jamieId, paidMinor: 9600 },
       { userId: samId, paidMinor: 0 },
       { userId: alexId, paidMinor: 0 },
     ],
   });
 
+  // Apartment
   await createExpense({
-    groupId: tripGroupId,
-    description: "Taxi to Shibuya",
-    costMinor: 3200,
-    currencyCode: "JPY",
-    date: "2026-08-11",
-    categoryId: 32,
-    splitType: "equal",
-    createdBy: samId,
-    participants: [
-      { userId: user.id, paidMinor: 0 },
-      { userId: jamieId, paidMinor: 0 },
-      { userId: samId, paidMinor: 3200 },
-      { userId: alexId, paidMinor: 0 },
-    ],
-  });
-
-  // Apartment groceries — category 12 = Groceries
-  await createExpense({
-    groupId: apartmentGroupId,
+    groupId: apartmentId,
     description: "Trader Joe's run",
     costMinor: 8743,
     currencyCode: "USD",
     date: "2026-08-05",
     categoryId: 12,
     splitType: "equal",
-    createdBy: user.id,
+    createdBy: userId,
     participants: [
-      { userId: user.id, paidMinor: 8743 },
+      { userId, paidMinor: 8743 },
       { userId: jamieId, paidMinor: 0 },
     ],
   });
-
-  await createExpense({
-    groupId: apartmentGroupId,
-    description: "Electric bill — August",
-    costMinor: 14250,
+  await createPayment({
+    fromUserId: userId,
+    toUserId: jamieId,
+    amountMinor: 5000,
     currencyCode: "USD",
-    date: "2026-08-01",
-    categoryId: 36,
+    groupId: apartmentId,
+    date: "2026-08-15",
+    paymentMethod: "Venmo",
+    createdBy: userId,
+  });
+
+  // Ski trip
+  await createExpense({
+    groupId: skiTripId,
+    description: "Lift tickets",
+    costMinor: 42000,
+    currencyCode: "USD",
+    date: "2026-02-14",
+    categoryId: 40,
     splitType: "equal",
-    createdBy: jamieId,
+    createdBy: userId,
     participants: [
-      { userId: user.id, paidMinor: 0 },
-      { userId: jamieId, paidMinor: 14250 },
+      { userId, paidMinor: 42000 },
+      { userId: jamieId, paidMinor: 0 },
+      { userId: samId, paidMinor: 0 },
+    ],
+  });
+
+  // Wedding
+  await createExpense({
+    groupId: weddingId,
+    description: "Hotel block deposit",
+    costMinor: 32500,
+    currencyCode: "USD",
+    date: "2026-06-01",
+    categoryId: 47,
+    splitType: "equal",
+    createdBy: morganId,
+    participants: [
+      { userId, paidMinor: 0 },
+      { userId: morganId, paidMinor: 32500 },
+      { userId: rileyId, paidMinor: 0 },
+      { userId: caseyId, paidMinor: 0 },
+      { userId: jordanId, paidMinor: 0 },
+    ],
+  });
+
+  // Lunch club
+  await createExpense({
+    groupId: lunchClubId,
+    description: "Team sushi lunch",
+    costMinor: 15640,
+    currencyCode: "USD",
+    date: "2026-07-22",
+    categoryId: 13,
+    splitType: "equal",
+    createdBy: caseyId,
+    participants: [
+      { userId, paidMinor: 0 },
+      { userId: caseyId, paidMinor: 15640 },
+      { userId: jordanId, paidMinor: 0 },
+      { userId: taylorId, paidMinor: 0 },
     ],
   });
 
@@ -233,40 +368,42 @@ async function main(): Promise<void> {
     date: "2026-08-14",
     categoryId: 13,
     splitType: "equal",
-    createdBy: user.id,
+    createdBy: userId,
     participants: [
-      { userId: user.id, paidMinor: 1850 },
+      { userId, paidMinor: 1850 },
       { userId: samId, paidMinor: 0 },
     ],
   });
 
-  // Partial settlement between roommates
-  await createPayment({
-    fromUserId: user.id,
-    toUserId: jamieId,
-    amountMinor: 5000,
+  // One-on-one with a guest explicit friend
+  await createExpense({
+    groupId: null,
+    description: "Concert tickets",
+    costMinor: 12000,
     currencyCode: "USD",
-    groupId: apartmentGroupId,
-    date: "2026-08-15",
-    paymentMethod: "Venmo",
-    createdBy: user.id,
+    date: "2026-08-02",
+    categoryId: 40,
+    splitType: "equal",
+    createdBy: userId,
+    participants: [
+      { userId, paidMinor: 12000 },
+      { userId: blakeId, paidMinor: 0 },
+    ],
   });
 
-  // Two guest links, so the /guest shell is reachable straight after seeding.
-  // Printed rather than stored: only the hash is kept, exactly as in the app.
   const groupLink = await transaction((trx) =>
-    mintAccessLink(trx, { kind: "group", groupId: tripGroupId, createdBy: user.id }),
+    mintAccessLink(trx, { kind: "group", groupId: tokyoId, createdBy: userId }),
   );
   const friendLink = await transaction((trx) =>
-    mintAccessLink(trx, { kind: "friend", userId: alexId, createdBy: user.id }),
+    mintAccessLink(trx, { kind: "friend", userId: alexId, createdBy: userId }),
   );
 
   console.log(`Seeded demo data for ${email} (${user.first_name}):`);
   console.log(`  Login:    ${email} / ${DEFAULT_PASSWORD}`);
-  console.log("  Friends:  Sam Rivera (real, explicit), Jamie Lee (real, via groups), Alex Kim (placeholder)");
-  console.log("  Groups:   Weekend in Tokyo (4 people), Apartment 4B (2 people)");
-  console.log("  Expenses: 6 expenses + 1 payment across USD and JPY");
-  console.log("  Guest links (shown once; only their hashes are stored):");
+  console.log("  Friends:  15 (7 real accounts, 8 guest placeholders)");
+  console.log("  Groups:   10 (sidebar shows the 5 newest)");
+  console.log("  Expenses: 8 expenses + 1 payment across USD and JPY");
+  console.log("  Guest links:");
   console.log(`    group  ${groupLink.url}`);
   console.log(`    friend ${friendLink.url}`);
 }

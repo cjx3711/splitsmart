@@ -7,10 +7,13 @@ import { api, fullName, type Friend } from "../api.ts";
 import { Ledger } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useSidebarRefresh } from "../App.tsx";
+import { ConfirmDialog } from "../ConfirmDialog.tsx";
 
 export function Friends() {
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Friend | null>(null);
+  const [busy, setBusy] = useState(false);
   const refreshSidebar = useSidebarRefresh();
   const navigate = useNavigate();
 
@@ -29,6 +32,7 @@ export function Friends() {
 
   async function handleRemove(friend: Friend) {
     setError(null);
+    setBusy(true);
     try {
       const result = await api.removeFriend(friend.id);
       await load();
@@ -40,6 +44,9 @@ export function Friends() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not remove friend");
+    } finally {
+      setBusy(false);
+      setRemoving(null);
     }
   }
 
@@ -81,7 +88,7 @@ export function Friends() {
               {friend.is_explicit ? (
                 <button
                   className="icon"
-                  onClick={() => void handleRemove(friend)}
+                  onClick={() => setRemoving(friend)}
                   aria-label={`Remove ${fullName(friend)}`}
                   title="Remove friend"
                 >
@@ -96,6 +103,23 @@ export function Friends() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={removing !== null}
+        title={removing ? `Remove ${fullName(removing)}?` : "Remove friend?"}
+        confirmLabel="Remove friend"
+        busyLabel="Removing…"
+        busy={busy}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => {
+          if (removing) void handleRemove(removing);
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          This only removes them from your explicit friends list. Balances do not
+          change. If you still share a group or an expense, they will stay listed.
+        </p>
+      </ConfirmDialog>
     </>
   );
 }

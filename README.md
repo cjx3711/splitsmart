@@ -51,10 +51,11 @@ yarn seed:demo                  # defaults to test@example.com
 yarn seed:demo -- you@example.com
 ```
 
-This creates placeholder people, two groups (a Tokyo trip in JPY and a shared
-apartment in USD), six expenses, one settlement payment, and two guest links it
-prints once. It is idempotent: if the account already has expenses, the script
-skips.
+This creates 15 friends (a mix of real accounts and guest placeholders), ten
+groups, eight expenses, one settlement payment, and two guest links it prints
+once. The sidebar shows the five newest groups and ten newest friends; anything
+beyond that links to the full list pages. It is idempotent: if the account
+already has expenses, the script skips.
 
 After `yarn db:reset`, register again and re-run `yarn seed:demo`.
 

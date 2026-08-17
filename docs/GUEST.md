@@ -70,7 +70,7 @@ Owner-only for anything that mints or revokes a link. There is no route under
 `/api/v1/guest/*` for any of it, so this is structural rather than a hidden
 button.
 
-Optional `expiresAt` at mint time. Revoke is immediate because the secret is
+Optional `expiresAt` at mint time, defaulting to 3 months. Revoke is immediate because the secret is
 checked on every request.
 
 ---
@@ -283,9 +283,9 @@ carries this URL (`/guest/l/:token`), not a recovery code. Same story if
 Postmark is off: the URL comes back in the API response so the owner can pass
 it on.
 
-**The URL is shown once.** Only the SHA-256 is stored, so there is no "copy
-again" for yesterday's link; there is "replace with a new link", which revokes
-the old one in the same transaction. The panel says so where the URL appears.
+**The URL is always copyable.** The secret is stored so the owner can copy it
+again from the link panel. Rotating revokes the old secret and mints a new one
+in the same transaction.
 
 Rotating a general link does not kill per-member or friend links. Revoking a
 person's member link does not kill the general link (they can still pick

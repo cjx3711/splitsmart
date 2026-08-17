@@ -129,7 +129,7 @@ after(() => {
 // ---------------------------------------------------------------------------
 
 describe("minting links", () => {
-  test("returns the URL once and never again", async () => {
+  test("returns the URL at mint and again when listed", async () => {
     const ghost = await makeGhost("Alice");
     const groupId = await makeGroup("Mintable", [ownerId, ghost]);
 
@@ -138,15 +138,43 @@ describe("minting links", () => {
       body: JSON.stringify({ kind: "group", groupId }),
     });
     assert.equal(res.status, 201);
-    const minted = await json<{ id: string; url: string; shownOnce: boolean }>(res);
+    const minted = await json<{ id: string; url: string; expiresAt: string }>(res);
     assert.match(minted.url, /\/guest\/l\/.+/);
-    assert.equal(minted.shownOnce, true);
+    assert.ok(minted.expiresAt);
 
-    const listed = await json<{ links: Array<{ id: string; url?: string }> }>(
+    const listed = await json<{ links: Array<{ id: string; url: string | null }> }>(
       await as(ownerToken, `/api/v1/links?groupId=${groupId}`),
     );
     assert.equal(listed.links.length, 1);
-    assert.equal(listed.links[0]!.url, undefined, "only the hash is stored");
+    assert.equal(listed.links[0]!.url, minted.url);
+  });
+
+  test("defaults expiry to 3 months and caps longer requests", async () => {
+    const ghost = await makeGhost("Bob");
+    const groupId = await makeGroup("Expiry", [ownerId, ghost]);
+
+    const defaultMint = await json<{ expiresAt: string }>(
+      await as(ownerToken, "/api/v1/links", {
+        method: "POST",
+        body: JSON.stringify({ kind: "group", groupId }),
+      }),
+    );
+    const defaultExpiry = new Date(defaultMint.expiresAt).getTime();
+    const ninetyDays = Date.now() + 90 * 86_400_000;
+    assert.ok(Math.abs(defaultExpiry - ninetyDays) < 60_000);
+
+    const capped = await json<{ expiresAt: string }>(
+      await as(ownerToken, "/api/v1/links", {
+        method: "POST",
+        body: JSON.stringify({
+          kind: "group",
+          groupId,
+          expiresAt: new Date(Date.now() + 120 * 86_400_000).toISOString(),
+        }),
+      }),
+    );
+    const cappedExpiry = new Date(capped.expiresAt).getTime();
+    assert.ok(Math.abs(cappedExpiry - ninetyDays) < 60_000);
   });
 
   test("rotating the general link does not kill the member links", async () => {

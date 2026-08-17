@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth } from "../App.tsx";
 import { CurrencySelect } from "../CurrencySelect.tsx";
+import { ConfirmDialog } from "../ConfirmDialog.tsx";
 
 /**
  * Account settings and API tokens.
@@ -19,6 +20,8 @@ export function Settings() {
   const [name, setName] = useState("splitwise-to-toshl");
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
+  const [revokingBusy, setRevokingBusy] = useState(false);
 
   async function load() {
     try {
@@ -122,10 +125,7 @@ export function Settings() {
               <button
                 className="secondary"
                 style={{ width: "auto" }}
-                onClick={async () => {
-                  await api.revokeToken(token.id);
-                  await load();
-                }}
+                onClick={() => setRevoking({ id: token.id, name: token.name })}
               >
                 Revoke
               </button>
@@ -141,6 +141,31 @@ export function Settings() {
         </div>
         <button type="submit">Create token</button>
       </form>
+
+      <ConfirmDialog
+        open={revoking !== null}
+        title={revoking ? `Revoke "${revoking.name}"?` : "Revoke token?"}
+        confirmLabel="Revoke token"
+        busyLabel="Revoking…"
+        busy={revokingBusy}
+        onClose={() => setRevoking(null)}
+        onConfirm={async () => {
+          if (!revoking) return;
+          setRevokingBusy(true);
+          try {
+            await api.revokeToken(revoking.id);
+            await load();
+            setRevoking(null);
+          } finally {
+            setRevokingBusy(false);
+          }
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          Anything using this token will stop working immediately. You cannot
+          undo this.
+        </p>
+      </ConfirmDialog>
     </>
   );
 }

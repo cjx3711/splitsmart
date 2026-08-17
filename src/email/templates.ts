@@ -91,10 +91,18 @@ export function friendInviteEmail(input: FriendInviteEmail): {
   const { firstName, inviterName, acceptUrl, isNewAccount } = input;
 
   const lead = isNewAccount
-    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to see what the two of you have split. No account, no password.`
+    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to see what the two of you have split — no account or password needed, as long as the link has not expired.`
     : `${inviterName} added you as a friend on SplitSmart. You can see what you owe each other next time you log in.`;
 
   const action = isNewAccount ? "Open your expenses" : "Open SplitSmart";
+
+  const accountPath = isNewAccount
+    ? `
+To keep this history permanently, create a SplitSmart account and claim the link when prompted.
+
+This link expires in 3 months. You can use it anytime before then. ${inviterName} can turn it off or send you a new one at any time.
+`
+    : "";
 
   return {
     subject: `${inviterName} added you on SplitSmart`,
@@ -104,15 +112,7 @@ export function friendInviteEmail(input: FriendInviteEmail): {
 ${lead}
 
 ${acceptUrl}
-${
-  isNewAccount
-    ? `
-Keep this link. It is how you get back in, on this device or any other, and
-${inviterName} can turn it off at any time. When you want an account of your
-own, create one and the link will offer to make this history yours.
-`
-    : ""
-}
+${accountPath}
 If you weren't expecting this, you can ignore this email.
 `,
 
@@ -132,8 +132,13 @@ If you weren't expecting this, you can ignore this email.
       ${
         isNewAccount
           ? `<p style="margin:0 0 8px;font-size:14px;color:#6b7280;">
-        Keep this link. It is how you get back in, on this device or any other,
-        and ${escapeHtml(inviterName)} can turn it off at any time.
+        To keep this history permanently, create a SplitSmart account and claim
+        the link when prompted.
+      </p>
+      <p style="margin:0 0 8px;font-size:14px;color:#6b7280;">
+        This link expires in 3 months. You can use it anytime before
+        then. ${escapeHtml(inviterName)} can turn it off or send you a new one at
+        any time.
       </p>`
           : ""
       }

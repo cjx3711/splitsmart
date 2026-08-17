@@ -1,20 +1,35 @@
 /**
  * Mint, copy, rotate and revoke guest links.
  *
- * The awkward part of this UI is honest rather than hidden: the URL is shown
- * ONCE, when it is minted, because only its SHA-256 is stored. There is no
- * "copy again" for a link from last week; there is "make a new one", which
- * kills the old one in the same breath. That is the same deal as an API token,
- * and for the same reason: a database dump must not hand out working links.
- *
  * Used by the group screen (a general link, plus one per placeholder member)
  * and the friend screen (one link for that person). See docs/GUEST.md.
  */
 import { useCallback, useEffect, useState } from "react";
 import { api, type AccessLink } from "./api.ts";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
-/** A URL we minted in this session. Gone on reload, like the server's copy. */
-type FreshUrls = Record<string, string>;
+export function CopyLinkButton({ url, label = "Copy link" }: { url: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <button
+      type="button"
+      className="secondary inline"
+      onClick={() => {
+        void navigator.clipboard.writeText(url).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+    >
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+type PendingAction =
+  | { kind: "replace"; slot: LinkSlot }
+  | { kind: "revoke"; slot: LinkSlot; linkId: string };
 
 export function LinkPanel({
   query,
@@ -31,10 +46,9 @@ export function LinkPanel({
   intro: string;
 }) {
   const [links, setLinks] = useState<AccessLink[] | null>(null);
-  const [fresh, setFresh] = useState<FreshUrls>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
 
   const key = "groupId" in query ? query.groupId : query.friendId;
 
@@ -56,12 +70,11 @@ export function LinkPanel({
     setBusy(slot.id);
     setError(null);
     try {
-      const minted = await api.mintLink({
+      await api.mintLink({
         kind: slot.kind,
         groupId: slot.groupId ?? null,
         userId: slot.userId ?? null,
       });
-      setFresh((f) => ({ ...f, [slot.id]: minted.url }));
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create that link");
@@ -75,11 +88,6 @@ export function LinkPanel({
     setError(null);
     try {
       await api.revokeLink(linkId);
-      setFresh((f) => {
-        const next = { ...f };
-        delete next[slot.id];
-        return next;
-      });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not turn that link off");
@@ -88,80 +96,124 @@ export function LinkPanel({
     }
   }
 
+  async function confirmPending() {
+    if (!pending) return;
+    const action = pending;
+    if (action.kind === "replace") await mint(action.slot);
+    else await revoke(action.slot, action.linkId);
+    setPending(null);
+  }
+
   if (links === null) return <p className="muted">Loading links…</p>;
 
+  const pendingSlot = pending?.slot ?? null;
+
   return (
-    <div className="card stack">
-      <p className="muted" style={{ margin: 0 }}>
-        {intro}
-      </p>
-      {error && <p className="error">{error}</p>}
+    <>
+      <div className="card stack">
+        <p className="muted" style={{ margin: 0 }}>
+          {intro}
+        </p>
+        {error && <p className="error">{error}</p>}
 
-      {slots.map((slot) => {
-        const existing = links.find((l) => matches(l, slot));
-        const url = fresh[slot.id];
+        {slots.map((slot) => {
+          const existing = links.find((l) => matches(l, slot));
+          const url = existing?.url ?? null;
 
-        return (
-          <div key={slot.id} className="link-slot">
-            <div className="link-slot-head">
-              <strong>{slot.label}</strong>
-              <span className="muted">
-                {!existing
-                  ? "No link"
-                  : existing.expired
-                    ? "Expired"
-                    : existing.lastUsedAt
-                      ? `Last opened ${existing.lastUsedAt.slice(0, 10)}`
-                      : "Never opened"}
-              </span>
-            </div>
+          return (
+            <div key={slot.id} className="link-slot">
+              <div className="link-slot-head">
+                <strong>{slot.label}</strong>
+                <span className="muted">
+                  {!existing
+                    ? "No link"
+                    : existing.expired
+                      ? `Expired ${existing.expiresAt?.slice(0, 10) ?? ""}`.trim()
+                      : [
+                          existing.expiresAt ? `Expires ${existing.expiresAt.slice(0, 10)}` : null,
+                          existing.lastUsedAt
+                            ? `Last opened ${existing.lastUsedAt.slice(0, 10)}`
+                            : "Never opened",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                </span>
+              </div>
 
-            {slot.note && <p className="field-hint">{slot.note}</p>}
+              {slot.note && <p className="field-hint">{slot.note}</p>}
 
-            {url && (
-              <>
-                <code className="link-url">{url}</code>
+              {url && (
+                <div className="link-url-row">
+                  <code className="link-url">{url}</code>
+                  <CopyLinkButton url={url} />
+                </div>
+              )}
+
+              {existing && !url && (
                 <p className="field-hint">
-                  Copy this now. It is not stored anywhere we can read it, so
-                  this is the only time it will be shown.
+                  Replace this link to get a copyable URL. Older links cannot be
+                  read back.
                 </p>
-              </>
-            )}
+              )}
 
-            {canManage && (
-              <div className="link-slot-actions">
-                {url && (
+              {canManage && (
+                <div className="link-slot-actions">
                   <button
                     className="secondary inline"
+                    disabled={busy === slot.id}
                     onClick={() => {
-                      void navigator.clipboard.writeText(url).then(() => setCopied(slot.id));
+                      if (existing) setPending({ kind: "replace", slot });
+                      else void mint(slot);
                     }}
                   >
-                    {copied === slot.id ? "Copied" : "Copy link"}
+                    {existing ? "Replace with a new link" : "Create a link"}
                   </button>
-                )}
-                <button
-                  className="secondary inline"
-                  disabled={busy === slot.id}
-                  onClick={() => void mint(slot)}
-                >
-                  {existing ? "Replace with a new link" : "Create a link"}
-                </button>
-                {existing && (
-                  <button
-                    className="link"
-                    disabled={busy === slot.id}
-                    onClick={() => void revoke(slot, existing.id)}
-                  >
-                    Turn off
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+                  {existing && (
+                    <button
+                      className="link"
+                      disabled={busy === slot.id}
+                      onClick={() => setPending({ kind: "revoke", slot, linkId: existing.id })}
+                    >
+                      Turn off
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <ConfirmDialog
+        open={pending?.kind === "replace"}
+        title={pendingSlot ? `Replace ${pendingSlot.label.toLowerCase()}?` : "Replace link?"}
+        confirmLabel="Replace link"
+        busyLabel="Replacing…"
+        busy={pendingSlot !== null && busy === pendingSlot.id}
+        onClose={() => setPending(null)}
+        onConfirm={confirmPending}
+      >
+        <p style={{ margin: 0 }}>
+          The current link stops working immediately. Anyone still using the old
+          URL will need the new one you copy after this.
+        </p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={pending?.kind === "revoke"}
+        title={pendingSlot ? `Turn off ${pendingSlot.label.toLowerCase()}?` : "Turn off link?"}
+        confirmLabel="Turn off link"
+        busyLabel="Turning off…"
+        busy={pendingSlot !== null && busy === pendingSlot.id}
+        onClose={() => setPending(null)}
+        onConfirm={confirmPending}
+      >
+        <p style={{ margin: 0 }}>
+          The link stops working on the next request. Anyone holding it will lose
+          access until you create a new one.
+        </p>
+      </ConfirmDialog>
+    </>
   );
 }
 

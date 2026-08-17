@@ -183,7 +183,8 @@ status code is more useful.
 `delete_expense/:id`, `get_currencies`, `get_comments`, `create_comment`,
 `get_notifications`, OAuth2.
 
-Priority order is in `docs/PLAN.md` phase 3.
+Priority order is in `docs/PLAN.md` phase 3: optional wrappers only. Product
+features (comments, recurring) are native, see `docs/PARITY.md`.
 
 ## Pointing splitwise-to-toshl at this server
 

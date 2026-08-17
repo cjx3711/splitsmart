@@ -5,10 +5,9 @@
  * anything, which is the difference between sharing a group and handing over
  * the group. The guest tree (/api/v1/guest) has no route into this file.
  *
- * The plaintext secret is returned exactly ONCE, at mint or rotate. Listing a
- * link tells you it exists, when it was made and when it was last used, but not
- * what it says: only the SHA-256 is stored. Lost the URL? Rotate. That is the
- * same trade as api_tokens, and for the same reason.
+ * The plaintext secret is stored so owners can copy a live link again. Listing
+ * returns the URL for links the caller may manage. Rotating replaces the secret
+ * in the same transaction the old one is revoked.
  *
  * Independence between links is deliberate (docs/GUEST.md):
  *
@@ -29,6 +28,7 @@ import {
   listGroupLinks,
   findFriendLink,
   revokeAccessLink,
+  resolveLinkExpiry,
   AccessLinkError,
   type LinkSummary,
 } from "../../domain/access-links.ts";
@@ -84,11 +84,9 @@ const mintSchema = z
     groupId: ulidSchema.nullable().optional(),
     userId: ulidSchema.nullable().optional(),
     /**
-     * ISO-8601, or absent for "until revoked". Revocation is immediate either
-     * way, because the secret is checked on every request; expiry just means
-     * the owner does not have to remember.
+     * ISO-8601, optional. Absent means 3 months from mint. Cannot exceed 3 months.
      */
-    expiresAt: z.string().datetime().nullable().optional(),
+    expiresAt: z.string().datetime().optional(),
   })
   .refine((body) => body.kind === "friend" || body.groupId, {
     message: "A group link needs a group",
@@ -130,19 +128,18 @@ linkRoutes.post("/", zValidator("json", mintSchema), async (c) => {
   }
 
   try {
+    const expiresAt = resolveLinkExpiry(input.expiresAt);
     const minted = await transaction((trx) =>
       mintAccessLink(trx, {
         kind: input.kind,
         groupId: input.kind === "friend" ? null : input.groupId!,
         userId: input.userId ?? null,
         createdBy: auth.id,
-        expiresAt: input.expiresAt ?? null,
+        expiresAt,
       }),
     );
 
-    // The URL is shown once and never recoverable. Say so at the boundary as
-    // well as in the docs; a client that discards it has lost it.
-    return c.json({ id: minted.id, url: minted.url, shownOnce: true }, 201);
+    return c.json({ id: minted.id, url: minted.url, expiresAt }, 201);
   } catch (err) {
     if (err instanceof AccessLinkError) return c.json({ error: err.message }, 400);
     throw err;
