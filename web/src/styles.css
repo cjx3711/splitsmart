@@ -124,6 +124,22 @@ a {
   font-size: 0.875rem;
 }
 
+.topbar-public {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.topbar-public a {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 550;
+}
+
+.topbar-public a:hover {
+  color: var(--text);
+}
+
 .topbar-add-short {
   display: none;
 }
@@ -191,6 +207,21 @@ a {
   .menu-toggle {
     display: inline-flex;
   }
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem 1rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  border-top: 1px solid var(--border);
+}
+
+.footer a {
+  color: var(--muted);
+  text-decoration: underline;
 }
 
 /* --- sidebar nav ---------------------------------------------------------- */
@@ -344,7 +375,7 @@ h3 {
   font-weight: 650;
 }
 
-/* Several currencies side by side always need visible separation — without it
+/* Several currencies side by side always need visible separation; without it
    "34750 JPY 74.02 USD" reads as one number. */
 .amounts {
   display: inline-flex;
@@ -776,7 +807,7 @@ button.icon:hover:not(:disabled) {
 
 /* The six ways to divide an expense. See web/src/SplitEditor.tsx.
  *
- * The per-person rows are a 4-column grid — checkbox, name, input, amount — so
+ * The per-person rows are a 4-column grid (checkbox, name, input, amount) so
  * that the owed amounts form a single right-aligned column no matter how long
  * the names are. Amounts in a ledger have to line up; that is the whole reason
  * this is a grid and not a flex row. */
@@ -841,7 +872,7 @@ button.icon:hover:not(:disabled) {
 }
 
 /* Name, per-mode input, computed amount. Who is ON the expense is decided by
-   the people picker at the top of the form, not here — see SplitEditor.tsx. */
+   the people picker at the top of the form, not here. See SplitEditor.tsx. */
 .split-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -944,7 +975,7 @@ button.icon:hover:not(:disabled) {
 }
 
 /* Subtotal / tax / tip / grand total. The grand total IS the expense amount in
-   itemized mode — the amount box up top is read-only and mirrors this. */
+   itemized mode; the amount box up top is read-only and mirrors this. */
 .split-totals {
   margin-top: 0.6rem;
   border-top: 1px solid var(--border);
@@ -1099,7 +1130,7 @@ button.icon:hover:not(:disabled) {
 /* --- paid by -------------------------------------------------------------- */
 
 /* A button that reads as a select, because what it opens is a dialog rather
-   than a list of options — several people can have paid. */
+   than a list of options; several people can have paid. */
 .field-button {
   display: flex;
   align-items: center;
@@ -1134,7 +1165,7 @@ button.icon:hover:not(:disabled) {
 /* --- category ------------------------------------------------------------- */
 
 /* The big square to the left of the description, where Splitwise puts a
-   receipt glyph. Ours shows the chosen category — see web/src/categories.tsx. */
+   receipt glyph. Ours shows the chosen category. See web/src/categories.tsx. */
 .expense-headline {
   display: flex;
   align-items: flex-start;
@@ -1221,7 +1252,7 @@ button.icon:hover:not(:disabled) {
 
 /* --- modal ---------------------------------------------------------------- */
 
-/* Native <dialog>. Backdrop clicks do nothing — that is the browser default
+/* Native <dialog>. Backdrop clicks do nothing; that is the browser default
    and it is deliberate here, so a stray click can't discard a half-typed
    expense. See web/src/Modal.tsx. */
 dialog.modal {
@@ -1309,4 +1340,451 @@ code {
   max-width: 380px;
   margin: 3rem auto;
   padding: 0 1rem;
+}
+
+/* --- public marketing pages (home, about, API docs) ----------------------- */
+
+.mkt-main {
+  min-width: 0;
+  padding: 0;
+  max-width: none;
+}
+
+.mkt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  padding: 0.65rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 650;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.mkt-btn:hover {
+  filter: brightness(1.06);
+}
+
+.mkt-btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.mkt-btn-ghost:hover {
+  filter: none;
+  background: var(--surface-2);
+}
+
+.mkt-btn-sm {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.875rem;
+}
+
+.mkt-inline {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.mkt {
+  padding-bottom: 3rem;
+}
+
+.mkt-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(16rem, 0.85fr);
+  gap: 2.5rem 3rem;
+  align-items: center;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 2.5rem;
+}
+
+.mkt-kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.mkt-hero h1 {
+  font-size: clamp(2rem, 4.2vw, 3.15rem);
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+  margin: 0 0 1rem;
+}
+
+.mkt-lede {
+  margin: 0 0 1.5rem;
+  font-size: 1.05rem;
+  color: var(--muted);
+  max-width: 36rem;
+}
+
+.mkt-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.mkt-fine {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.mkt-hero-visual {
+  min-width: 0;
+}
+
+.mkt-receipt {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.2rem 1.05rem;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.28);
+  transform: rotate(1.25deg);
+}
+
+.mkt-receipt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.mkt-pill {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.mkt-receipt-meta {
+  margin: 0.25rem 0 0.85rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.mkt-receipt-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px dashed var(--border-strong);
+}
+
+.mkt-receipt-lines li,
+.mkt-receipt-total,
+.mkt-receipt-owe {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  font-size: 0.92rem;
+}
+
+.mkt-receipt-total {
+  border-top: 1px dashed var(--border-strong);
+  margin-top: 0.25rem;
+  font-weight: 650;
+}
+
+.mkt-receipt-owe {
+  background: color-mix(in srgb, var(--negative) 10%, transparent);
+  margin: 0.35rem -0.45rem -0.2rem;
+  padding: 0.5rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-weight: 650;
+}
+
+.mkt-band {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.mkt-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.mkt-tile {
+  background: var(--surface);
+  padding: 1.6rem 1.5rem 1.7rem;
+  min-width: 0;
+}
+
+.mkt-tile h2 {
+  margin: 0 0 0.55rem;
+  font-size: 1.2rem;
+  letter-spacing: -0.025em;
+}
+
+.mkt-tile p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.mkt-tile-accent {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.mkt-tile-accent p,
+.mkt-tile-accent .mkt-inline {
+  color: color-mix(in srgb, var(--accent-ink) 78%, transparent);
+}
+
+.mkt-tile-deep {
+  background: var(--logo-deep);
+  color: #f3fffb;
+}
+
+.mkt-tile-deep p,
+.mkt-tile-deep .mkt-inline {
+  color: color-mix(in srgb, #f3fffb 78%, transparent);
+}
+
+.mkt-list-wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 3rem 1.5rem 1rem;
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(0, 1.3fr);
+  gap: 2rem 3rem;
+  align-items: start;
+}
+
+.mkt-list-intro h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+
+.mkt-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 1.5rem;
+}
+
+.mkt-checklist li {
+  padding-left: 1.35rem;
+  position: relative;
+  font-size: 0.95rem;
+}
+
+.mkt-checklist li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.mkt-close {
+  max-width: 40rem;
+  margin: 2.5rem auto 0;
+  padding: 0 1.5rem;
+}
+
+.mkt-close h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+
+.mkt-close p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.mkt-close a {
+  color: var(--accent);
+}
+
+.mkt-prose {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.mkt-prose h1 {
+  margin-bottom: 1rem;
+}
+
+.mkt-prose h2 {
+  margin-top: 2.25rem;
+}
+
+.mkt-prose p,
+.mkt-prose li {
+  color: color-mix(in srgb, var(--text) 88%, var(--muted));
+}
+
+.mkt-prose a {
+  color: var(--accent);
+}
+
+.mkt-docs {
+  max-width: 48rem;
+}
+
+.mkt-docs h3 {
+  margin: 2rem 0 0.35rem;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+}
+
+.mkt-docs h2[id],
+.mkt-docs h3 {
+  scroll-margin-top: calc(var(--topbar-h) + 0.75rem);
+}
+
+.docs-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.1rem;
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.docs-toc a {
+  text-decoration: none;
+  font-weight: 650;
+}
+
+.docs-endpoint {
+  margin: 1.35rem 0 0;
+}
+
+.docs-endpoint h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+  margin: 0 0 0.2rem;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.docs-endpoint h4 code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.88rem;
+  word-break: break-all;
+}
+
+.docs-method {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.docs-method-get {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.docs-method-post {
+  color: var(--positive);
+  background: color-mix(in srgb, var(--positive) 16%, transparent);
+}
+
+.docs-method-patch {
+  color: #d4b15a;
+  background: color-mix(in srgb, #d4b15a 16%, transparent);
+}
+
+.docs-method-delete {
+  color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 16%, transparent);
+}
+
+.docs-auth {
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.docs-pre {
+  margin: 0.55rem 0 0.7rem;
+  padding: 0.85rem 0.95rem;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.docs-pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  word-break: normal;
+  color: var(--text);
+}
+
+@media (max-width: 860px) {
+  .mkt-hero,
+  .mkt-list-wrap {
+    grid-template-columns: 1fr;
+    padding-top: 2rem;
+  }
+
+  .mkt-hero-visual {
+    max-width: 24rem;
+  }
+
+  .mkt-receipt {
+    transform: none;
+  }
+
+  .mkt-checklist {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .mkt-tiles {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-public {
+    display: none;
+  }
 }

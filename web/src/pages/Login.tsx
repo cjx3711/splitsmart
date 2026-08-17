@@ -1,12 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.ts";
 import { Logo } from "../Logo.tsx";
 import { useAuth } from "../App.tsx";
 
-/** Login, registration, and ghost recovery — three modes, one screen. */
+/** Login, registration, and ghost recovery: three modes, one screen. */
 export function Login() {
-  const [mode, setMode] = useState<"login" | "register" | "recover">("login");
+  const [searchParams] = useSearchParams();
+  const [mode, setMode] = useState<"login" | "register" | "recover">(
+    searchParams.has("register") ? "register" : "login",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
