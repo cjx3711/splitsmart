@@ -55,7 +55,7 @@ export function ApiDocs() {
       </ul>
       <Endpoint method="POST" path="/api/v1/auth/register" auth="public">
         <p>Create an account and a session.</p>
-        <Code>{`{ "email": "you@example.com", "password": "at-least-8", "firstName": "Jia",
+        <Code>{`{ "email": "you@example.com", "password": "at-least-8", "firstName": "Alex",
   "lastName": "optional", "defaultCurrency": "USD" }`}</Code>
         <p>
           <code>201</code> with <code>{`{ user, emailVerified, verificationEmailSent }`}</code>.
@@ -72,7 +72,7 @@ export function ApiDocs() {
         <p>Clears the session cookie. <code>{`{ ok: true }`}</code></p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/auth/me">
-        <Code>{`{ "user": { "id": 1, "email": "you@example.com", "firstName": "Jia",
+        <Code>{`{ "user": { "id": 1, "email": "you@example.com", "firstName": "Alex",
   "lastName": null, "isGhost": false, "defaultCurrency": "USD",
   "emailVerified": true, "needsEmailVerification": false } }`}</Code>
       </Endpoint>
@@ -285,7 +285,7 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/invite/:token/join" auth="public">
-        <Code>{`{ "displayName": "Jia" }`}</Code>
+        <Code>{`{ "displayName": "Alex" }`}</Code>
         <p>Creates a ghost (or adds the current user) and sets a session.</p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/invite/recover" auth="public">

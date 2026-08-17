@@ -10,11 +10,12 @@ export function Home() {
       <section className="mkt-hero">
         <div className="mkt-hero-copy">
           <p className="mkt-kicker">Open source · Self-hosted · Free</p>
-          <h1>Less arguing about who paid for dinner.</h1>
+          <h1>Keep track of who paid for dinner.</h1>
           <p className="mkt-lede">
-            SplitSmart is a Splitwise replacement you can run yourself. Track
-            shared expenses with housemates, trips, and friends, including on a
-            plane with no signal. No account required to settle a one-off group.
+            SplitSmart is a Splitwise replacement you can run yourself. Groups,
+            friends, one-off bills, 100+ currencies, and it still works on a
+            plane with no signal. You don&apos;t need an account to settle a
+            single trip, someone can just send you a link.
           </p>
           <div className="mkt-cta">
             <Link to="/login?register" className="mkt-btn">
@@ -25,7 +26,8 @@ export function Home() {
             </Link>
           </div>
           <p className="mkt-fine">
-            Or open a group invite link and pick a name. That is the whole signup.
+            Or open a group invite link and pick a name. That&apos;s the whole
+            signup.
           </p>
         </div>
 
@@ -35,7 +37,7 @@ export function Home() {
               <span>Ramen, Fukuoka</span>
               <span className="mkt-pill">Saved on this device</span>
             </div>
-            <p className="mkt-receipt-meta">Itemized · 3 people · JPY</p>
+            <p className="mkt-receipt-meta">Itemised · 3 people · JPY</p>
             <ul className="mkt-receipt-lines">
               <li>
                 <span>Tonkotsu ×2</span>
@@ -51,11 +53,11 @@ export function Home() {
               </li>
             </ul>
             <div className="mkt-receipt-total">
-              <span>Jia paid</span>
+              <span>X paid</span>
               <span className="amount">¥2,838</span>
             </div>
             <div className="mkt-receipt-owe">
-              <span>You owe Jia</span>
+              <span>You owe X</span>
               <span className="amount negative">¥946</span>
             </div>
           </div>
@@ -65,27 +67,27 @@ export function Home() {
       <section className="mkt-band" aria-label="Highlights">
         <div className="mkt-tiles">
           <article className="mkt-tile mkt-tile-accent">
-            <h2>Works without a signal</h2>
+            <h2>Works with no signal</h2>
             <p>
-              Install it on your phone. Add the dinner while you are still at the
-              table, even in airplane mode. It writes locally and syncs when you
-              are back online.
+              Install it on your phone and add the dinner while you&apos;re
+              still at the table, airplane mode and all. It writes to the device
+              and syncs once you&apos;re back online.
             </p>
           </article>
           <article className="mkt-tile">
             <h2>No account for a one-off trip</h2>
             <p>
-              Share a group link. People join with a display name; no email, no
-              password. They get a recovery code if they need the same ledger on
-              another phone.
+              Send people a group link. They join with a display name, no email
+              and no password. Everyone gets a recovery code in case they need
+              the same ledger on a second phone.
             </p>
           </article>
           <article className="mkt-tile">
-            <h2>A real API, not a locked garden</h2>
+            <h2>The API isn&apos;t paywalled</h2>
             <p>
-              Bearer tokens for the native API, plus a Splitwise-compatible
-              surface so tools you already pointed at Splitwise can keep working.
-              See the{" "}
+              Bearer tokens for the native API, and it also speaks the basic
+              Splitwise API shapes, so whatever you already pointed at Splitwise
+              has a good chance of just working. The endpoints are in the{" "}
               <Link to="/docs" className="mkt-inline">
                 API docs
               </Link>
@@ -93,7 +95,7 @@ export function Home() {
             </p>
           </article>
           <article className="mkt-tile mkt-tile-deep">
-            <h2>Open source, free to use</h2>
+            <h2>Open source and free</h2>
             <p>
               The code is on{" "}
               <a
@@ -104,11 +106,11 @@ export function Home() {
               >
                 GitHub
               </a>
-              . This instance is free for now. Read the{" "}
+              , and this instance is free for now. Read the{" "}
               <Link to="/about" className="mkt-inline">
                 about page
               </Link>{" "}
-              before you trust it with anything you cannot afford to lose.
+              before you trust it with anything you can&apos;t afford to lose.
             </p>
           </article>
         </div>
@@ -116,31 +118,32 @@ export function Home() {
 
       <section className="mkt-list-wrap">
         <div className="mkt-list-intro">
-          <h2>What it actually does</h2>
+          <h2>What&apos;s in it</h2>
           <p className="muted">
-            The same jobs Splitwise is for, without a Pro upsell in the middle
-            of adding a taxi.
+            The same jobs Splitwise does, minus the upsell that shows up while
+            you&apos;re adding a taxi.
           </p>
         </div>
         <ul className="mkt-checklist">
-          <li>Groups, friends, and one-off expenses with no group at all</li>
-          <li>Six split types: equal, exact, percent, shares, adjustment, itemized</li>
-          <li>Itemized bills with per-line sharers and proportional tax and tip</li>
-          <li>Settle up, with suggested transfers so the group can simplify</li>
-          <li>168 currencies as parallel ledgers; JPY is not treated as cents</li>
-          <li>A currency picker that remembers what you actually use</li>
-          <li>Activity feed for the groups and expenses you are on</li>
-          <li>Import your Splitwise history without storing the API key</li>
-          <li>Installable offline PWA; the ledger stays on the device</li>
-          <li>Native JSON API and a Splitwise v3.0-compatible shim</li>
+          <li>Groups, friends, and one-off expenses that belong to neither</li>
+          <li>As many expenses a day as you want, because that&apos;s a strange thing to ration</li>
+          <li>Six split types: equal, exact, percent, shares, adjustment, itemised</li>
+          <li>Itemised bills, where each line has its own sharers and tax and tip get spread proportionally</li>
+          <li>Settle up, with suggested transfers if the group wants to simplify</li>
+          <li>100+ currencies, each its own ledger. Nothing is converted, and JPY isn&apos;t treated as cents</li>
+          <li>A currency picker that puts the ones you actually use at the top</li>
+          <li>An activity feed for the groups and expenses you&apos;re on</li>
+          <li>Splitwise import, and your API key is used for the request and then dropped</li>
+          <li>Installable as a PWA, and the ledger stays on the device</li>
+          <li>A native JSON API, plus compatibility with the basic Splitwise API shapes</li>
         </ul>
       </section>
 
       <section className="mkt-close">
-        <h2>Built because the alternative started charging rent on a spreadsheet.</h2>
+        <h2>That&apos;s the whole pitch.</h2>
         <p>
-          The full story is on the{" "}
-          <Link to="/about">about page</Link>. The endpoints are on the{" "}
+          The longer version of why this exists is on the{" "}
+          <Link to="/about">about page</Link>, and the endpoints are in the{" "}
           <Link to="/docs">API docs</Link>. If you just want to split a bill,{" "}
           <Link to="/login?register">make an account</Link> or wait for someone
           to send you a group link.
