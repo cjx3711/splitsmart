@@ -272,8 +272,19 @@ a {
   background: var(--border-strong);
 }
 
-.nav-item.active .dot {
+.nav-item .dot--joined {
   background: var(--accent);
+}
+
+.nav-item-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted);
+}
+
+.nav-item.active .nav-item-icon {
+  color: var(--accent);
 }
 
 .nav-item-label {

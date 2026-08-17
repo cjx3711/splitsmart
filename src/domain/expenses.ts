@@ -70,6 +70,12 @@ export interface CreateExpenseInput {
    * otherwise bury every real event in the feed under a wall of history.
    */
   recordActivity?: boolean;
+  /**
+   * When the row originally came into existence. Import passes Splitwise
+   * `created_at` (or the expense `date`) so the column matches the ULID time.
+   * Absent: SQLite's `datetime('now')`.
+   */
+  createdAt?: string;
 }
 
 export class ExpenseError extends Error {}
@@ -125,6 +131,7 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
           payment_method: input.paymentMethod ?? null,
           created_by: input.createdBy,
           updated_by: input.createdBy,
+          ...(input.createdAt ? { created_at: input.createdAt } : {}),
         })
         .execute();
     } catch (err) {

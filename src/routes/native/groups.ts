@@ -15,6 +15,7 @@ import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/b
 import { createExpense, updateExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
+import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 
 export const groupRoutes = new Hono<AppEnv>();
@@ -57,7 +58,7 @@ groupRoutes.post(
     "json",
     z.object({
       name: z.string().min(1).max(200),
-      groupType: z.enum(["home", "trip", "couple", "event", "project", "other"]).default("other"),
+      groupType: z.enum(GROUP_TYPES).default("other"),
       defaultCurrency: z.string().length(3).toUpperCase().default("USD"),
       simplifyByDefault: z.boolean().default(false),
     }),

@@ -39,7 +39,13 @@ longer be free.
 
 Ordered by how much they matter for day-to-day use.
 
-- 🚧 **Expense editing**: server supports it (`updateExpense`), no UI yet
+- ✅ **Expense editing**: `web/src/EditExpenseDialog.tsx`, opened from the
+      Edit button on `web/src/pages/ExpenseDetail.tsx`. Reconstructs the
+      payment shape (single payer / own-share / amounts) and the split draft
+      (including itemized lines + tax/tip) from the stored expense so
+      reopening it doesn't re-derive anything, then resubmits through the same
+      `ExpenseForm` used to create one. Delete lives on the same page, with a
+      confirm dialog.
 - ✅ **Split-type UI**: all six types in `web/src/SplitEditor.tsx`: equal,
       exact, percent, shares, adjustment, itemized. The editor imports the
       server's own `computeSplit` from `src/domain/split.ts` (it is pure, so the
@@ -67,7 +73,6 @@ Ordered by how much they matter for day-to-day use.
 - ⬜ Comments (table exists, no routes)
 - ✅ Activity feed: `GET /api/v1/activity`, scoped to groups you're in plus
       expenses you're on
-- ⬜ Receipts / image attachments
 - ⬜ Recurring expenses
 - ⬜ Expense search and filters
 - ⬜ CSV export
@@ -193,17 +198,32 @@ stay Splitwise's integers. Original Splitwise ids live in `metadata.splitwise_id
 - ✅ `src/domain/ulid.ts`, native and compat routes parse path ids as ULIDs
 - ✅ Import matches on `metadata.splitwise_id`; PK is always a fresh ULID
 
-## Phase 9: Offline-first + PWA ⬜
+## Phase 9: Guest links ⬜ **before offline PWA**
 
-Full plan in `docs/OFFLINE.md`. Assumes phase 8. Dexie mirror of the
+Full plan in `docs/GUEST.md`. Replaces recovery codes. Ghosts are placeholders
+the owner created; invite URLs are the credential (secret in `localStorage`,
+sent on every request, optional expiry). Claim is always: create an account
+first, then merge the ghost into that account.
+
+- ⬜ `access_links` (`group` / `group_member` / `friend`); drop recovery codes
+      and `groups.invite_token`
+- ⬜ `mergeExpenseParticipants` + user merge (overlapping shares combine, with
+      a confirm; convert that expense to `exact`)
+- ⬜ `/guest/*` shell (network-only SW) and `/app/*` for the logged-in app
+- ⬜ `/api/v1/guest/*` scoped to the link; no cookie exchange
+- ⬜ Owner mint/revoke UI; email invites carry `/guest/l/:token`
+- ⬜ Claim preview + confirm; `is_ghost = 0` cannot be acted as via a link
+
+## Phase 10: Offline-first + PWA ⬜
+
+Full plan in `docs/OFFLINE.md`. Assumes phases 8 and 9. Dexie mirror of the
 **logged-in** user's visible ledger, an outbox replayed through the existing
-domain writers, installable PWA shell, unsynced count and last-synced time in
-the UI.
+domain writers, installable PWA shell scoped to `/app/`, unsynced count and
+last-synced time in the UI.
 
-Invite-link visitors (per-member or general group link, secret kept in
-`localStorage`) are **not** offline-capable. No Dexie, no sync endpoints, no
-cached ledger: no network means it does not work. A link is a revocable
-capability; a local copy would outlive the owner expiring it.
+Invite-link visitors under `/guest` are **not** offline-capable. No Dexie, no
+sync endpoints, no cached ledger: no network means it does not work. A link is
+a revocable capability; a local copy would outlive the owner expiring it.
 
 - ⬜ Foundations: `expenses.version`, `sync_log`, local balances via `deriveRepayments`
 - ⬜ PWA shell: `vite-plugin-pwa`, manifest, icons, cached profile + currencies
@@ -221,6 +241,9 @@ are client-minted ULIDs; that is the whole reason phase 8 exists.
 
 ## Non-goals
 
+- Receipts / image attachments: no upload endpoint, no multipart parsing, no
+  object storage anywhere in this codebase, and that's deliberate. See
+  CLAUDE.md, "No file uploads"
 - Multi-tenancy or a hosted service: this is personal, self-hosted software
 - Currency conversion (see CLAUDE.md rule 2)
 - Mobile apps: the web UI should be responsive instead

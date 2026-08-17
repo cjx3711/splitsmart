@@ -138,7 +138,7 @@ export function ExpenseDetail() {
       >
         <div className="stack">
           <p style={{ margin: 0 }}>
-            This removes it from every balance it affects. This can't be undone from here.
+            This removes it from every balance it affects. This can't be undone.
           </p>
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button

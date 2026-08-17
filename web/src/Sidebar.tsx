@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { api, fullName, type Group, type Friend } from "./api.ts";
 import { useSidebarVersion } from "./App.tsx";
+import { GroupTypeIcon } from "./groupTypes.tsx";
 
 export function Sidebar({ className }: { className: string }) {
   const version = useSidebarVersion();
@@ -71,7 +72,7 @@ export function Sidebar({ className }: { className: string }) {
         ) : (
           shownGroups.map((g) => (
             <NavLink key={g.id} to={`/groups/${g.id}`} className={navClass}>
-              <span className="dot" />
+              <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
               <span className="nav-item-label">{g.name}</span>
             </NavLink>
           ))
@@ -92,7 +93,7 @@ export function Sidebar({ className }: { className: string }) {
         ) : (
           shownFriends.map((f) => (
             <NavLink key={f.id} to={`/friends/${f.id}`} className={navClass}>
-              <span className="dot" />
+              <span className={f.is_ghost === 0 ? "dot dot--joined" : "dot"} />
               <span className="nav-item-label">{fullName(f)}</span>
             </NavLink>
           ))

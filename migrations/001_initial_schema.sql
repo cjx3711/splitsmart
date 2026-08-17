@@ -209,7 +209,7 @@ CREATE TABLE groups (
   updated_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   deleted_at        TEXT,
 
-  CHECK (group_type IN ('home', 'trip', 'couple', 'event', 'project', 'other')),
+  CHECK (group_type IN ('trip', 'outing', 'home', 'couple', 'family', 'work', 'school', 'sports', 'event', 'project', 'other')),
   CHECK (simplify_by_default IN (0, 1)),
   CHECK (LENGTH(id) = 26),
   CHECK (json_valid(metadata)),

@@ -169,11 +169,13 @@ export class PersonResolver {
     // Nobody local: create a placeholder, exactly as POST /api/v1/friends does.
     // The recovery code is generated here or never; only its hash is kept.
     const recoveryCode = generateRecoveryCode();
+    const { id, createdAt } = originalInstant(person.created_at);
     const created = await transaction(async (trx) => {
       return trx
         .insertInto("users")
         .values({
-          id: ulid(millisFromIso(person.created_at)),
+          id,
+          created_at: createdAt,
           metadata: metadataFromSplitwise(person.id),
           first_name: displayFirstName(person),
           last_name: person.last_name ?? null,
@@ -492,10 +494,12 @@ export async function importGroups(
       existing?.id ??
       (
         await transaction(async (trx) => {
+          const { id, createdAt } = originalInstant(swGroup.created_at);
           return trx
             .insertInto("groups")
             .values({
-              id: ulid(millisFromIso(swGroup.created_at)),
+              id,
+              created_at: createdAt,
               metadata: metadataFromSplitwise(swGroup.id),
               name: swGroup.name,
               group_type: mapGroupType(swGroup.group_type),
@@ -751,8 +755,10 @@ async function importOneExpense(
       ? swExpense.category.id
       : null;
 
+  const { id, createdAt } = originalInstant(swExpense.created_at, swExpense.date);
   await createExpense({
-    id: ulid(millisFromIso(swExpense.created_at) ?? millisFromIso(swExpense.date)),
+    id,
+    createdAt,
     metadata: { splitwise_id: swExpense.id },
     groupId,
     description: swExpense.description || "(no description)",
@@ -856,6 +862,17 @@ function millisFromIso(value: string | null | undefined): number | undefined {
   if (!value) return undefined;
   const ms = Date.parse(value);
   return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
+}
+
+/**
+ * One instant for both the ULID and `created_at`, so they cannot disagree.
+ * First parseable candidate wins; otherwise now.
+ */
+function originalInstant(
+  ...candidates: Array<string | null | undefined>
+): { id: string; createdAt: string } {
+  const ms = candidates.map(millisFromIso).find((n) => n != null) ?? Date.now();
+  return { id: ulid(ms), createdAt: new Date(ms).toISOString() };
 }
 
 export type { SplitwiseGroup };

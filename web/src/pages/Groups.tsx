@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type Group } from "../api.ts";
+import { groupTypeLabel } from "../groupTypes.tsx";
 
 export function Groups() {
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -38,7 +39,7 @@ export function Groups() {
               <div className="list-item-body">
                 <div className="list-item-title">{group.name}</div>
                 <div className="muted">
-                  {group.group_type} · default {group.default_currency}
+                  {groupTypeLabel(group.group_type)} · default {group.default_currency}
                 </div>
               </div>
               <span className="muted">›</span>

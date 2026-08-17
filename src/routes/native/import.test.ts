@@ -326,12 +326,13 @@ describe("friends", () => {
 
     const carolRow = await db
       .selectFrom("users")
-      .select(["id", "metadata"])
+      .select(["id", "metadata", "created_at"])
       .where("id", "=", carol.localUserId)
       .executeTakeFirstOrThrow();
     assert.equal(splitwiseIdOf(carolRow.metadata), 2002);
     assert.ok(isUlid(carolRow.id));
     assert.equal(ulidTime(carolRow.id), Date.parse("2021-04-01T00:00:00Z"));
+    assert.equal(Date.parse(carolRow.created_at), Date.parse("2021-04-01T00:00:00Z"));
 
     const friends = await get("/friends");
     const names = friends.body.friends.map((f: any) => f.first_name).sort();
@@ -383,6 +384,7 @@ describe("groups", () => {
       .executeTakeFirstOrThrow();
     assert.ok(isUlid(group.id));
     assert.equal(ulidTime(group.id), Date.parse("2019-06-01T00:00:00Z"));
+    assert.equal(Date.parse(group.created_at), Date.parse("2019-06-01T00:00:00Z"));
     assert.equal(splitwiseIdOf(group.metadata), 3001);
     assert.equal(group.group_type, "home");
     assert.equal(group.simplify_by_default, 1);
@@ -422,6 +424,7 @@ describe("expenses", () => {
       .executeTakeFirstOrThrow();
     assert.ok(isUlid(rent.id));
     assert.equal(ulidTime(rent.id), Date.parse("2026-03-02T15:30:00Z"), "ULID time is created_at, not date");
+    assert.equal(Date.parse(rent.created_at), Date.parse("2026-03-02T15:30:00Z"));
     assert.equal(splitwiseIdOf(rent.metadata), 4001);
     assert.equal(rent.cost_minor, 100_000);
     assert.equal(rent.currency_code, "USD");
@@ -454,6 +457,7 @@ describe("expenses", () => {
     assert.equal(ramen.currency_code, "JPY");
     assert.equal(ramen.cost_minor, 3400, "3400 JPY is 3400 minor units, not 340000");
     assert.equal(ulidTime(ramen.id), Date.parse("2026-03-02T00:00:00Z"), "without created_at, ULID time is the expense date");
+    assert.equal(Date.parse(ramen.created_at), Date.parse("2026-03-02T00:00:00Z"));
   });
 
   test("a settle-up lands as a payment", async () => {

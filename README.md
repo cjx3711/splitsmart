@@ -37,6 +37,25 @@ yarn dev
 
 API on `http://localhost:5545`, frontend on `http://localhost:5173`.
 
+## Demo data
+
+To explore the UI with sample friends, groups, and expenses instead of an empty
+account:
+
+1. Register an account at `/login?register` (or use any email you prefer).
+2. Seed demo data for that account:
+
+```bash
+yarn seed:demo                  # defaults to test@example.com
+yarn seed:demo -- you@example.com
+```
+
+This creates ghost users, two groups (a Tokyo trip in JPY and a shared apartment
+in USD), six expenses, and one settlement payment. It is idempotent: if the
+account already has expenses, the script skips.
+
+After `yarn db:reset`, register again and re-run `yarn seed:demo`.
+
 ## Export your Splitwise data first
 
 This is the one step with a deadline. It writes raw, untransformed JSON to
@@ -72,6 +91,7 @@ yarn test            # split engine, money, auth, compat API
 yarn typecheck       # server + web
 yarn db:check        # audit data integrity
 yarn db:reset        # wipe and rebuild locally
+yarn seed:demo       # sample friends, groups, and expenses (see above)
 yarn build           # production build
 ```
 

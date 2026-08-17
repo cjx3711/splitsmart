@@ -21,6 +21,7 @@
     "db:codegen": "kysely-codegen --dialect sqlite --url ./data/splitsmart.db --out-file src/db/types.ts",
     "db:check": "node --env-file=.env --experimental-strip-types scripts/check-invariants.ts",
     "verify:user": "node --env-file=.env --experimental-strip-types scripts/verify-user.ts",
+    "seed:demo": "node --env-file=.env --experimental-strip-types scripts/seed-demo.ts",
     "db:reset": "rm -f data/splitsmart.db data/splitsmart.db-wal data/splitsmart.db-shm && yarn db:migrate && yarn db:seed",
     "export:splitwise": "node --env-file=.env --experimental-strip-types scripts/export-splitwise.ts",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\" \"web/src/**/*.test.ts\"",

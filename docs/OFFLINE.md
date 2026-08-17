@@ -2,8 +2,9 @@
 
 A plan, not an implementation. Nothing in here has been built yet.
 
-**Prerequisite:** native primary keys are ULIDs (`docs/ULIDS.md`). Fold that
-into `migrations/001` first. This document assumes it is done: an expense's id
+**Prerequisite:** native primary keys are ULIDs (`docs/ULIDS.md`). Guest links
+(`docs/GUEST.md`) put the logged-in app at `/app/` and must land first so the
+PWA worker is never scoped at `/`. This document assumes both: an expense's id
 is a 26-character ULID, the client may mint it, and the Splitwise compat layer
 uses the same ULID string on the wire. There is no `client_uuid` column and no
 parallel integer `compat_id`.
@@ -608,8 +609,8 @@ VitePWA({
   devOptions: { enabled: true },
   workbox: {
     globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
-    navigateFallback: "index.html",
-    navigateFallbackDenylist: [/^\/api/, /^\/health/],
+    navigateFallback: "app.html",
+    navigateFallbackDenylist: [/^\/api/, /^\/health/, /^\/guest/],
   },
   includeAssets: ["favicon.svg", "icons/*"],
   manifest: {
@@ -617,7 +618,8 @@ VitePWA({
     short_name: "SplitSmart",
     description: "Self-hosted expense splitting",
     display: "standalone",
-    start_url: "/",
+    start_url: "/app/",
+    scope: "/app/",
     theme_color: "#0e1214",       // match index.html's dark theme-color
     background_color: "#f6f9f8",
     icons: [/* 32, 64, 128, 256, 512 png, generated from Logo.tsx */],
@@ -633,9 +635,13 @@ App-specific points:
   the app can explain or invalidate. It is also how a revoked invite link would
   keep showing the group. Do not glob `json` — that is how API responses sneak
   in.
-- **`navigateFallback` is required.** The app uses `BrowserRouter`. Production
-  Hono already SPA-fallbacks; the service worker will not, so `/groups/<ulid>`
-  offline 404s without it. Deny `/api` and `/health`.
+- **Scope the logged-in SW to `/app/`.** Guest lives at `/guest/` with its own
+  network-only worker (`docs/GUEST.md`). A SW registered at `/` would control
+  both; do not do that.
+- **`navigateFallback` is required.** The app uses `BrowserRouter` with
+  basename `/app`. Production Hono already SPA-fallbacks; the service worker
+  will not, so `/app/groups/<ulid>` offline 404s without it. Deny `/api`,
+  `/health`, and `/guest`.
 - **`registerType: "autoUpdate"`** can reload the tab mid-form. Outbox in IDB
   survives; the form does not. Acceptable for v1, not invisible.
 - Icons are generated from `web/src/Logo.tsx`, which is already duplicated

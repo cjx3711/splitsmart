@@ -13,6 +13,7 @@ import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
+import { groupTypeLabel } from "../groupTypes.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
@@ -103,7 +104,7 @@ export function GroupDetail() {
         <div>
           <h1>{group.name}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            {group.group_type} · default {group.default_currency} · {members.length}{" "}
+            {groupTypeLabel(group.group_type)} · default {group.default_currency} · {members.length}{" "}
             {members.length === 1 ? "member" : "members"}
           </p>
         </div>

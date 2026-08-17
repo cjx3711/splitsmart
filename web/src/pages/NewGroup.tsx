@@ -2,15 +2,14 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
-
-const GROUP_TYPES = ["trip", "home", "couple", "event", "project", "other"] as const;
+import { GROUP_TYPE_LABELS, GROUP_TYPES, type GroupType } from "../groupTypes.tsx";
 
 export function NewGroup() {
   const navigate = useNavigate();
   const refreshSidebar = useSidebarRefresh();
 
   const [name, setName] = useState("");
-  const [groupType, setGroupType] = useState<(typeof GROUP_TYPES)[number]>("trip");
+  const [groupType, setGroupType] = useState<GroupType>("trip");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,11 +53,11 @@ export function NewGroup() {
             <select
               id="groupType"
               value={groupType}
-              onChange={(e) => setGroupType(e.target.value as (typeof GROUP_TYPES)[number])}
+              onChange={(e) => setGroupType(e.target.value as GroupType)}
             >
               {GROUP_TYPES.map((type) => (
                 <option key={type} value={type}>
-                  {type}
+                  {GROUP_TYPE_LABELS[type]}
                 </option>
               ))}
             </select>

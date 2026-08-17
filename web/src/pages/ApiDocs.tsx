@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { GROUP_TYPES } from "../../../src/domain/group-types.ts";
 
 /**
  * Public reference for the two HTTP APIs. Kept as a page rather than an
@@ -137,10 +138,14 @@ export function ApiDocs() {
         <Code>{`{ "name": "Kyushu 2025", "groupType": "trip",
   "defaultCurrency": "JPY", "simplifyByDefault": false }`}</Code>
         <p>
-          <code>groupType</code> is one of <code>home</code>, <code>trip</code>,{" "}
-          <code>couple</code>, <code>event</code>, <code>project</code>,{" "}
-          <code>other</code>. <code>201</code> with{" "}
-          <code>{`{ group, inviteUrl }`}</code>.
+          <code>groupType</code> is one of{" "}
+          {GROUP_TYPES.map((type, index) => (
+            <span key={type}>
+              {index > 0 && ", "}
+              <code>{type}</code>
+            </span>
+          ))}
+          . <code>201</code> with <code>{`{ group, inviteUrl }`}</code>.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/groups/:id">

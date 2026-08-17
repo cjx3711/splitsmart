@@ -97,7 +97,8 @@ Users and groups stay server-minted: creating either is online-only
 
 Import is the exception that pins the timestamp: a new user, group, or
 expense is minted with Splitwise `created_at` when present, otherwise the
-expense `date`. Native creates still use wall-clock time.
+expense `date`, and that same instant is written to the `created_at` column
+so the ULID and the row agree. Native creates still use wall-clock time.
 
 ## Helper
 
