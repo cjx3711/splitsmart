@@ -19,17 +19,16 @@ import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
-  const groupId = Number(id);
   const { user } = useAuth();
 
   const [group, setGroup] = useState<(Group & { inviteUrl: string | null }) | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [balances, setBalances] = useState<Array<{ userId: number; balances: CurrencyAmount[] }>>([]);
+  const [balances, setBalances] = useState<Array<{ userId: string; balances: CurrencyAmount[] }>>([]);
   const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
   const [settle, setSettle] = useState<
     Array<{
       currencyCode: string;
-      transfers: Array<{ fromUserId: number; toUserId: number; amountMinor: number }>;
+      transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
     }>
   >([]);
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +38,12 @@ export function GroupDetail() {
   const formatMoney = useFormatMoney();
 
   async function load() {
+    if (!id) return;
     try {
       const [detail, expenseList, suggestions] = await Promise.all([
-        api.getGroup(groupId),
-        api.getGroupExpenses(groupId),
-        api.getSettleSuggestions(groupId),
+        api.getGroup(id),
+        api.getGroupExpenses(id),
+        api.getSettleSuggestions(id),
       ]);
       setGroup(detail.group);
       setMembers(detail.members);
@@ -56,8 +56,8 @@ export function GroupDetail() {
   }
 
   useEffect(() => {
-    if (Number.isInteger(groupId)) void load();
-  }, [groupId]);
+    if (id) void load();
+  }, [id]);
 
   if (error) return <p className="error">{error}</p>;
   if (!group || !user) return <p className="muted">Loading…</p>;
@@ -118,7 +118,7 @@ export function GroupDetail() {
       <AddExpenseDialog
         open={openDialog === "expense"}
         title={`Add an expense to ${group.name}`}
-        initialGroupId={groupId}
+        initialGroupId={group.id}
         onClose={() => setOpenDialog(null)}
         onCreated={load}
       />
@@ -170,8 +170,8 @@ export function GroupDetail() {
                   }
                 : activeCurrency
                   ? {
-                      fromUserId: people[0]?.id ?? 0,
-                      toUserId: people[1]?.id ?? 0,
+                      fromUserId: people[0]?.id ?? "",
+                      toUserId: people[1]?.id ?? "",
                       amount: "",
                       currencyCode: activeCurrency,
                     }
@@ -183,7 +183,7 @@ export function GroupDetail() {
                     }
             }
             onSubmit={async (payment) => {
-              await api.createGroupPayment(groupId, payment);
+              await api.createGroupPayment(group.id, payment);
               closeSettle();
               await load();
             }}

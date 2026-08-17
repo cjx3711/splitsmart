@@ -2,10 +2,25 @@
 
 A plan, not an implementation. Nothing in here has been built yet.
 
-The goal: SplitSmart installs as a PWA, holds the user's whole visible ledger in
-a local database, stays fully usable with no network, and writes back when the
-connection returns, with an honest unsynced count and last-synced time in the
-UI.
+**Prerequisite:** native primary keys are ULIDs (`docs/ULIDS.md`). Fold that
+into `migrations/001` first. This document assumes it is done: an expense's id
+is a 26-character ULID, the client may mint it, and the Splitwise compat layer
+uses the same ULID string on the wire. There is no `client_uuid` column and no
+parallel integer `compat_id`.
+
+The goal: SplitSmart installs as a PWA, holds the **logged-in** user's whole
+visible ledger in a local database, stays fully usable with no network, and
+writes back when the connection returns — with an honest unsynced count and
+last-synced time in the UI.
+
+**Link access is not part of this.** A person who is in the app because they
+opened a group invite link (per-member or the shared group link) has no local
+ledger, no outbox, and no offline UI. No network means it does not work. The
+link secret in `localStorage` is only so the next *online* visit can present
+the same credential; it is not a cache of financial data. Do not open a Dexie
+database for them, do not register them into `/sync/*`, and do not let the
+service worker satisfy their reads from cache. See "Link access is online-only"
+below.
 
 The reference implementation for the *shape* of this is DumberTime
 (`~/development/DumberTime`, see its `CLOUD_SYNC.md`): Dexie on the client, an
@@ -28,38 +43,73 @@ Two of the three hard parts are already done, by accident of earlier decisions:
   `web/src/money.tsx` renders through the currencies table with `decimalPlaces`
   as a **required** argument.
 
-And the canonical use case for a bill splitter: a restaurant or a trip abroad
-with no signal, is exactly the case that fails today.
+And the canonical use case for a bill splitter — a restaurant or a trip abroad
+with no signal — is exactly the case that fails today.
 
 ---
 
 ## What is offline-capable, and what is not
 
-This line is deliberate. Everything on the right needs a server round trip and
+This table is **only for a logged-in account** (email + password, cookie
+session or API token). Everything on the right needs a server round trip and
 must show a clear "needs connection" state rather than queueing.
 
 | Offline | Online-only |
 |---|---|
 | Read every group, friend, expense, balance | **Adding a friend** |
 | Create an expense (people you already know) | **Creating a group** |
-| Edit an expense | Group invite links / rotation |
+| Edit an expense | Group invite links / rotation / expiry |
 | Delete an expense (soft) | Splitwise import |
 | Record a payment / settle up | Email verification, API tokens, account claim |
-| Settle-up suggestions (derived locally) | Login, register, `/invite/claim` |
+| Settle-up suggestions (derived locally) | Login, register |
+| | **Anything a link-access visitor does** |
 
 **Why friends and groups are online-only.** `POST /api/v1/friends` creates a
-**ghost user server-side**, with the email address you invited them at, and
-returns a recovery code exactly once. `POST /api/v1/groups` mints an
-`invite_token`. Queueing either means the client inventing user or group
-identities that later have to be reconciled, and for friends, reconciled *by
-email*, which is the one heuristic `src/domain/import.ts` deliberately gates
-behind a named preview because a wrong match merges two people's money. A local
-ghost that gets created twice from two devices is two people where there should
-be one, and every expense attached to the loser is stranded.
+placeholder user server-side. `POST /api/v1/groups` mints invite link secrets.
+Queueing either means the client inventing user or group identities that later
+have to be reconciled — and for friends, reconciled *by email*, which is the
+one heuristic `src/domain/import.ts` deliberately gates behind a named preview
+because a wrong match merges two people's money. A local placeholder created
+twice from two devices is two people where there should be one, and every
+expense attached to the loser is stranded.
 
 The practical consequence is worth stating plainly: **offline you can only add
 expenses among people already in your local database.** That is the right v1
-boundary: the trip you are on is a trip with people you already added.
+boundary — the trip you are on is a trip with people you already added.
+
+### Link access is online-only
+
+Invite links (a per-member secret, or a general group secret where the visitor
+picks an existing unclaimed member) authenticate someone **as that member, in
+that group, for this browser**. They are not an account.
+
+Rules this plan has to keep, including before any of it is built:
+
+- **No Dexie, no outbox, no bootstrap, no pull, no push.** `/api/v1/sync/*`
+  rejects link credentials. There is no `splitsmart-${userId}` database to
+  namespace because there is no local DB.
+- **No "reload without the network is the app".** Phase 1's cached profile +
+  currencies trick is for logged-in accounts. A link visitor with no network
+  sees a needs-connection state, not last week's balances. A stale cached
+  ledger for a shared dinner-table link is worse than a blank screen: it can
+  outlive the owner expiring the secret.
+- **The service worker must not become a second copy of the group.** Precache
+  the shell if you want; never cache `/api` (already a rule below). Link
+  traffic is the reason that rule is load-bearing, not optional. A shell that
+  boots and then fails every fetch is fine; a shell that boots into cached
+  JSON is not.
+- **`localStorage` holds the link secret, not the ledger.** It exists so the
+  visitor does not have to paste the URL every time *while online*. Clearing
+  it, or the owner expiring the secret, both mean "ask for a new link". There
+  is nothing local to reconcile.
+- **A later login on the same browser is a different mode.** Opening Dexie
+  after they claim or sign in is fine; mixing a leftover link secret with a
+  logged-in sync DB is not. Clear the link secret on login, and never reuse a
+  link-scoped identity as the Dexie namespace.
+
+The product reason is the same as the security reason: a link is a capability
+the owner can expire at any time. Offline-first means keeping a copy the owner
+cannot revoke. Those two disagree, so link visitors stay live-only.
 
 ---
 
@@ -67,22 +117,24 @@ boundary: the trip you are on is a trip with people you already added.
 
 Everything else in this plan is downstream of these.
 
-### 1. `client_uuid`, not UUID primary keys
+### 1. The client mints the expense ULID; it is the primary key
 
-`expenses.id` is `INTEGER PRIMARY KEY AUTOINCREMENT`
-(`migrations/001_initial_schema.sql`), and that id passes straight through the
-frozen compat layer to third-party clients like `splitwise-to-toshl`. Rule 5
-says the wire format does not move, so the PK does not become a UUID.
+`docs/ULIDS.md` already moved `expenses.id` off integer AUTOINCREMENT. Offline
+create uses that: the browser calls `ulid()`, Dexie is keyed by it, and
+`createExpense` inserts with that id.
 
-Instead: **add `expenses.client_uuid TEXT UNIQUE`.** The client mints a UUID at
-creation time, the local Dexie row is keyed by it, and each local row carries a
-nullable `serverId` filled in when the write lands.
+The unique PK is what makes replay **idempotent**. If a push succeeds but the
+response is lost, the retry hits the primary key and resolves to the existing
+row instead of creating a second expense. DumberTime lists "network failure
+after server processes POST" as a *remaining* edge case mitigated by timestamp
+filtering; here it is structurally impossible.
 
-The unique index is not decoration; it is what makes replay **idempotent**. If
-a push succeeds but the response is lost, the retry hits the unique constraint
-and resolves to the existing row instead of creating a second expense.
-DumberTime lists "network failure after server processes POST" as a *remaining*
-edge case mitigated by timestamp filtering; here it is structurally impossible.
+There is no `client_uuid` and no separate `serverId` on the native expense.
+Push correlates ops by `id`. Users and groups remain server-minted (online-only
+creates). Imported and compat-created expenses are server-minted ULIDs; the
+client stores that same id.
+
+The compat layer is untouched by this: it already speaks the same ULID `id`.
 
 ### 2. The server stays the only writer of expense tables
 
@@ -98,6 +150,11 @@ So `POST /api/v1/sync/push` is a **batching wrapper that loops over
 write path, it adds no new SQL against `expenses`, `expense_users`, or
 `expense_repayments`, and `yarn db:check` gains no new audit surface.
 
+`createExpense` already accepts an optional `id` (ULID swap). `updateExpense`
+gains an `expectedVersion` checked **inside** its transaction
+(`UPDATE ... WHERE version = :base`); a mismatch is a conflict, not an
+overwrite. `deleteExpense` bumps `version` as well.
+
 Corollary: an unsynced local expense is a **provisional record**, not ledger
 truth. The server recomputes on replay and stays authoritative, exactly as it
 already does for the live editor.
@@ -108,14 +165,19 @@ Do not cache server-computed balances as local truth. If you do, a locally
 created expense will not move them, and the user sees a number that contradicts
 the expense list directly above it.
 
-Instead store `expense_users` locally and recompute. This needs one refactor:
-`src/domain/balances.ts` is DB-coupled, so extract its pure arithmetic into a
-core the browser can import: the same shape `split.ts` already has. Per-currency
-arrays stay arrays (rule 2); there is still no exchange rate anywhere.
+Store `expense_users` locally and recompute. `src/domain/balances.ts` is almost
+entirely SQL over the `expense_repayments` cache; the arithmetic the browser
+needs is already pure in `split.ts`. Per expense, run `deriveRepayments()` on
+the local shares, then SUM — the same matching the server persisted. Pairwise
+nets taken from two people's `paid`/`owed` on a three-way bill are wrong.
+`simplifyDebts` is already pure and can run as-is.
+
+Per-currency arrays stay arrays (rule 2); there is still no exchange rate
+anywhere.
 
 **Do not replicate `expense_repayments`.** It is a write-time cache (rule 4)
 that exists to keep server balance queries a plain `SUM ... GROUP BY`. Locally,
-compute straight from shares; at one user's data volume the cost is nil, and
+compute straight from shares — at one user's data volume the cost is nil, and
 mirroring a cache means mirroring the job of keeping it consistent.
 
 ### 4. Server-assigned timestamps and a sequence cursor, from day one
@@ -128,17 +190,16 @@ one device. Start where they ended up:
 
 - The **server** stamps every accepted change. Client timestamps are advisory
   metadata only, never used to decide a winner.
-- The pull cursor is a **monotonic `seq`**, not a timestamp. This removes the
-  boundary-overlap re-fetch, the `>=`-vs-`>` bug class, and the stall-detection
-  loop guard all at once.
+- The pull cursor is a monotonic integer **`seq`**, not a timestamp and not a
+  ULID. This removes the boundary-overlap re-fetch, the `>=`-vs-`>` bug class,
+  and the stall-detection loop guard all at once.
 
 ### 5. Conflicts are surfaced, not silently resolved
 
-Blanket LWW is wrong for shared financial records, but the exposure is much
+Blanket LWW is wrong for shared financial records — but the exposure is much
 smaller than it first looks:
 
-- A `client_uuid`-created expense **cannot** conflict. It is new by
-  construction.
+- A client-minted create **cannot** conflict. It is new by construction.
 - Expenses are overwhelmingly append-only in practice.
 
 That confines real conflict to concurrent edit/edit or edit/delete of the *same*
@@ -146,16 +207,21 @@ expense. Policy:
 
 | Case | Resolution |
 |---|---|
-| Local create, any remote state | Always applies (unique `client_uuid`) |
+| Local create, any remote state | Always applies (PK is the ULID) |
 | Remote edit, no local pending edit | Apply remote |
 | Local edit, no remote edit since base | Apply local |
-| Either side deleted | **Delete wins.** Tombstone, never resurrect |
-| Both edited the same expense since base | **Surface to the user.** Keep both, ask |
+| Either side deleted or forgotten | **Delete/forget wins.** Tombstone or drop locally, never resurrect |
+| Both edited the same expense since base | **Surface to the user.** Server row stays ledger truth |
 
-Detecting the last case needs a base version. Add `expenses.version INTEGER NOT
-NULL DEFAULT 1`, bumped on every write; the client stores the version it edited
-from and push includes it. A mismatch is a conflict, not an overwrite. Someone's
-money is not a merge to resolve quietly.
+"Keep both" is UI-only. Applying both versions would double the money. The
+server row remains authoritative; the local version sits in conflict state
+until the user picks. If the server row is already deleted, that is delete-wins,
+not the edit/edit prompt — `updateExpense` already refuses deleted rows.
+
+Detecting edit/edit needs a base version. Add `expenses.version INTEGER NOT
+NULL DEFAULT 1`, bumped on every write including delete; the client stores the
+version it edited from and push includes it. A mismatch is a conflict, not an
+overwrite. Someone's money is not a merge to resolve quietly.
 
 ---
 
@@ -163,48 +229,66 @@ money is not a merge to resolve quietly.
 
 ### Migration
 
-Forward-only, next number in sequence. Three things:
+Forward-only, next number in sequence, **after** the ULID fold into `001`.
+`version` and `sync_log` are new. `client_uuid` is not.
 
 ```sql
--- expenses gains an idempotency key and an optimistic-concurrency version.
-ALTER TABLE expenses ADD COLUMN client_uuid TEXT;
+-- expenses gains an optimistic-concurrency version. The ULID PK is already
+-- the idempotency key.
 ALTER TABLE expenses ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
-CREATE UNIQUE INDEX idx_expenses_client_uuid
-  ON expenses(client_uuid) WHERE client_uuid IS NOT NULL;
 
 -- Append-only change log. One row per accepted write. Never updated, never
--- deleted. seq is the only sync cursor.
+-- deleted. seq is the only sync cursor — INTEGER, not a ULID.
 CREATE TABLE sync_log (
-  seq            INTEGER PRIMARY KEY AUTOINCREMENT,
-  entity         TEXT    NOT NULL,   -- 'expense' | 'group' | 'group_member' |
-                                     -- 'friendship' | 'user'
-  entity_id      INTEGER NOT NULL,
-  op             TEXT    NOT NULL,   -- 'upsert' | 'delete'
+  seq                INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity             TEXT    NOT NULL,   -- 'expense' | 'group' | 'group_member' |
+                                         -- 'friendship' | 'user'
+  -- ULID of the entity, or the subject user for group_member / friendship.
+  entity_id          TEXT    NOT NULL,
+  -- Friendship: user_b_id (entity_id is user_a_id). Null otherwise.
+  other_user_id      TEXT    REFERENCES users(id),
+  op                 TEXT    NOT NULL,   -- 'upsert' | 'delete' | 'forget'
   -- Denormalised audience hints, so the pull query does not have to reach into
   -- a soft-deleted parent row to work out who may see this change.
-  group_id       INTEGER REFERENCES groups(id),
-  actor_user_id  INTEGER REFERENCES users(id),
-  server_ts      TEXT    NOT NULL DEFAULT (datetime('now')),
-  CHECK (op IN ('upsert', 'delete')),
+  group_id           TEXT    REFERENCES groups(id),
+  actor_user_id      TEXT    REFERENCES users(id),
+  -- Extra viewer, used for forget rows (the person who lost access).
+  audience_user_id   TEXT    REFERENCES users(id),
+  server_ts          TEXT    NOT NULL DEFAULT (datetime('now')),
+  CHECK (op IN ('upsert', 'delete', 'forget')),
   CHECK (entity IN ('expense','group','group_member','friendship','user'))
 ) STRICT;
 
 CREATE INDEX idx_sync_log_group ON sync_log(group_id, seq);
 CREATE INDEX idx_sync_log_entity ON sync_log(entity, entity_id);
+CREATE INDEX idx_sync_log_audience ON sync_log(audience_user_id, seq);
 ```
+
+How composite keys are encoded — junction tables have no surrogate ULID:
+
+| entity | `entity_id` | extra |
+|---|---|---|
+| `expense`, `group`, `user` | that row's ULID | — |
+| `group_member` | member's user ULID | `group_id` |
+| `friendship` | `user_a_id` | `other_user_id` = `user_b_id` |
+
+`forget` is a third op from day one so we never rebuild the CHECK: `delete` is a
+ledger tombstone (expense `deleted_at`); `forget` means drop **this caller's**
+replica, the entity still exists for everyone else.
 
 Notes that will bite otherwise:
 
 - **`ALTER TABLE ADD COLUMN` is fine here.** No CHECK constraint is being
-  changed, so no table rebuild and no `-- migrate:no-transaction`. If a later
+  changed, so no table rebuild and no `--migrate:no-transaction`. If a later
   revision *does* touch a CHECK, read the CLAUDE.md warning about
   `PRAGMA foreign_keys=OFF` first.
 - **`STRICT`** on the new table, matching every other table.
 - **`src/db/types.ts` is hand-maintained in practice.** Running
   `yarn db:codegen` renames every interface and breaks `src/db/index.ts`. Add
-  the new columns and the `SyncLog` table by hand alongside the migration.
-- `client_uuid` is a **partial** unique index so the 168k existing/imported rows
-  with NULL do not collide.
+  the new column and the `SyncLog` table by hand alongside the migration.
+- Other people's names and emails travel **nested** on expense / member /
+  friendship / snapshot payloads. A standalone `user` log row is for your own
+  profile. Stale names until the next shared write are acceptable for v1.
 
 ### Where `sync_log` rows get written
 
@@ -213,9 +297,13 @@ transactions in `src/domain/expenses.ts`, plus the group/friend/member mutations
 A change that is committed without a log row is a change no device will ever
 learn about, so it goes in the same transaction as the write itself.
 
-Imported expenses (`recordActivity: false`) still log; the log is not an
+Imported expenses (`recordActivity: false`) still log — the log is not an
 activity feed, it is a replication cursor, and an import that does not replicate
 leaves every other device permanently behind.
+
+On `updateExpense`, diff old vs new participants. For each user who lost access
+**and** would not still see the expense via group membership, insert a `forget`
+row with `audience_user_id` set to them, same transaction.
 
 ### Audience resolution: at read time
 
@@ -227,8 +315,8 @@ So resolve audience in the pull query rather than fanning out one log row per
 recipient:
 
 ```sql
--- Sketch. A caller sees a change if it is in a group they belong to, or it is a
--- non-group expense they participate in, or it concerns them directly.
+-- Sketch. Current ACL, plus rows that exist specifically so you can learn
+-- that you lost access, plus your own membership changes even after left_at.
 SELECT * FROM sync_log l
 WHERE l.seq > :since
   AND (
@@ -236,62 +324,110 @@ WHERE l.seq > :since
                         WHERE user_id = :me AND left_at IS NULL)
     OR (l.entity = 'expense' AND l.entity_id IN
           (SELECT expense_id FROM expense_users WHERE user_id = :me))
-    OR (l.entity IN ('user','friendship') AND l.actor_user_id = :me)
+    OR (l.entity = 'group_member' AND l.entity_id = :me)
+    OR (l.entity = 'friendship' AND (l.entity_id = :me OR l.other_user_id = :me))
+    OR l.audience_user_id = :me
   )
 ORDER BY l.seq
 LIMIT :limit;
 ```
 
-Read-time resolution buys one thing fan-out cannot: **joining a group backfills
-its history automatically**, because the membership subquery now matches old log
-rows. With fan-out you would have to synthesise thousands of rows at join time.
+The `group_member AND entity_id = :me` clause is load-bearing: after `left_at`
+is set you no longer match the membership subquery, and without it you would
+never receive the row that tells you you left. Client applies `left_at`, drops
+local expenses for that group **where you are not a participant**, and keeps
+ones you are on — the same rule as All expenses today.
 
-The cost is that the pull query is the most expensive thing in this design.
-Budget for indexing work and a real test at volume.
+The `OR` will not use `idx_sync_log_group`. At volume this wants a `UNION` of
+index-friendly queries, plus a real test, not a sketch.
+
+Read-time resolution buys one thing fan-out cannot: **new writes** in a group
+you belong to appear automatically. It does **not** backfill history. Incremental
+pull is `seq > :since`; after bootstrap the cursor is already at head, so old
+log rows are never read again. Joining a group from an already-synced device
+is the common case, and it is why snapshot exists.
+
+### Snapshot on access grant
+
+```
+GET /api/v1/sync/snapshot?group_id=<ulid>
+    Current group, members, their user rows, expenses with shares.
+    Same upsert shape as a slice of bootstrap. Does not rewind the cursor.
+```
+
+Pull pages that contain a `group_member` upsert for **the caller** also return:
+
+```
+catchUp: [{ entity: "group", id }]
+```
+
+The client applies the membership change, fetches the snapshot, upserts, and
+leaves `since` alone. New expenses in a group you already belong to still
+arrive via normal pull (new seqs). Import too — those are new writes on this
+server.
+
+Being added as a participant to an existing non-group expense does **not** need
+a snapshot: that update has a new seq and pull already returns the entity whole.
 
 ### Endpoints
 
-Two new native routes. The compat layer is untouched; it reads SQLite
-server-side and knows nothing about any of this.
+Native routes. The compat layer is untouched — it reads SQLite server-side and
+knows nothing about any of this.
 
 ```
 GET  /api/v1/sync/bootstrap
      Everything the caller can see, plus the seq to start from. For a fresh
      install or a local DB reset. Paginated.
+     Capture seq at the **start**, then paginate; accept duplicates on the
+     first pull. Snapshot at the end and you drop writes that landed after
+     their page was scanned.
      -> { seq, users[], groups[], friends[], expenses[], categories[],
           currencies[], nextCursor? }
 
+GET  /api/v1/sync/snapshot?group_id=<ulid>
+     Catch-up for one group. See above.
+
 GET  /api/v1/sync/pull?since=<seq>&limit=1000
-     Incremental. Entities are returned whole; no field-level diffs.
-     -> { changes: [{ seq, entity, op, data }], seq, more, remaining }
+     Incremental. Entities are returned whole — no field-level diffs.
+     Drain `more: true` in one sync cycle, not one page per 5-minute tick.
+     -> { changes: [{ seq, entity, op, data }], seq, more, remaining,
+          catchUp?: [{ entity: "group", id }] }
 
 POST /api/v1/sync/push
-     Body: { ops: [{ clientUuid, kind, baseVersion?, payload }] }
+     Body: { ops: [{ id, kind, baseVersion?, payload }] }
      kind: 'expense.create' | 'expense.update' | 'expense.delete' | 'payment.create'
+     `id` is the expense ULID. Create mints it on the client; update/delete
+     use the same id the row already has.
      Each op routed to the existing domain function. Per-op result, so one bad
      op never fails the batch:
-     -> { results: [{ clientUuid, status, serverId?, version?, reason?, server? }] }
+     -> { results: [{ id, status, version?, reason?, server? }] }
         status: 'applied' | 'duplicate' | 'conflict' | 'rejected'
 ```
 
+`payment.create` is `createExpense` with `is_payment = 1` (`createPayment`
+already wraps it). Same ULID, same create path. The kind is a wrapper, not a
+second identity.
+
 `status` is the whole contract:
 
-- **`applied`**: new `serverId` and `version`; client clears the outbox entry.
-- **`duplicate`**: `client_uuid` already present. Not an error. Client clears
-  the entry and adopts the returned `serverId`. This is the lost-response case.
-- **`conflict`**: `baseVersion` is stale. Returns the server's current row so
+- **`applied`** — new `version`; client clears the outbox entry.
+- **`duplicate`** — ULID PK already present. Not an error. Client clears the
+  entry and adopts the returned row. This is the lost-response case.
+- **`conflict`** — `baseVersion` is stale. Returns the server's current row so
   the client can show both. Entry moves to a conflict state, not the bin.
-- **`rejected`**: cannot be applied exactly: unknown currency, group gone,
+- **`rejected`** — cannot be applied exactly: unknown currency, group gone,
   participant no longer a member, shares that do not sum. Carries a `reason`.
 
-**Rejections must be visible.** The import layer already sets this precedent -
+**Rejections must be visible.** The import layer already sets this precedent —
 "a row that cannot be imported exactly is skipped with a reason, never fudged",
 returned in `skipped[]`. Same discipline: a rejected expense goes to a
 quarantine list the user can see and re-edit. An expense that silently vanishes
 between devices is worse than an error message.
 
-Gzip the push body with `pako` above a size threshold, as DumberTime does.
-Pull responses get gzip from the HTTP layer for free.
+Gzip the push body with `pako` above a size threshold, as DumberTime does —
+that needs a matching server gunzip; HTTP `Content-Encoding` on the response
+is a different layer and already free. Pull responses get gzip from the HTTP
+layer.
 
 ---
 
@@ -306,67 +442,93 @@ Cloud costs nothing. What Dexie is actually buying:
   `web/src/pages/` currently does fetch-into-`useState`; offline-first means
   reading the local DB *and re-rendering when a sync pull writes new rows*.
   `useLiveQuery` is that, for free. Hand-rolled IDB gives no reactivity, so it
-  means building an event bus and subscription registry, and getting it subtly
+  means building an event bus and subscription registry — and getting it subtly
   wrong the first time.
 - **Versioned schema migrations.** The local schema will change repeatedly, and
   a botched raw `onupgradeneeded` means a user's local ledger is unreadable.
 - **Multi-store transactions and compound indexes.** Both are needed: applying a
   pull batch must be atomic across `expenses` + `expenseUsers` + `outbox`, and
-  the outbox dedup lookup wants a compound index. See DumberTime's
-  `[tableId+table]` index and the comment above it; without it Dexie fell back
-  to a JS filter on *every mutation*.
+  the outbox lookup wants an index on `id`. See DumberTime's `[tableId+table]`
+  index and the comment above it — without it Dexie fell back to a JS filter on
+  *every mutation*.
 
 Roughly 25kB gzipped, against hand-rolling a promise wrapper, a migration
 runner, and a reactivity layer underneath financial data. Not a close call.
 
-Also skip `dexie-syncable`: its protocol assumes a conflict model that is not
-this one, and skip `db.on('changes')` for change tracking. Keep DumberTime's
+Also skip `dexie-syncable` — its protocol assumes a conflict model that is not
+this one — and skip `db.on('changes')` for change tracking. Keep DumberTime's
 **explicit outbox table**: inspectable in devtools, testable as a pure reducer,
 and it survives a reload.
 
 ### Local schema
 
 ```ts
-// web/src/db/local.ts (sketch)
+// web/src/db/local.ts — sketch
 const db = new Dexie(`splitsmart-${userId}`) as Dexie & {
-  expenses:      EntityTable<LocalExpense, "uuid">;
-  expenseUsers:  EntityTable<LocalExpenseUser, "key">;  // `${uuid}:${userId}`
+  expenses:      EntityTable<LocalExpense, "id">;
+  expenseUsers:  EntityTable<LocalExpenseUser, "key">;  // `${expenseId}:${userId}`
   groups:        EntityTable<LocalGroup, "id">;
   groupMembers:  EntityTable<LocalGroupMember, "key">;
   users:         EntityTable<LocalUser, "id">;
   friendships:   EntityTable<LocalFriendship, "key">;
   currencies:    EntityTable<Currency, "code">;
-  categories:    EntityTable<Category, "id">;
+  categories:    EntityTable<Category, "id">;  // still Splitwise integers
   outbox:        EntityTable<OutboxOp, "seq">;
   meta:          EntityTable<MetaRow, "key">;   // cursor, lastSyncedAt, profile
 };
 
 db.version(1).stores({
-  expenses:     "uuid, serverId, groupId, date, deletedAt, syncState",
-  expenseUsers: "key, uuid, userId, [uuid+userId]",
+  expenses:     "id, groupId, date, deletedAt, syncState",
+  expenseUsers: "key, id, userId, [id+userId]",
   groups:       "id, name",
   groupMembers: "key, groupId, userId, [groupId+userId]",
   users:        "id, email",
   friendships:  "key, otherUserId",
   currencies:   "code",
   categories:   "id, parentId",
-  outbox:       "++seq, clientUuid, kind, status, [clientUuid+kind]",
+  outbox:       "++seq, id, kind, status",
   meta:         "key",
 });
 ```
 
+Expense `id` is the same ULID as the server. Group/user ids too, once they
+exist. Categories stay integers.
+
 `LocalExpense.syncState` is `'synced' | 'pending' | 'conflict' | 'rejected'`,
 and it is what the UI badges. **The DB name is namespaced by user id** so
-switching accounts cannot mix two ledgers.
+switching accounts cannot mix two ledgers. Link-access visitors never open
+this database (see "Link access is online-only").
+
+Local groups need `default_currency` and `simplify_by_default` (settle-up uses
+them), not just `id, name`. Do not store `invite_token` in Dexie; the live
+payload already swaps it for `inviteUrl`, and invite rotation is online-only.
 
 ### The outbox
 
-Same pattern as DumberTime's `cloudBackupChanges`, with dedup on
-`[clientUuid+kind]` so ten edits to one unsynced expense collapse to one push.
-Two corrections learned from its bug list:
+Same pattern as DumberTime's `cloudBackupChanges`. Dedup is **not**
+`[id+kind]` — that collapses ten edits but emits create+update for an unsynced
+bill you tweaked, and the update has no server row yet.
+
+One pending op per expense, specified as a **pure reducer** (testable under
+`node:test`, same reasoning as `split.ts`):
+
+| Incoming | Pending | Result |
+|---|---|---|
+| create | — | pending `create` |
+| edit | pending `create` | stay `create`, replace payload |
+| delete | pending `create` | **drop the entry** (never existed on the server) |
+| edit | — (synced) | pending `update`, freeze `baseVersion` |
+| edit | pending `update` | replace payload, **keep original `baseVersion`** |
+| delete | pending `update` | become `delete`, same `baseVersion` |
+| delete | — (synced) | pending `delete` |
+| pull `delete`/`forget` | anything | drop outbox (**delete/forget wins**) |
+
+`baseVersion` is the server version at first local edit, not an optimistic bump.
+
+Two corrections learned from DumberTime's bug list:
 
 - **Do not shadow the outer variable in a Dexie `.and()` callback.** DumberTime's
-  dedup filter became `change.table === change.table`: always true, and wiped
+  dedup filter became `change.table === change.table` — always true — and wiped
   pending changes across every table.
 - **Only clear an entry after a successful, parsed, per-op `status`.** Not on
   HTTP 200 alone.
@@ -374,11 +536,12 @@ Two corrections learned from its bug list:
 Never clear the outbox on a 401. The 30-day httpOnly session cookie can expire
 while unsynced expenses are queued; that is a "reconnect to keep syncing" state,
 not a logout, and certainly not a reason to destroy the user's only copy of an
-expense.
+expense. `Protected` today navigates to `/login` on a failed `/auth/me`; that
+has to stop treating 401-while-offline as a wipe.
 
 ### Sync loop
 
-Receive-then-send, as DumberTime does, and for the same reason: arriving
+Receive-then-send, as DumberTime does, and for the same reason — arriving
 changes should not immediately overwrite what you are about to send:
 
 ```
@@ -386,34 +549,51 @@ pull(since: cursor)  →  apply in one transaction  →  advance cursor
 push(outbox)         →  per-op results  →  clear / conflict / quarantine
 ```
 
+Pull vs a pending outbox entry:
+
+- Pending create: there is no remote row yet; ignore echoes until push returns
+  `applied`.
+- Pending update + remote upsert: **do not apply**; push and take `applied` /
+  `conflict`.
+- Pending anything + remote `delete` / `forget`: apply remote, drop outbox.
+- Successful push, then pull echo: upsert by `id`, do not insert a second row.
+
 Triggers: app foreground, `window.online`, an interval (5 minutes is fine), and
 a manual Sync now. Guard with a minimum interval, single-flight so two triggers
-cannot overlap, and no retry storm; a failed sync just waits for the next tick.
+cannot overlap, and no retry storm — a failed sync just waits for the next tick.
+A successful sync with `more: true` or a non-empty `catchUp` continues in the
+same cycle.
 
 ### Boot without the network
 
-Today `App.tsx` cannot render until `/auth/me` answers. Change to: read the
-cached profile from `meta`, render immediately, revalidate in the background.
-Treat 401 as "offline / reconnect", never as an automatic local wipe.
+Today `App.tsx` cannot render until `/auth/me` answers, and `money.tsx` cannot
+render an amount until `/currencies` does. Change to: read the cached profile
+and currencies from Dexie/`meta`, render immediately, revalidate in the
+background. Treat 401 as "offline / reconnect", never as an automatic local wipe.
+Link-access visitors do not take this path: no cached profile, no render from
+stale data.
 
 **Reference data must be cached or nothing renders at all.** `money.tsx`
 requires `decimalPlaces`; with no currencies table the app cannot display a
-single amount. Both currencies and the category tree are static; cache them at
+single amount. Both currencies and the category tree are static — cache them at
 bootstrap and refresh lazily.
 
 ### Status UI
 
 What was asked for, and the honest version of it:
 
-- **Unsynced count**: `outbox.where('status').equals('pending').count()`,
+- **Unsynced count** — `outbox.where('status').equals('pending').count()`,
   live via `useLiveQuery`.
-- **Last synced**: `meta.lastSyncedAt`, rendered relative ("2 minutes ago").
+- **Last synced** — `meta.lastSyncedAt`, rendered relative ("2 minutes ago").
   Show *last successful sync*, not last attempt.
-- **Offline indicator**: `navigator.onLine` plus last-failure state, since
+- **Offline indicator** — `navigator.onLine` plus last-failure state, since
   `onLine` lies about captive portals.
-- **Per-expense badge**: pending / conflict / rejected, driven by `syncState`.
-- **Conflict and quarantine screens**: small, but non-negotiable. This is where
+- **Per-expense badge** — pending / conflict / rejected, driven by `syncState`.
+- **Conflict and quarantine screens** — small, but non-negotiable. This is where
   a rejected or collided expense goes to be seen instead of disappearing.
+
+Activity is not in the local schema. The Activity page is online-only until
+someone syncs the feed on purpose.
 
 ---
 
@@ -426,7 +606,11 @@ DumberTime's config:
 VitePWA({
   registerType: "autoUpdate",
   devOptions: { enabled: true },
-  workbox: { globPatterns: ["**/*.{js,css,html,ico,png,svg,json}"] },
+  workbox: {
+    globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+    navigateFallback: "index.html",
+    navigateFallbackDenylist: [/^\/api/, /^\/health/],
+  },
   includeAssets: ["favicon.svg", "icons/*"],
   manifest: {
     name: "SplitSmart",
@@ -441,12 +625,19 @@ VitePWA({
 })
 ```
 
-Two app-specific points:
+App-specific points:
 
 - **Precache the shell only. Never cache `/api` responses in the service
   worker.** The local database is the offline read path; a second, dumber cache
   in front of the API is how you end up showing a stale balance that nothing in
-  the app can explain or invalidate.
+  the app can explain or invalidate. It is also how a revoked invite link would
+  keep showing the group. Do not glob `json` — that is how API responses sneak
+  in.
+- **`navigateFallback` is required.** The app uses `BrowserRouter`. Production
+  Hono already SPA-fallbacks; the service worker will not, so `/groups/<ulid>`
+  offline 404s without it. Deny `/api` and `/health`.
+- **`registerType: "autoUpdate"`** can reload the tab mid-form. Outbox in IDB
+  survives; the form does not. Acceptable for v1, not invisible.
 - Icons are generated from `web/src/Logo.tsx`, which is already duplicated
   literally into `public/favicon.svg`. Add the PNG set next to it.
 
@@ -454,35 +645,44 @@ Two app-specific points:
 
 ## Phasing
 
-Each phase ships on its own and is useful alone.
+Each phase ships on its own and is useful alone. **ULID primary keys
+(`docs/ULIDS.md`) are not a phase of this plan; they are already done.**
 
-### Phase 0: Foundations
-Migration (`client_uuid`, `version`, `sync_log`), hand-updated `db/types.ts`,
-`sync_log` writes inside the existing expense/group transactions, pure balance
-core extracted from `src/domain/balances.ts`. No client changes. `yarn db:check`
+### Phase 0 — Foundations
+Migration (`version`, `sync_log` with `forget` / `audience_user_id` /
+`other_user_id`), hand-updated `db/types.ts`, `sync_log` writes inside the
+existing expense/group transactions (including participant-diff `forget` rows),
+local balance path via `deriveRepayments`. No client changes. `yarn db:check`
 must still pass.
 
-### Phase 1: PWA shell
-`vite-plugin-pwa`, manifest, icon set. Installable, survives a reload with no
-network. No sync yet. Small and independently shippable.
+### Phase 1 — PWA shell
+`vite-plugin-pwa`, manifest, icon set, navigateFallback, cached profile +
+currencies so a **logged-in** reload with no network is the app, not a login
+flash. Link-access visitors are excluded: no cached profile, no currencies
+bootstrap that would render amounts from last week. No sync yet. Small and
+independently shippable.
 
-### Phase 2: Local read mirror
+### Phase 2 — Local read mirror
 Dexie schema, `/sync/bootstrap`, reference-data cache, pages converted to
 `useLiveQuery`, local balance computation. **The app becomes fully usable
-offline, read-only.** The largest UX win in the plan and it carries no write
-risk; worth landing before Phase 4 regardless of schedule.
+offline, read-only.** Online writes in this phase must write-through to Dexie
+from the existing API responses — incremental pull does not exist yet, and
+without write-through the mirror goes stale the moment you add an expense.
+The largest UX win in the plan and it carries no write risk — worth landing
+before Phase 4 regardless of schedule.
 
-### Phase 3: Incremental pull
-`/sync/pull`, audience query, seq cursor, paginated apply in one transaction.
-Indexing and a volume test belong here.
+### Phase 3 — Incremental pull
+`/sync/pull`, `/sync/snapshot`, `catchUp`, audience query, seq cursor, paginated
+apply in one transaction, drain `more`. Indexing and a volume test belong here.
+Test the already-synced-then-joined-a-group path, not only fresh bootstrap.
 
-### Phase 4: Offline writes
-Outbox, `/sync/push` routed through the existing domain writers, the four-status
-result contract, conflict detection via `version`, quarantine UI.
+### Phase 4 — Offline writes
+Outbox reducer, `/sync/push` routed through the existing domain writers, the
+four-status result contract, conflict detection via `version`, quarantine UI.
 **This is where the risk in the project lives.** It deserves its own end-to-end
 test suite.
 
-### Phase 5: Status and polish
+### Phase 5 — Status and polish
 Unsynced count, last-synced time, per-expense badges, conflict resolution
 screen, online-only affordances disabled with an explanation.
 
@@ -493,21 +693,33 @@ Call it two focused weeks, with phase 4 holding nearly all of the uncertainty.
 
 ## Testing
 
-Follow the pattern already in `src/routes/native/import.test.ts`; it drives the
+Follow the pattern already in `src/routes/native/import.test.ts` — it drives the
 real client, the real routes, and the real expense writer end to end, with
 `DATABASE_PATH` set before any import that reaches `src/db/index.ts`. Sync
 deserves the same treatment. Specifically:
 
-- **Push idempotency**: same batch twice yields one expense and a `duplicate`.
-- **Conflict**: two clients, same base version, second gets `conflict` and the
+- **Push idempotency** — same batch twice yields one expense and a `duplicate`.
+- **Conflict** — two clients, same base version, second gets `conflict` and the
   server row, and no balance moves.
-- **Rejection**: unknown currency, departed member, shares that do not sum;
+- **Delete-wins** — local edit, remote delete; push of the edit does not
+  resurrect. Version bump on delete is what makes this a conflict/delete, not a
+  silent `rejected`.
+- **Rejection** — unknown currency, departed member, shares that do not sum;
   each returns a reason and writes nothing.
-- **Audience**: a group member sees a group expense; a non-member does not; a
-  new member's pull backfills history.
-- **Cursor**: pull is complete and non-duplicating across a page boundary, and
-  many rows sharing one `server_ts` cannot stall it.
-- **The invariant**: `yarn db:check` clean after every replay test.
+- **Audience** — a group member sees a group expense; a non-member does not.
+- **Join catch-up** — an already-synced user is added to a group with N
+  expenses; after pull + snapshot, the local DB has all N. Fresh bootstrap
+  after joining is not this test.
+- **Leave / forget** — leaving a group keeps expenses you are a participant of
+  and drops the rest; being removed from a non-group expense delivers `forget`
+  and the local copy goes away.
+- **Cursor** — pull is complete and non-duplicating across a page boundary, and
+  many rows sharing one `server_ts` cannot stall it. Bootstrap seq is captured
+  at start.
+- **Outbox reducer** — create-then-edit-then-push is one `create`;
+  create-then-delete never hits the server; ten edits keep the original
+  `baseVersion`.
+- **The invariant** — `yarn db:check` clean after every replay test.
 
 Keep the outbox reducer and the conflict policy **pure**, so they are testable
 under `node:test` without a browser. That is the same reasoning that keeps
@@ -517,7 +729,7 @@ under `node:test` without a browser. That is the same reasoning that keeps
 
 ## Deliberately not doing
 
-- **CRDTs or vector clocks.** The conflict surface is narrow (a `client_uuid`
+- **CRDTs or vector clocks.** The conflict surface is narrow (a client-minted
   create cannot conflict) and a version check plus a visible prompt covers it.
 - **Real-time sync.** This is a backup-and-catch-up system, like DumberTime's.
   No websockets, no push.
@@ -526,3 +738,9 @@ under `node:test` without a browser. That is the same reasoning that keeps
 - **Mirroring `expense_repayments`.** It is a cache; mirror the inputs.
 - **Client-side writes to the ledger as truth.** The server recomputes on
   replay. Rule 3 does not bend for this feature.
+- **Fan-out of historical log rows at join time.** Snapshot on access grant
+  instead.
+- **A `client_uuid` column.** The ULID PK is the idempotency key.
+- **Offline (or a local ledger of any kind) for invite-link visitors.** A link
+  is a revocable capability; a local copy is not. They are live-only. See
+  "Link access is online-only".

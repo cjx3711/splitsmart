@@ -22,7 +22,6 @@ import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
-  const friendId = Number(id);
   const { user } = useAuth();
 
   const [friend, setFriend] = useState<Friend | null>(null);
@@ -33,10 +32,11 @@ export function FriendDetail() {
   const formatMoney = useFormatMoney();
 
   async function load() {
+    if (!id) return;
     try {
       const [detail, list] = await Promise.all([
-        api.getFriend(friendId),
-        api.getFriendExpenses(friendId),
+        api.getFriend(id),
+        api.getFriendExpenses(id),
       ]);
       setFriend(detail.friend);
       setExpenses(list.expenses);
@@ -46,8 +46,8 @@ export function FriendDetail() {
   }
 
   useEffect(() => {
-    if (Number.isInteger(friendId)) void load();
-  }, [friendId]);
+    if (id) void load();
+  }, [id]);
 
   if (error) return <p className="error">{error}</p>;
   if (!friend || !user) return <p className="muted">Loading…</p>;
@@ -108,7 +108,7 @@ export function FriendDetail() {
       <AddExpenseDialog
         open={openDialog === "expense"}
         title={`Add an expense with ${name}`}
-        initialFriendId={friendId}
+        initialFriendId={friend.id}
         onClose={() => setOpenDialog(null)}
         onCreated={load}
       />
@@ -151,7 +151,7 @@ export function FriendDetail() {
               }
             }
             onSubmit={async (payment) => {
-              await api.createFriendPayment(friendId, {
+              await api.createFriendPayment(friend.id, {
                 // The friend endpoint takes a direction rather than a pair, since
                 // a one-on-one payment can only run between the two of you.
                 direction: payment.fromUserId === user.id ? "you_paid" : "they_paid",

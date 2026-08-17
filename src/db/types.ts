@@ -9,6 +9,11 @@
  *
  * which regenerates this file from the real schema. If you edit it by hand and
  * forget the migration, you get types that lie, which is worse than no types.
+ *
+ * Entity primary keys (`users`, `groups`, `expenses`, `comments`, `activity`)
+ * are ULIDs (string), including on the Splitwise compat wire. Categories stay
+ * integer because those ids are Splitwise's. Import matching keys live in
+ * `metadata.splitwise_id`. See docs/ULIDS.md.
  */
 import type { Generated, Insertable, Selectable, Updateable } from "kysely";
 
@@ -20,8 +25,9 @@ export interface CurrenciesTable {
 }
 
 export interface UsersTable {
-  id: Generated<number>;
-  splitwise_id: number | null;
+  id: string;
+  /** JSON object. See src/domain/metadata.ts. */
+  metadata: Generated<string>;
   email: string | null;
   password_hash: string | null;
   email_verified_at: string | null;
@@ -39,7 +45,7 @@ export interface UsersTable {
 export interface SessionsTable {
   id: string;
   token_hash: string;
-  user_id: number;
+  user_id: string;
   user_agent: string | null;
   created_at: Generated<string>;
   last_seen_at: Generated<string>;
@@ -49,7 +55,7 @@ export interface SessionsTable {
 export interface ApiTokensTable {
   id: string;
   token_hash: string;
-  user_id: number;
+  user_id: string;
   name: string;
   last_used_at: string | null;
   created_at: Generated<string>;
@@ -58,8 +64,9 @@ export interface ApiTokensTable {
 }
 
 export interface GroupsTable {
-  id: Generated<number>;
-  splitwise_id: number | null;
+  id: string;
+  /** JSON object. See src/domain/metadata.ts. */
+  metadata: Generated<string>;
   name: string;
   group_type: Generated<string>;
   default_currency: Generated<string>;
@@ -67,15 +74,15 @@ export interface GroupsTable {
   simplify_by_default: Generated<number>;
   invite_token: string | null;
   invite_rotated_at: string | null;
-  created_by: number | null;
+  created_by: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
   deleted_at: string | null;
 }
 
 export interface GroupMembersTable {
-  group_id: number;
-  user_id: number;
+  group_id: string;
+  user_id: string;
   role: Generated<string>;
   joined_via: Generated<string>;
   joined_at: Generated<string>;
@@ -83,8 +90,8 @@ export interface GroupMembersTable {
 }
 
 export interface FriendshipsTable {
-  user_a_id: number;
-  user_b_id: number;
+  user_a_id: string;
+  user_b_id: string;
   created_at: Generated<string>;
 }
 
@@ -99,9 +106,10 @@ export interface CategoriesTable {
 }
 
 export interface ExpensesTable {
-  id: Generated<number>;
-  splitwise_id: number | null;
-  group_id: number | null;
+  id: string;
+  /** JSON object. See src/domain/metadata.ts. */
+  metadata: Generated<string>;
+  group_id: string | null;
   description: string;
   details: string | null;
   cost_minor: number;
@@ -113,34 +121,35 @@ export interface ExpensesTable {
   split_meta: string | null;
   is_payment: Generated<number>;
   payment_method: string | null;
-  created_by: number | null;
-  updated_by: number | null;
+  created_by: string | null;
+  updated_by: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
   deleted_at: string | null;
 }
 
 export interface ExpenseUsersTable {
-  expense_id: number;
-  user_id: number;
+  expense_id: string;
+  user_id: string;
   paid_share_minor: Generated<number>;
   owed_share_minor: Generated<number>;
   split_input: number | null;
 }
 
 export interface ExpenseRepaymentsTable {
-  expense_id: number;
+  expense_id: string;
   seq: number;
-  from_user_id: number;
-  to_user_id: number;
+  from_user_id: string;
+  to_user_id: string;
   amount_minor: number;
 }
 
 export interface CommentsTable {
-  id: Generated<number>;
-  splitwise_id: number | null;
-  expense_id: number;
-  user_id: number;
+  id: string;
+  /** JSON object. See src/domain/metadata.ts. */
+  metadata: Generated<string>;
+  expense_id: string;
+  user_id: string;
   content: string;
   created_at: Generated<string>;
   deleted_at: string | null;
@@ -149,7 +158,7 @@ export interface CommentsTable {
 export interface EmailTokensTable {
   id: string;
   token_hash: string;
-  user_id: number;
+  user_id: string;
   purpose: string;
   /** Snapshot of the address at issue time. See migrations/001_initial_schema.sql. */
   email: string;
@@ -159,10 +168,10 @@ export interface EmailTokensTable {
 }
 
 export interface ActivityTable {
-  id: Generated<number>;
-  user_id: number | null;
-  group_id: number | null;
-  expense_id: number | null;
+  id: string;
+  user_id: string | null;
+  group_id: string | null;
+  expense_id: string | null;
   action: string;
   payload: string | null;
   created_at: Generated<string>;

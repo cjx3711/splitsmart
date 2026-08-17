@@ -63,8 +63,10 @@ verifies the two agree.
 `splitEvenly(1000, 3)` → `[334, 333, 333]`, never `[333.33, …]`.
 
 Remainder minor units go to the **earliest participants**, and participants are
-sorted by `userId` before allocation. Determinism matters: if the order varied,
-re-saving an expense would shuffle whose cent it is and balances would drift.
+sorted by `userId` before allocation. `userId` is a ULID; the sort is string
+`<`, never numeric coerce and never `localeCompare`. Determinism matters: if
+the order varied, re-saving an expense would shuffle whose cent it is and
+balances would drift.
 
 `splitByWeights` (percent and shares) uses largest-remainder: floor every share,
 then give leftovers to whoever lost most to rounding, ties broken by index.
@@ -100,13 +102,18 @@ and repayment, and any mistake there moves money.
 filter on it, and the compat API must return `deleted_at` to clients so they can
 sync incrementally. Never hard-delete an expense.
 
-## Splitwise ID preservation
+## Metadata
 
-`users`, `groups`, `expenses`, `categories` and `comments` carry a nullable
-`splitwise_id`. The importer inserts with `id = splitwise_id` so external
-references, including anything `splitwise-to-toshl` already recorded, stay
-valid, then bumps `sqlite_sequence` past the highest imported id so new local
-rows never collide.
+`users`, `groups`, `expenses` and `comments` carry a JSON `metadata` column
+(default `'{}'`). It is a bag for data that does not need to be joined or
+filtered on, except for one key:
+
+`splitwise_id` is the import matching key. Entity PKs are always fresh ULIDs;
+the original Splitwise integer is **not** reused as `id` and is **not**
+returned on `/api/sw/v3.0`. A unique expression index on
+`json_extract(metadata, '$.splitwise_id')` lets a second import match instead
+of duplicating. `notes` and other leftovers share the same object. See
+`src/domain/metadata.ts` and `docs/ULIDS.md`.
 
 ## Payments
 

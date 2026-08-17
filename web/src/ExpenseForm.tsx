@@ -67,13 +67,13 @@ export function ExpenseForm({
 }: {
   /** Everyone selectable: your friends, or the members of the chosen group. */
   candidates: Person[];
-  initialParticipantIds: number[];
+  initialParticipantIds: string[];
   defaultCurrency: string;
-  currentUserId: number;
+  currentUserId: string;
   /** Omit to hide the group selector (the friend screen has no use for it). */
   groups?: Group[];
-  groupId: number | null;
-  onGroupChange?: (groupId: number | null) => void;
+  groupId: string | null;
+  onGroupChange?: (groupId: string | null) => void;
   onSubmit: (input: ExpenseInput) => Promise<void>;
   submitLabel?: string;
   /** Pass "stack" inside a Modal (the dialog already draws the surround). */
@@ -91,7 +91,7 @@ export function ExpenseForm({
   const [categoryId, setCategoryId] = useState<number>(initial?.categoryId ?? DEFAULT_CATEGORY_ID);
   const [notes, setNotes] = useState(initial?.details ?? "");
   const [showNotes, setShowNotes] = useState(Boolean(initial?.details));
-  const [participantIds, setParticipantIds] = useState<number[]>(initialParticipantIds);
+  const [participantIds, setParticipantIds] = useState<string[]>(initialParticipantIds);
   const [payment, setPayment] = useState<Payment>(
     initial?.payment ?? { kind: "single", payerId: currentUserId },
   );
@@ -223,7 +223,7 @@ export function ExpenseForm({
           <select
             id="expense-group"
             value={groupId ?? ""}
-            onChange={(e) => onGroupChange?.(e.target.value === "" ? null : Number(e.target.value))}
+            onChange={(e) => onGroupChange?.(e.target.value === "" ? null : e.target.value)}
             disabled={!onGroupChange}
           >
             <option value="">No group</option>

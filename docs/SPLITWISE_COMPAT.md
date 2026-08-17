@@ -1,7 +1,30 @@
 # Splitwise API compatibility
 
+> ## BREAKING CHANGE: entity IDs are ULID strings, not integers
+>
+> `/api/sw/v3.0` is **not** byte-compatible with Splitwise for identifiers.
+>
+> `user.id`, `friend.id`, `expense.id`, `group_id`, `users[].user_id`,
+> `users[].user.id`, `repayments.from` / `to`, and `created_by.id` are
+> 26-character Crockford ULID **strings**
+> (`"01ARZ3NDEKTSV4RRFFQ69G5FAV"`), not JSON numbers (`1`).
+>
+> **Category ids are unchanged.** They are still Splitwise's integers
+> (`13` = Dining out). Money is still decimal strings (`"25.00"`). The rest
+> of the response shape is still frozen.
+>
+> This is deliberate. Native primary keys are ULIDs, and a parallel integer
+> `compat_id` is not stored. After a Splitwise import, the original integer
+> lives only in `metadata.splitwise_id` and is **not** returned on this API.
+>
+> Existing Splitwise clients (including `splitwise-to-toshl`) that persist or
+> compare ids as numbers **will not work** without changes. Pointing Toshl at
+> SplitSmart after an import will treat every expense as new. That data loss
+> is accepted.
+
 The compat layer lives in `src/routes/compat/` and is mounted at
-`/api/sw/v3.0`. Its wire format is **frozen**. See CLAUDE.md rule 5.
+`/api/sw/v3.0`. Aside from the ID type break above, its wire format is
+**frozen**. See CLAUDE.md rule 5.
 
 Auth is `Authorization: Bearer <token>`, where the token is minted in Settings →
 API tokens. Splitwise's own personal API keys work the same way, which is why no
@@ -15,19 +38,20 @@ source.
 ### `GET /get_current_user`
 
 ```json
-{ "user": { "id": 1, "first_name": "Alice", "last_name": "Anderson",
+{ "user": { "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "first_name": "Alice", "last_name": "Anderson",
             "email": "alice@example.com", "default_currency": "USD", … } }
 ```
 
 **Critical:** `user.id` and `user.email` must both be truthy. `useAccounts.tsx`
 marks the account invalid otherwise. Ghost accounts have no email, so the
-serializer synthesises `ghost-<id>@splitsmart.invalid`: `.invalid` is reserved
-by RFC 2606 and can never resolve to a real mailbox.
+serializer synthesises `ghost-<ulid>@splitsmart.invalid`: `.invalid` is reserved
+by RFC 2606 and can never resolve to a real mailbox. The suffix is the integer
+compat id, not the native ULID, so the address stays short.
 
 ### `GET /get_friends`
 
 ```json
-{ "friends": [ { "id": 2, "first_name": "Bob", "last_name": "Brown",
+{ "friends": [ { "id": "01ARZ3NDEKTSV4RRFFQ69G5FBW", "first_name": "Bob", "last_name": "Brown",
                  "balance": [ { "currency_code": "USD", "amount": "15.00" } ] } ] }
 ```
 
@@ -101,13 +125,13 @@ Params: `friend_id`, `group_id`, `dated_after`, `dated_before`, `limit`, `offset
 
 ```json
 { "expenses": [ {
-  "id": 1, "description": "Dinner", "cost": "30.00", "currency_code": "USD",
+  "id": "01ARZ3NDEKTSV4RRFFQ69G5FCX", "description": "Dinner", "cost": "30.00", "currency_code": "USD",
   "date": "2026-08-01T00:00:00Z", "deleted_at": null,
-  "category": { "id": 7, "name": "Dining out" },
-  "users": [ { "user_id": 1, "user": { "id": 1, "first_name": "Alice" },
+  "category": { "id": 13, "name": "Dining out" },
+  "users": [ { "user_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "user": { "id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "first_name": "Alice" },
                "paid_share": "30.00", "owed_share": "15.00",
                "net_balance": "15.00" } ],
-  "repayments": [ { "from": 2, "to": 1, "amount": "15.00" } ]
+  "repayments": [ { "from": "01ARZ3NDEKTSV4RRFFQ69G5FBW", "to": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "amount": "15.00" } ]
 } ] }
 ```
 
@@ -128,9 +152,9 @@ Body uses Splitwise's flattened participant keys:
 ```json
 {
   "cost": "20.00", "description": "Taxi", "date": "2026-08-05T00:00:00Z",
-  "currency_code": "USD", "category_id": 7, "group_id": 1,
-  "users__0__user_id": 1, "users__0__paid_share": "20.00", "users__0__owed_share": "10.00",
-  "users__1__user_id": 2, "users__1__paid_share": "0.00",  "users__1__owed_share": "10.00"
+  "currency_code": "USD", "category_id": 13, "group_id": "01ARZ3NDEKTSV4RRFFQ69G5FDY",
+  "users__0__user_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "users__0__paid_share": "20.00", "users__0__owed_share": "10.00",
+  "users__1__user_id": "01ARZ3NDEKTSV4RRFFQ69G5FBW", "users__1__paid_share": "0.00",  "users__1__owed_share": "10.00"
 }
 ```
 

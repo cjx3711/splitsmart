@@ -26,6 +26,7 @@ const { app } = await import("../server.ts");
 const { db } = await import("../db/index.ts");
 const { issueVerificationToken, consumeVerificationToken } = await import("./verification.ts");
 const { hashToken, generateToken } = await import("../auth/password.ts");
+const { ulid } = await import("../domain/ulid.ts");
 
 before(() => {
   migrate(process.env.DATABASE_PATH!);
@@ -37,7 +38,7 @@ after(() => {
 });
 
 /** Reaches into the DB for the token that was just emailed. */
-async function latestTokenHashFor(userId: number): Promise<string | undefined> {
+async function latestTokenHashFor(userId: string): Promise<string | undefined> {
   const row = await db
     .selectFrom("email_tokens")
     .select(["token_hash"])
@@ -55,7 +56,7 @@ async function latestTokenHashFor(userId: number): Promise<string | undefined> {
  * out. Instead we generate one, overwrite the stored hash with its digest, and
  * carry on, equivalent to intercepting the email.
  */
-async function issueAndCapture(userId: number): Promise<string> {
+async function issueAndCapture(userId: string): Promise<string> {
   await issueVerificationToken(userId);
   const plaintext = generateToken(32);
   await db
@@ -69,7 +70,7 @@ async function issueAndCapture(userId: number): Promise<string> {
 }
 
 let counter = 0;
-async function registerUser(): Promise<{ id: number; email: string; cookie: string }> {
+async function registerUser(): Promise<{ id: string; email: string; cookie: string }> {
   const email = `user${++counter}@example.com`;
   const res = await app.request("/api/v1/auth/register", {
     method: "POST",
@@ -78,7 +79,7 @@ async function registerUser(): Promise<{ id: number; email: string; cookie: stri
   });
   assert.equal(res.status, 201);
 
-  const body = (await res.json()) as { user: { id: number } };
+  const body = (await res.json()) as { user: { id: string } };
   const cookie = res.headers.get("set-cookie")?.split(";")[0] ?? "";
   return { id: body.user.id, email, cookie };
 }
@@ -279,12 +280,16 @@ describe("resend", () => {
 
 describe("ghosts", () => {
   test("have nothing to verify", async () => {
-    const group = await db
+    const groupId = ulid();
+    await db
       .insertInto("groups")
-      .values({ name: "Ghost Group", default_currency: "USD", invite_token: "ghost-test-token" })
-      .returning("id")
-      .executeTakeFirstOrThrow();
-    assert.ok(group.id);
+      .values({
+        id: groupId,
+        name: "Ghost Group",
+        default_currency: "USD",
+        invite_token: "ghost-test-token",
+      })
+      .execute();
 
     const joinRes = await app.request("/api/v1/invite/ghost-test-token/join", {
       method: "POST",

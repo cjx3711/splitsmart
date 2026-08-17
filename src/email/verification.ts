@@ -12,7 +12,7 @@
  * warning on `scripts/verify-user.ts` before you do, because a broken Postmark
  * config plus required verification locks you out of your own server.
  */
-import { randomUUID } from "node:crypto";
+import { ulid } from "../domain/ulid.ts";
 import { db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
@@ -42,7 +42,7 @@ export type IssueOutcome =
  * recent link works. Without that, an old link recovered from a mailbox stays
  * live for its full 24 hours.
  */
-export async function issueVerificationToken(userId: number): Promise<IssueOutcome> {
+export async function issueVerificationToken(userId: string): Promise<IssueOutcome> {
   const user = await db
     .selectFrom("users")
     .select(["id", "email", "first_name", "email_verified_at", "is_ghost"])
@@ -88,7 +88,7 @@ export async function issueVerificationToken(userId: number): Promise<IssueOutco
     await trx
       .insertInto("email_tokens")
       .values({
-        id: randomUUID(),
+        id: ulid(),
         token_hash: hashToken(token),
         user_id: userId,
         purpose: "verify_email",
@@ -109,7 +109,7 @@ export async function issueVerificationToken(userId: number): Promise<IssueOutco
 }
 
 export type ConsumeOutcome =
-  | { status: "verified"; userId: number }
+  | { status: "verified"; userId: string }
   | { status: "invalid" }
   | { status: "expired" }
   | { status: "already_used" }

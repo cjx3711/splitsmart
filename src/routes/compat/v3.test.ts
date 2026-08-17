@@ -28,20 +28,23 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { createExpense } = await import("../../domain/expenses.ts");
+const { ulid, isUlid } = await import("../../domain/ulid.ts");
 
 let apiToken: string;
-let aliceId: number;
-let bobId: number;
-let groupId: number;
+let aliceId: string;
+let bobId: string;
+let groupId: string;
 let categoryId: number;
 
 before(async () => {
   migrate(process.env.DATABASE_PATH!);
   seed(process.env.DATABASE_PATH!);
 
-  const alice = await db
+  aliceId = ulid();
+  await db
     .insertInto("users")
     .values({
+      id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
       first_name: "Alice",
@@ -49,24 +52,33 @@ before(async () => {
       default_currency: "USD",
       is_ghost: 0,
     })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  aliceId = alice.id;
+    .execute();
+  assert.ok(isUlid(aliceId));
 
   // Bob is a ghost (no email, no password), exactly what the invite flow makes.
-  const bob = await db
+  bobId = ulid();
+  await db
     .insertInto("users")
-    .values({ first_name: "Bob", last_name: "Brown", default_currency: "USD", is_ghost: 1 })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  bobId = bob.id;
+    .values({
+      id: bobId,
+      first_name: "Bob",
+      last_name: "Brown",
+      default_currency: "USD",
+      is_ghost: 1,
+    })
+    .execute();
 
-  const group = await db
+  groupId = ulid();
+  await db
     .insertInto("groups")
-    .values({ name: "Test Trip", group_type: "trip", default_currency: "USD", created_by: aliceId })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  groupId = group.id;
+    .values({
+      id: groupId,
+      name: "Test Trip",
+      group_type: "trip",
+      default_currency: "USD",
+      created_by: aliceId,
+    })
+    .execute();
 
   await db
     .insertInto("group_members")
@@ -144,6 +156,8 @@ describe("compat: get_current_user", () => {
     const body = (await res.json()) as { user: Record<string, unknown> };
     // useAccounts.tsx rejects the account unless BOTH of these are truthy.
     assert.ok(body.user.id, "user.id must be truthy");
+    assert.equal(typeof body.user.id, "string");
+    assert.ok(isUlid(body.user.id as string));
     assert.ok(body.user.email, "user.email must be truthy");
     assert.equal(body.user.first_name, "Alice");
     assert.equal(body.user.default_currency, "USD");
@@ -172,7 +186,7 @@ describe("compat: get_friends", () => {
     const res = await authed("/api/sw/v3.0/get_friends");
     const body = (await res.json()) as { friends: Array<Record<string, any>> };
     assert.ok(body.friends[0]!.email, "ghost email must be truthy");
-    assert.match(body.friends[0]!.email, /@splitsmart\.invalid$/);
+    assert.match(body.friends[0]!.email, /^ghost-[0-9A-HJKMNP-TV-Z]{26}@splitsmart\.invalid$/);
   });
 });
 
@@ -186,9 +200,9 @@ describe("compat: get_friend/:id", () => {
     assert.equal(body.friend.balance[0].amount, "15.00");
   });
 
-  test("404s on an unknown friend", async () => {
+  test("400s on a non-ULID friend id", async () => {
     const res = await authed("/api/sw/v3.0/get_friend/99999");
-    assert.equal(res.status, 404);
+    assert.equal(res.status, 400);
   });
 });
 
@@ -221,6 +235,8 @@ describe("compat: get_expenses", () => {
 
     const expense = body.expenses[0]!;
     assert.ok(expense.id);
+    assert.equal(typeof expense.id, "string");
+    assert.ok(isUlid(expense.id));
     assert.equal(expense.description, "Dinner");
     assert.equal(expense.cost, "30.00");
     assert.equal(expense.currency_code, "USD");
@@ -244,6 +260,8 @@ describe("compat: get_expenses", () => {
       assert.ok(u.user_id);
       assert.ok(u.user.id);
       assert.equal(u.user_id, u.user.id);
+      assert.equal(typeof u.user_id, "string");
+      assert.ok(isUlid(u.user_id));
       assert.equal(typeof u.paid_share, "string");
       assert.equal(typeof u.owed_share, "string");
     }
@@ -338,11 +356,16 @@ describe("compat: create_expense", () => {
   });
 
   test("rejects a non-member participant", async () => {
-    const outsider = await db
+    const outsiderId = ulid();
+    await db
       .insertInto("users")
-      .values({ first_name: "Outsider", default_currency: "USD", is_ghost: 1 })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+      .values({
+        id: outsiderId,
+        first_name: "Outsider",
+        default_currency: "USD",
+        is_ghost: 1,
+      })
+      .execute();
 
     const res = await authed("/api/sw/v3.0/create_expense", {
       method: "POST",
@@ -355,7 +378,7 @@ describe("compat: create_expense", () => {
         users__0__user_id: aliceId,
         users__0__paid_share: "10.00",
         users__0__owed_share: "5.00",
-        users__1__user_id: outsider.id,
+        users__1__user_id: outsiderId,
         users__1__paid_share: "0.00",
         users__1__owed_share: "5.00",
       }),

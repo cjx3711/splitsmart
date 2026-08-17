@@ -34,12 +34,13 @@ import { createExpense, createPayment } from "../../domain/expenses.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
+import { isUlid, ulid } from "../../domain/ulid.ts";
 
 export const friendRoutes = new Hono<AppEnv>();
 friendRoutes.use("*", requireAuth);
 
 interface FriendBreakdown {
-  groupId: number | null;
+  groupId: string | null;
   groupName: string | null;
   balances: CurrencyAmount[];
 }
@@ -52,17 +53,17 @@ interface FriendBreakdown {
  * place instead of the server inventing a pseudo-group.
  */
 async function breakdownByUser(
-  userId: number,
-): Promise<Map<number, FriendBreakdown[]>> {
+  userId: string,
+): Promise<Map<string, FriendBreakdown[]>> {
   const rows = await getPairwiseBalancesByGroup(db, userId);
 
-  const groupIds = [...new Set(rows.map((r) => r.groupId).filter((id): id is number => id !== null))];
+  const groupIds = [...new Set(rows.map((r) => r.groupId).filter((id): id is string => id !== null))];
   const groups = groupIds.length
     ? await db.selectFrom("groups").select(["id", "name"]).where("id", "in", groupIds).execute()
     : [];
   const nameById = new Map(groups.map((g) => [g.id, g.name]));
 
-  const byUser = new Map<number, FriendBreakdown[]>();
+  const byUser = new Map<string, FriendBreakdown[]>();
   for (const row of rows) {
     const list = byUser.get(row.otherUserId) ?? [];
     list.push({
@@ -187,6 +188,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     return trx
       .insertInto("users")
       .values({
+        id: ulid(),
         first_name: input.firstName,
         last_name: input.lastName ?? null,
         // A ghost may carry an address it has not proved control of. Login
@@ -230,8 +232,8 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
 
 friendRoutes.get("/:id", async (c) => {
   const auth = c.get("user");
-  const friendId = Number(c.req.param("id"));
-  if (!Number.isInteger(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+  const friendId = c.req.param("id");
+  if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
   const related = await listRelatedUserIds(db, auth.id);
   if (!related.includes(friendId)) return c.json({ error: "Friend not found" }, 404);
@@ -269,8 +271,8 @@ friendRoutes.get("/:id", async (c) => {
  */
 friendRoutes.get("/:id/expenses", async (c) => {
   const auth = c.get("user");
-  const friendId = Number(c.req.param("id"));
-  if (!Number.isInteger(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+  const friendId = c.req.param("id");
+  if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
   const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
 
@@ -316,7 +318,7 @@ friendRoutes.get("/:id/expenses", async (c) => {
     .where("expense_id", "in", expenses.map((e) => e.id))
     .execute();
 
-  const byExpense = new Map<number, typeof shares>();
+  const byExpense = new Map<string, typeof shares>();
   for (const s of shares) {
     const list = byExpense.get(s.expense_id) ?? [];
     list.push(s);
@@ -341,8 +343,8 @@ friendRoutes.post(
   zValidator("json", expenseBodySchema),
   async (c) => {
     const auth = c.get("user");
-    const friendId = Number(c.req.param("id"));
-    if (!Number.isInteger(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+    const friendId = c.req.param("id");
+    if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
     const related = await listRelatedUserIds(db, auth.id);
     if (!related.includes(friendId)) return c.json({ error: "Friend not found" }, 404);
@@ -385,8 +387,8 @@ friendRoutes.post(
   ),
   async (c) => {
     const auth = c.get("user");
-    const friendId = Number(c.req.param("id"));
-    if (!Number.isInteger(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+    const friendId = c.req.param("id");
+    if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
     const related = await listRelatedUserIds(db, auth.id);
     if (!related.includes(friendId)) return c.json({ error: "Friend not found" }, 404);
@@ -422,8 +424,8 @@ friendRoutes.post(
  */
 friendRoutes.delete("/:id", async (c) => {
   const auth = c.get("user");
-  const friendId = Number(c.req.param("id"));
-  if (!Number.isInteger(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+  const friendId = c.req.param("id");
+  if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
   await removeFriendship(db, auth.id, friendId);
 

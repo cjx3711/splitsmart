@@ -17,16 +17,16 @@ export const activityRoutes = new Hono<AppEnv>();
 activityRoutes.use("*", requireAuth);
 
 interface ActivityRow {
-  id: number;
+  id: string;
   action: string;
   payload: string | null;
   created_at: string;
-  actor_id: number | null;
+  actor_id: string | null;
   actor_first_name: string | null;
   actor_last_name: string | null;
-  group_id: number | null;
+  group_id: string | null;
   group_name: string | null;
-  expense_id: number | null;
+  expense_id: string | null;
   description: string | null;
   cost_minor: number | null;
   currency_code: string | null;

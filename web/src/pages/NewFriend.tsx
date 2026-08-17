@@ -17,7 +17,7 @@ export function NewFriend() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<
-    { id: number; name: string; existing: boolean; delivered: boolean; recoveryCode?: string } | null
+    { id: string; name: string; existing: boolean; delivered: boolean; recoveryCode?: string } | null
   >(null);
 
   async function handleSubmit(event: FormEvent) {

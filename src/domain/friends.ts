@@ -14,15 +14,18 @@
  * both API trees want to show. `friendships` is stored canonically with
  * user_a_id < user_b_id so a pair can only exist once; go through the helpers
  * here rather than ordering the ids at each call site.
+ *
+ * The CHECK and these helpers compare ULIDs lexicographically. Crockford
+ * strings are a total order, so `<` here is the same comparison SQLite uses.
  */
 import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
 
 /** Canonical column order for the `friendships` primary key. */
 export function friendPair(
-  userId: number,
-  otherUserId: number,
-): { userAId: number; userBId: number } {
+  userId: string,
+  otherUserId: string,
+): { userAId: string; userBId: string } {
   if (userId === otherUserId) {
     throw new Error("A user cannot be their own friend");
   }
@@ -34,8 +37,8 @@ export function friendPair(
 /** Idempotent: adding an existing friendship is a no-op, not an error. */
 export async function addFriendship(
   db: DB,
-  userId: number,
-  otherUserId: number,
+  userId: string,
+  otherUserId: string,
 ): Promise<void> {
   const { userAId, userBId } = friendPair(userId, otherUserId);
   await db
@@ -54,8 +57,8 @@ export async function addFriendship(
  */
 export async function removeFriendship(
   db: DB,
-  userId: number,
-  otherUserId: number,
+  userId: string,
+  otherUserId: string,
 ): Promise<void> {
   const { userAId, userBId } = friendPair(userId, otherUserId);
   await db
@@ -67,8 +70,8 @@ export async function removeFriendship(
 
 export async function areFriends(
   db: DB,
-  userId: number,
-  otherUserId: number,
+  userId: string,
+  otherUserId: string,
 ): Promise<boolean> {
   if (userId === otherUserId) return false;
   const { userAId, userBId } = friendPair(userId, otherUserId);
@@ -84,8 +87,8 @@ export async function areFriends(
 /** Just the explicitly-added ones, for distinguishing removable friends. */
 export async function listExplicitFriendIds(
   db: DB,
-  userId: number,
-): Promise<number[]> {
+  userId: string,
+): Promise<string[]> {
   const rows = await db
     .selectFrom("friendships")
     .select(["user_a_id", "user_b_id"])
@@ -106,9 +109,9 @@ export async function listExplicitFriendIds(
  */
 export async function listRelatedUserIds(
   db: DB,
-  userId: number,
-): Promise<number[]> {
-  const related = await sql<{ id: number }>`
+  userId: string,
+): Promise<string[]> {
+  const related = await sql<{ id: string }>`
     SELECT DISTINCT id FROM (
       SELECT CASE WHEN f.user_a_id = ${userId} THEN f.user_b_id ELSE f.user_a_id END AS id
       FROM friendships f

@@ -20,12 +20,12 @@ export interface CurrencyAmount {
 }
 
 export interface PairwiseBalance {
-  otherUserId: number;
+  otherUserId: string;
   balances: CurrencyAmount[];
 }
 
 export interface GroupMemberBalance {
-  userId: number;
+  userId: string;
   balances: CurrencyAmount[];
 }
 
@@ -38,13 +38,13 @@ export interface GroupMemberBalance {
  */
 export async function getPairwiseBalances(
   db: DB,
-  userId: number,
+  userId: string,
 ): Promise<PairwiseBalance[]> {
   // Repayments where the user is the debtor count negative; where they are the
   // creditor, positive. UNION ALL then aggregate, so each direction is a simple
   // indexed scan rather than an OR across two columns.
   const rows = await sql<{
-    other_user_id: number;
+    other_user_id: string;
     currency_code: string;
     amount_minor: number;
   }>`
@@ -71,7 +71,7 @@ export async function getPairwiseBalances(
     ORDER BY other_user_id, currency_code
   `.execute(db);
 
-  const byUser = new Map<number, CurrencyAmount[]>();
+  const byUser = new Map<string, CurrencyAmount[]>();
   for (const row of rows.rows) {
     const list = byUser.get(row.other_user_id) ?? [];
     list.push({ currencyCode: row.currency_code, amountMinor: row.amount_minor });
@@ -85,9 +85,9 @@ export async function getPairwiseBalances(
 }
 
 export interface PairwiseGroupBalance {
-  otherUserId: number;
+  otherUserId: string;
   /** NULL for one-on-one expenses that belong to no group. */
-  groupId: number | null;
+  groupId: string | null;
   balances: CurrencyAmount[];
 }
 
@@ -102,11 +102,11 @@ export interface PairwiseGroupBalance {
  */
 export async function getPairwiseBalancesByGroup(
   db: DB,
-  userId: number,
+  userId: string,
 ): Promise<PairwiseGroupBalance[]> {
   const rows = await sql<{
-    other_user_id: number;
-    group_id: number | null;
+    other_user_id: string;
+    group_id: string | null;
     currency_code: string;
     amount_minor: number;
   }>`
@@ -159,8 +159,8 @@ export async function getPairwiseBalancesByGroup(
 /** Net balance between exactly two users, across all shared history. */
 export async function getBalanceBetween(
   db: DB,
-  userId: number,
-  otherUserId: number,
+  userId: string,
+  otherUserId: string,
 ): Promise<CurrencyAmount[]> {
   const all = await getPairwiseBalances(db, userId);
   return all.find((b) => b.otherUserId === otherUserId)?.balances ?? [];
@@ -174,10 +174,10 @@ export async function getBalanceBetween(
  */
 export async function getGroupBalances(
   db: DB,
-  groupId: number,
+  groupId: string,
 ): Promise<GroupMemberBalance[]> {
   const rows = await sql<{
-    user_id: number;
+    user_id: string;
     currency_code: string;
     amount_minor: number;
   }>`
@@ -203,7 +203,7 @@ export async function getGroupBalances(
     ORDER BY user_id, currency_code
   `.execute(db);
 
-  const byUser = new Map<number, CurrencyAmount[]>();
+  const byUser = new Map<string, CurrencyAmount[]>();
   for (const row of rows.rows) {
     if (row.amount_minor === 0) continue;
     const list = byUser.get(row.user_id) ?? [];
@@ -223,7 +223,7 @@ export async function getGroupBalances(
  */
 export async function getTotalBalance(
   db: DB,
-  userId: number,
+  userId: string,
 ): Promise<CurrencyAmount[]> {
   const pairwise = await getPairwiseBalances(db, userId);
   const totals = new Map<string, number>();
@@ -250,8 +250,8 @@ export async function getTotalBalance(
  * nothing here is written to the database.
  */
 export function simplifyDebts(
-  balances: Array<{ userId: number; amountMinor: number }>,
-): Array<{ fromUserId: number; toUserId: number; amountMinor: number }> {
+  balances: Array<{ userId: string; amountMinor: number }>,
+): Array<{ fromUserId: string; toUserId: string; amountMinor: number }> {
   const total = balances.reduce((sum, b) => sum + b.amountMinor, 0);
   if (total !== 0) {
     throw new Error(
@@ -262,14 +262,14 @@ export function simplifyDebts(
   const creditors = balances
     .filter((b) => b.amountMinor > 0)
     .map((b) => ({ ...b }))
-    .sort((a, b) => b.amountMinor - a.amountMinor || a.userId - b.userId);
+    .sort((a, b) => b.amountMinor - a.amountMinor || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
 
   const debtors = balances
     .filter((b) => b.amountMinor < 0)
     .map((b) => ({ userId: b.userId, amountMinor: -b.amountMinor }))
-    .sort((a, b) => b.amountMinor - a.amountMinor || a.userId - b.userId);
+    .sort((a, b) => b.amountMinor - a.amountMinor || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
 
-  const transfers: Array<{ fromUserId: number; toUserId: number; amountMinor: number }> = [];
+  const transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }> = [];
   let ci = 0;
   let di = 0;
 

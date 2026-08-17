@@ -25,7 +25,7 @@ export function Join() {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [joined, setJoined] = useState<{ recoveryCode: string; groupId: number } | null>(null);
+  const [joined, setJoined] = useState<{ recoveryCode: string; groupId: string } | null>(null);
 
   useEffect(() => {
     if (!token) return;

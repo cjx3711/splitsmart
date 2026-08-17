@@ -51,19 +51,19 @@ interface DraftItem {
   key: number;
   label: string;
   amount: string;
-  participantIds: number[];
+  participantIds: string[];
 }
 
 export interface SplitDraft {
   mode: SplitType;
   setMode: (mode: SplitType) => void;
   /** Raw text per person. Meaning depends on `mode`; cleared when mode changes. */
-  values: Record<number, string>;
-  setValue: (id: number, value: string) => void;
+  values: Record<string, string>;
+  setValue: (id: string, value: string) => void;
   /** Used by the one-sided presets, which set every person at once. */
-  setAllValues: (values: Record<number, string>) => void;
+  setAllValues: (values: Record<string, string>) => void;
   items: DraftItem[];
-  addItem: (participantIds: number[]) => void;
+  addItem: (participantIds: string[]) => void;
   updateItem: (key: number, patch: Partial<Omit<DraftItem, "key">>) => void;
   removeItem: (key: number) => void;
   /** Itemized only: raw text, in the expense's currency. */
@@ -72,7 +72,7 @@ export interface SplitDraft {
   tip: string;
   setTip: (value: string) => void;
   /** Drops people who are no longer on the expense from every line. */
-  syncParticipants: (ids: number[]) => void;
+  syncParticipants: (ids: string[]) => void;
   /** Called after a successful submit, to empty the form for the next expense. */
   reset: () => void;
 }
@@ -80,15 +80,15 @@ export interface SplitDraft {
 /** Reopens an existing expense's split, from its stored split_input/split_meta. */
 export interface SplitDraftInit {
   mode: SplitType;
-  values: Record<number, string>;
-  items?: Array<{ label: string; amount: string; participantIds: number[] }>;
+  values: Record<string, string>;
+  items?: Array<{ label: string; amount: string; participantIds: string[] }>;
   tax?: string;
   tip?: string;
 }
 
 export function useSplitDraft(initial?: SplitDraftInit): SplitDraft {
   const [mode, setModeRaw] = useState<SplitType>(initial?.mode ?? "equal");
-  const [values, setValues] = useState<Record<number, string>>(initial?.values ?? {});
+  const [values, setValues] = useState<Record<string, string>>(initial?.values ?? {});
   const nextKey = useRef(1);
   const [items, setItems] = useState<DraftItem[]>(() =>
     (initial?.items ?? []).map((item) => ({ ...item, key: nextKey.current++ })),
@@ -108,12 +108,12 @@ export function useSplitDraft(initial?: SplitDraftInit): SplitDraft {
     mode,
     setMode,
     values,
-    setValue: useCallback((id: number, value: string) => {
+    setValue: useCallback((id: string, value: string) => {
       setValues((prev) => ({ ...prev, [id]: value }));
     }, []),
-    setAllValues: useCallback((next: Record<number, string>) => setValues(next), []),
+    setAllValues: useCallback((next: Record<string, string>) => setValues(next), []),
     items,
-    addItem: useCallback((participantIds: number[]) => {
+    addItem: useCallback((participantIds: string[]) => {
       setItems((prev) => [
         ...prev,
         // A new line starts shared by everyone, which is the common case and is
@@ -133,7 +133,7 @@ export function useSplitDraft(initial?: SplitDraftInit): SplitDraft {
     setTip,
     // Dropping someone from the expense must also drop them from every line, or
     // the itemized split would charge a person who is no longer on it.
-    syncParticipants: useCallback((ids: number[]) => {
+    syncParticipants: useCallback((ids: string[]) => {
       setItems((prev) => {
         let changed = false;
         const next = prev.map((item) => {
@@ -205,21 +205,21 @@ export function itemizedTotal(
  */
 export function buildSplit(
   draft: SplitDraft,
-  participantIds: number[],
+  participantIds: string[],
   costMinor: number,
   payment: Payment,
   currency: string,
   parseInCurrency: (input: string, currency: string) => number,
 ): {
   splitType: SplitType;
-  participants: Array<{ userId: number; paidMinor: number; input?: number }>;
+  participants: Array<{ userId: string; paidMinor: number; input?: number }>;
   items?: SplitItem[];
   taxMinor?: number;
   tipMinor?: number;
 } {
   const { mode, values } = draft;
 
-  const inputFor = (userId: number): number | undefined => {
+  const inputFor = (userId: string): number | undefined => {
     const raw = (values[userId] ?? "").trim();
 
     switch (mode) {
@@ -311,12 +311,12 @@ export function buildSplit(
  */
 function previewSplit(
   draft: SplitDraft,
-  participantIds: number[],
+  participantIds: string[],
   costMinor: number,
   payment: Payment,
   currency: string,
   parseInCurrency: (input: string, currency: string) => number,
-): { shares: Map<number, number> | null; problem: string | null } {
+): { shares: Map<string, number> | null; problem: string | null } {
   if (participantIds.length === 0) {
     return { shares: null, problem: "Nobody is on this expense yet." };
   }
@@ -460,7 +460,7 @@ function PersonRows({
   draft: SplitDraft;
   currency: string;
   decimals: number | null;
-  shares: Map<number, number> | null;
+  shares: Map<string, number> | null;
 }) {
   const needsValue = draft.mode !== "equal" && draft.mode !== "itemized";
 

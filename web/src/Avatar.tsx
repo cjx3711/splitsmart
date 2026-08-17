@@ -12,12 +12,15 @@ export function Avatar({
   size = 34,
 }: {
   name: string;
-  id: number;
+  id: string;
   size?: number;
 }) {
-  // Golden-angle stepping spreads consecutive ids far apart in hue, so the
-  // first handful of people in a group never look alike.
-  const hue = (id * 137.508) % 360;
+  // Hash the ULID so the same person is the same colour on every screen
+  // without storing anything. Consecutive integer ids used to be spread with
+  // the golden angle; a string hash of the randomness bits does the same job.
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
 
   const initials =
     name

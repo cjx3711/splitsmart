@@ -41,6 +41,7 @@ export interface SplitwiseUser {
   default_currency?: string | null;
   registration_status?: string | null;
   picture?: { medium?: string | null; large?: string | null } | null;
+  created_at?: string | null;
 }
 
 export interface SplitwiseGroup {
@@ -49,6 +50,7 @@ export interface SplitwiseGroup {
   group_type?: string | null;
   simplify_by_default?: boolean | null;
   members?: SplitwiseUser[];
+  created_at?: string | null;
 }
 
 export interface SplitwiseExpenseUser {
@@ -67,6 +69,7 @@ export interface SplitwiseExpense {
   cost: string;
   currency_code: string;
   date: string;
+  created_at?: string | null;
   category?: { id: number; name: string } | null;
   deleted_at?: string | null;
   users?: SplitwiseExpenseUser[];

@@ -27,6 +27,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
+import { ulid } from "../../domain/ulid.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { SplitwiseClient, SplitwiseError, SplitwiseAuthError } from "../../splitwise/client.ts";
 import {
@@ -233,10 +234,11 @@ importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
  * its `recordActivity` option), because a thousand imported expenses would
  * otherwise push every real event off the feed.
  */
-async function recordImportActivity(userId: number, count: number): Promise<void> {
+async function recordImportActivity(userId: string, count: number): Promise<void> {
   await db
     .insertInto("activity")
     .values({
+      id: ulid(),
       user_id: userId,
       action: "import.completed",
       payload: JSON.stringify({ source: "splitwise", expenses: count }),

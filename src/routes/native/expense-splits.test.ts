@@ -31,10 +31,11 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { updateExpense } = await import("../../domain/expenses.ts");
+const { isUlid, ulid } = await import("../../domain/ulid.ts");
 
 let apiToken: string;
-let groupId: number;
-const userIds: number[] = [];
+let groupId: string;
+const userIds: string[] = [];
 
 async function post(path: string, body: unknown) {
   const res = await app.request(`/api/v1${path}`, {
@@ -46,7 +47,7 @@ async function post(path: string, body: unknown) {
 }
 
 /** The stored expense plus its shares, which is what every assertion here reads. */
-async function stored(expenseId: number) {
+async function stored(expenseId: string) {
   const expense = await db
     .selectFrom("expenses")
     .select(["cost_minor", "split_type", "split_meta"])
@@ -57,8 +58,11 @@ async function stored(expenseId: number) {
     .selectFrom("expense_users")
     .select(["user_id", "paid_share_minor", "owed_share_minor", "split_input"])
     .where("expense_id", "=", expenseId)
-    .orderBy("user_id")
     .execute();
+
+  // ULIDs minted in the same millisecond do not sort in insertion order.
+  // Tests assert per-person amounts in Alice, Bob, Carol sequence.
+  shares.sort((a, b) => userIds.indexOf(a.user_id) - userIds.indexOf(b.user_id));
 
   return { expense, shares, owed: shares.map((s) => s.owed_share_minor) };
 }
@@ -74,31 +78,46 @@ function body(extra: Record<string, unknown>) {
   };
 }
 
+/** The payer fronts the whole cost; `input` carries the per-type figure. */
+function participants(inputs?: number[]) {
+  return userIds.map((userId, i) => ({
+    userId,
+    paidMinor: i === 0 ? 3000 : 0,
+    ...(inputs ? { input: inputs[i] } : {}),
+  }));
+}
+
 before(async () => {
   migrate(process.env.DATABASE_PATH!);
   seed(process.env.DATABASE_PATH!);
 
   for (const name of ["Alice", "Bob", "Carol"]) {
-    const user = await db
+    const id = ulid();
+    await db
       .insertInto("users")
       .values({
+        id,
         email: `${name.toLowerCase()}@example.com`,
         password_hash: "scrypt$131072$8$1$AAAA$AAAA",
         first_name: name,
         default_currency: "JPY",
         is_ghost: 0,
       })
-      .returning("id")
-      .executeTakeFirstOrThrow();
-    userIds.push(user.id);
+      .execute();
+    userIds.push(id);
   }
 
-  const group = await db
+  groupId = ulid();
+  await db
     .insertInto("groups")
-    .values({ name: "Kyushu", group_type: "trip", default_currency: "JPY", created_by: userIds[0]! })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  groupId = group.id;
+    .values({
+      id: groupId,
+      name: "Kyushu",
+      group_type: "trip",
+      default_currency: "JPY",
+      created_by: userIds[0]!,
+    })
+    .execute();
 
   for (const id of userIds) {
     await db
@@ -118,20 +137,13 @@ after(async () => {
 // ---------------------------------------------------------------------------
 
 describe("split types over the native API", () => {
-  /** The payer fronts the whole cost; `input` carries the per-type figure. */
-  const participants = (inputs?: number[]) =>
-    userIds.map((userId, i) => ({
-      userId,
-      paidMinor: i === 0 ? 3000 : 0,
-      ...(inputs ? { input: inputs[i] } : {}),
-    }));
-
   test("equal", async () => {
     const { status, body: res } = await post(`/groups/${groupId}/expenses`,
       body({ splitType: "equal", participants: participants() }));
     assert.equal(status, 201);
 
     const { expense, owed } = await stored(res.id);
+    assert.ok(isUlid(res.id));
     assert.deepEqual(owed, [1000, 1000, 1000]);
     assert.equal(expense.split_meta, null);
   });
@@ -416,24 +428,25 @@ describe("POST /expenses: the generic endpoint", () => {
   });
 
   test("refuses a stranger on a non-group expense", async () => {
-    const stranger = await db
+    const strangerId = ulid();
+    await db
       .insertInto("users")
       .values({
+        id: strangerId,
         email: "dave@example.com",
         password_hash: "scrypt$131072$8$1$AAAA$AAAA",
         first_name: "Dave",
         default_currency: "JPY",
         is_ghost: 0,
       })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+      .execute();
 
     const { status, body: res } = await post("/expenses",
       body({
         splitType: "equal",
         participants: [
           { userId: userIds[0]!, paidMinor: 3000 },
-          { userId: stranger.id, paidMinor: 0 },
+          { userId: strangerId, paidMinor: 0 },
         ],
       }));
     assert.equal(status, 400);
@@ -441,24 +454,75 @@ describe("POST /expenses: the generic endpoint", () => {
   });
 
   test("refuses a group the caller is not a member of", async () => {
-    const other = await db
+    const otherId = ulid();
+    await db
       .insertInto("groups")
       .values({
+        id: otherId,
         name: "Someone else's trip",
         group_type: "trip",
         default_currency: "JPY",
         created_by: userIds[1]!,
       })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+      .execute();
 
     const { status } = await post("/expenses",
       body({
-        groupId: other.id,
+        groupId: otherId,
         splitType: "equal",
         participants: [{ userId: userIds[0]!, paidMinor: 3000 }],
       }));
     assert.equal(status, 403);
+  });
+});
+
+describe("client-minted expense ids", () => {
+  test("stores the supplied ULID as the primary key", async () => {
+    const id = ulid();
+    const { status, body: res } = await post(`/groups/${groupId}/expenses`,
+      body({ id, splitType: "equal", participants: participants() }));
+    assert.equal(status, 201);
+    assert.equal(res.id, id);
+    assert.ok(isUlid(res.id));
+  });
+
+  test("a retry with the same id is a no-op that returns the existing row", async () => {
+    const id = ulid();
+    const first = await post(`/groups/${groupId}/expenses`,
+      body({ id, description: "Original", splitType: "equal", participants: participants() }));
+    assert.equal(first.status, 201);
+
+    const retry = await post(`/groups/${groupId}/expenses`,
+      body({
+        id,
+        description: "Should not overwrite",
+        costMinor: 9999,
+        splitType: "equal",
+        participants: participants(),
+      }));
+    assert.equal(retry.status, 201);
+    assert.equal(retry.body.id, id);
+
+    const row = await db
+      .selectFrom("expenses")
+      .select(["description", "cost_minor"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    assert.equal(row.description, "Original");
+    assert.equal(row.cost_minor, 3000);
+  });
+
+  test("rejects an invalid id before writing", async () => {
+    const { status } = await post(`/groups/${groupId}/expenses`,
+      body({ id: "not-a-ulid", splitType: "equal", participants: participants() }));
+    assert.equal(status, 400);
+  });
+
+  test("an invalid path id is 400, not a silent miss", async () => {
+    const res = await app.request("/api/v1/expenses/not-a-ulid", {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    assert.equal(res.status, 400);
   });
 });
 

@@ -171,6 +171,9 @@ to this flow. It still takes `SPLITWISE_API_KEY` from the shell.
 
 ## Phase 7: Deployment ⬜
 
+Land ULIDs (phase 8) **before** any real database exists somewhere. Schema
+changes still fold into `migrations/001` until then; after a deploy they cannot.
+
 - ⬜ Dockerfile (single container, SQLite on a mounted volume)
 - ⬜ **Backups**: Litestream or a nightly `.backup` to object storage. This is
       real financial data in a single file; treat losing it as the top risk.
@@ -178,22 +181,41 @@ to this flow. It still takes `SPLITWISE_API_KEY` from the shell.
       `webapp/server.js` proxy target and paste a SplitSmart API token in as the
       Splitwise key
 
-## Phase 8: Offline-first + PWA ⬜
+## Phase 8: ULID primary keys ✅ **before offline, before deploy**
 
-Full plan in `docs/OFFLINE.md`. Dexie mirror of the user's visible ledger, an
-outbox replayed through the existing domain writers, installable PWA shell,
-unsynced count and last-synced time in the UI.
+Full plan in `docs/ULIDS.md`. Destructive. Native entity ids are ULIDs so a
+client can mint an expense id offline. The compat layer uses those same ULID
+strings on the wire (a documented break from Splitwise integers). Categories
+stay Splitwise's integers. Original Splitwise ids live in `metadata.splitwise_id`.
 
-- ⬜ Foundations: `expenses.client_uuid` + `version`, `sync_log`, pure balance core
-- ⬜ PWA shell: `vite-plugin-pwa`, manifest, icons (ships alone)
-- ⬜ Local read mirror: the app becomes fully usable offline, read-only
-- ⬜ Incremental pull: `/api/v1/sync/pull`, seq cursor, read-time audience
-- ⬜ Offline writes: outbox, `/api/v1/sync/push`, conflict + quarantine UI
+- ✅ Fold TEXT ULIDs into `migrations/001`; `yarn db:reset`
+- ✅ Compat serializers emit the native ULID as `id` (string)
+- ✅ `src/domain/ulid.ts`, native and compat routes parse path ids as ULIDs
+- ✅ Import matches on `metadata.splitwise_id`; PK is always a fresh ULID
+
+## Phase 9: Offline-first + PWA ⬜
+
+Full plan in `docs/OFFLINE.md`. Assumes phase 8. Dexie mirror of the
+**logged-in** user's visible ledger, an outbox replayed through the existing
+domain writers, installable PWA shell, unsynced count and last-synced time in
+the UI.
+
+Invite-link visitors (per-member or general group link, secret kept in
+`localStorage`) are **not** offline-capable. No Dexie, no sync endpoints, no
+cached ledger: no network means it does not work. A link is a revocable
+capability; a local copy would outlive the owner expiring it.
+
+- ⬜ Foundations: `expenses.version`, `sync_log`, local balances via `deriveRepayments`
+- ⬜ PWA shell: `vite-plugin-pwa`, manifest, icons, cached profile + currencies
+- ⬜ Local read mirror: the app becomes fully usable offline, read-only (write-through while online)
+- ⬜ Incremental pull: `/api/v1/sync/pull`, snapshot on join, seq cursor
+- ⬜ Offline writes: outbox reducer, `/api/v1/sync/push`, conflict + quarantine UI
 - ⬜ Status UI: unsynced count, last synced, per-expense sync badges
 
 Adding a friend and creating a group stay **online-only** on purpose: both mint
-server-side identities (a ghost user, an `invite_token`), and a queued identity
-reconciled by email is how two people become one.
+server-side identities (a placeholder user, an invite-link secret), and a
+queued identity reconciled by email is how two people become one. Expense ids
+are client-minted ULIDs; that is the whole reason phase 8 exists.
 
 ---
 

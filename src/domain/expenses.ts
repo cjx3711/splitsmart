@@ -20,9 +20,17 @@ import {
   type SplitParticipant,
   type SplitType,
 } from "./split.ts";
+import { isUlid, ulid } from "./ulid.ts";
+import { serializeMetadata, type EntityMetadata } from "./metadata.ts";
 
 export interface CreateExpenseInput {
-  groupId?: number | null;
+  /**
+   * Client-minted primary key. Must be a valid ULID. A retry with the same id
+   * is a no-op that returns the existing row — that is the offline-first
+   * idempotency story. Absent: the server mints one.
+   */
+  id?: string;
+  groupId?: string | null;
   description: string;
   details?: string | null;
   costMinor: number;
@@ -50,9 +58,12 @@ export interface CreateExpenseInput {
   tipMinor?: number | null;
   isPayment?: boolean;
   paymentMethod?: string | null;
-  createdBy: number;
-  /** Set only by the Splitwise importer to preserve original ids. */
-  splitwiseId?: number | null;
+  createdBy: string;
+  /**
+   * JSON bag written as `expenses.metadata`. The importer stamps
+   * `{ splitwise_id }` so a second run can match; native creates omit it.
+   */
+  metadata?: EntityMetadata;
   /**
    * Defaults to true. The Splitwise importer sets it false and writes one
    * summary entry per run instead (a thousand imported expenses would
@@ -66,54 +77,84 @@ export class ExpenseError extends Error {}
 /**
  * Creates an expense with its shares and derived repayments, atomically.
  */
-export async function createExpense(input: CreateExpenseInput): Promise<number> {
-  const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
-    items: input.items,
-  });
-  const repayments = deriveRepayments(shares);
-  const date = normaliseDate(input.date);
-  const splitMeta = serialiseSplitMeta(input);
+export async function createExpense(input: CreateExpenseInput): Promise<string> {
+  if (input.id !== undefined && !isUlid(input.id)) {
+    throw new ExpenseError("Invalid expense id");
+  }
 
   return transaction(async (trx) => {
+    // First writer wins: a retry of a client-minted id must not re-validate or
+    // rewrite the existing row. Check before computeSplit so a replayed body
+    // that would no longer parse still returns the original expense.
+    if (input.id) {
+      const existing = await trx
+        .selectFrom("expenses")
+        .select("id")
+        .where("id", "=", input.id)
+        .executeTakeFirst();
+      if (existing) return existing.id;
+    }
+
+    const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
+      items: input.items,
+    });
+    const repayments = deriveRepayments(shares);
+    const date = normaliseDate(input.date);
+    const splitMeta = serialiseSplitMeta(input);
+
     await assertParticipantsAreMembers(trx, input.groupId ?? null, shares.map((s) => s.userId));
 
-    const expense = await trx
-      .insertInto("expenses")
-      .values({
-        splitwise_id: input.splitwiseId ?? null,
-        group_id: input.groupId ?? null,
-        description: input.description,
-        details: input.details ?? null,
-        cost_minor: input.costMinor,
-        currency_code: input.currencyCode.toUpperCase(),
-        date,
-        category_id: input.categoryId ?? null,
-        split_type: input.splitType,
-        split_meta: splitMeta,
-        is_payment: input.isPayment ? 1 : 0,
-        payment_method: input.paymentMethod ?? null,
-        created_by: input.createdBy,
-        updated_by: input.createdBy,
-      })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+    const id = input.id ?? ulid();
 
-    await writeSharesAndRepayments(trx, expense.id, shares, repayments);
+    try {
+      await trx
+        .insertInto("expenses")
+        .values({
+          id,
+          metadata: serializeMetadata(input.metadata ?? {}),
+          group_id: input.groupId ?? null,
+          description: input.description,
+          details: input.details ?? null,
+          cost_minor: input.costMinor,
+          currency_code: input.currencyCode.toUpperCase(),
+          date,
+          category_id: input.categoryId ?? null,
+          split_type: input.splitType,
+          split_meta: splitMeta,
+          is_payment: input.isPayment ? 1 : 0,
+          payment_method: input.paymentMethod ?? null,
+          created_by: input.createdBy,
+          updated_by: input.createdBy,
+        })
+        .execute();
+    } catch (err) {
+      // Concurrent retry of the same client-minted id: the first writer won.
+      const raced = await trx
+        .selectFrom("expenses")
+        .select("id")
+        .where("id", "=", id)
+        .executeTakeFirst();
+      if (raced) return raced.id;
+      throw err;
+    }
+
+    await writeSharesAndRepayments(trx, id, shares, repayments);
 
     if (input.recordActivity !== false) {
       await trx
         .insertInto("activity")
         .values({
+          id: ulid(),
           user_id: input.createdBy,
           group_id: input.groupId ?? null,
-          expense_id: expense.id,
+          expense_id: id,
           action: input.isPayment ? "payment.created" : "expense.created",
           payload: JSON.stringify({ description: input.description }),
         })
         .execute();
     }
 
-    return expense.id;
+    return id;
   });
 }
 
@@ -125,9 +166,9 @@ export async function createExpense(input: CreateExpenseInput): Promise<number> 
  * participant behind the way a partial update can.
  */
 export async function updateExpense(
-  expenseId: number,
-  input: Omit<CreateExpenseInput, "createdBy" | "splitwiseId" | "recordActivity"> & {
-    updatedBy: number;
+  expenseId: string,
+  input: Omit<CreateExpenseInput, "createdBy" | "splitwiseId" | "recordActivity" | "id"> & {
+    updatedBy: string;
   },
 ): Promise<void> {
   const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
@@ -180,6 +221,7 @@ export async function updateExpense(
     await trx
       .insertInto("activity")
       .values({
+        id: ulid(),
         user_id: input.updatedBy,
         group_id: input.groupId ?? null,
         expense_id: expenseId,
@@ -198,7 +240,7 @@ export async function updateExpense(
  * without losing the history. The compat API needs `deleted_at` on the way out,
  * which is the other reason not to hard-delete.
  */
-export async function deleteExpense(expenseId: number, deletedBy: number): Promise<void> {
+export async function deleteExpense(expenseId: string, deletedBy: string): Promise<void> {
   await transaction(async (trx) => {
     const expense = await trx
       .selectFrom("expenses")
@@ -218,6 +260,7 @@ export async function deleteExpense(expenseId: number, deletedBy: number): Promi
     await trx
       .insertInto("activity")
       .values({
+        id: ulid(),
         user_id: deletedBy,
         group_id: expense.group_id,
         expense_id: expenseId,
@@ -235,15 +278,15 @@ export async function deleteExpense(expenseId: number, deletedBy: number): Promi
  * the same balance query as everything else instead of needing its own path.
  */
 export async function createPayment(params: {
-  fromUserId: number;
-  toUserId: number;
+  fromUserId: string;
+  toUserId: string;
   amountMinor: number;
   currencyCode: string;
-  groupId?: number | null;
+  groupId?: string | null;
   date?: string;
   paymentMethod?: string | null;
-  createdBy: number;
-}): Promise<number> {
+  createdBy: string;
+}): Promise<string> {
   if (params.fromUserId === params.toUserId) {
     throw new ExpenseError("Cannot record a payment to yourself");
   }
@@ -318,7 +361,7 @@ function serialiseSplitMeta(input: {
     items: items.map((item) => ({
       label: item.label?.trim() || null,
       amountMinor: item.amountMinor,
-      participantIds: [...new Set(item.participantIds)].sort((a, b) => a - b),
+      participantIds: [...new Set(item.participantIds)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     })),
     ...(tax !== 0 ? { taxMinor: tax } : {}),
     ...(tip !== 0 ? { tipMinor: tip } : {}),
@@ -327,7 +370,7 @@ function serialiseSplitMeta(input: {
 
 async function writeSharesAndRepayments(
   trx: DB,
-  expenseId: number,
+  expenseId: string,
   shares: ReturnType<typeof computeSplit>,
   repayments: ReturnType<typeof deriveRepayments>,
 ): Promise<void> {
@@ -367,8 +410,8 @@ async function writeSharesAndRepayments(
  */
 async function assertParticipantsAreMembers(
   trx: DB,
-  groupId: number | null,
-  userIds: number[],
+  groupId: string | null,
+  userIds: string[],
 ): Promise<void> {
   if (groupId === null) return;
 

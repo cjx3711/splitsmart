@@ -214,11 +214,11 @@ export function ApiDocs() {
   "currencyCode": "JPY",
   "date": "2026-08-17",
   "categoryId": 13,
-  "groupId": 4,
+  "groupId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
   "splitType": "equal",
   "participants": [
-    { "userId": 1, "paidMinor": 2838, "input": 1 },
-    { "userId": 2, "paidMinor": 0, "input": 1 }
+    { "userId": "01ARZ3NDEKTSV4RRFFQ69G5FAW", "paidMinor": 2838, "input": 1 },
+    { "userId": "01ARZ3NDEKTSV4RRFFQ69G5FAX", "paidMinor": 0, "input": 1 }
   ]
 }`}</Code>
       <p>
@@ -233,8 +233,8 @@ export function ApiDocs() {
   "splitType": "itemized",
   "costMinor": 2838,
   "items": [
-    { "label": "Tonkotsu", "amountMinor": 1900, "participantIds": [1, 2] },
-    { "label": "Gyoza", "amountMinor": 680, "participantIds": [1] }
+    { "label": "Tonkotsu", "amountMinor": 1900, "participantIds": ["01ARZ3NDEKTSV4RRFFQ69G5FAW", "01ARZ3NDEKTSV4RRFFQ69G5FAX"] },
+    { "label": "Gyoza", "amountMinor": 680, "participantIds": ["01ARZ3NDEKTSV4RRFFQ69G5FAW"] }
   ],
   "taxMinor": 258,
   "tipMinor": 0,

@@ -16,12 +16,12 @@ import { fullName, type ExpenseSummary, type GroupMember } from "./api.ts";
 import { Amount } from "./money.tsx";
 
 export interface PersonLookup {
-  (userId: number): string;
+  (userId: string): string;
 }
 
 export function makeLookup(
-  members: Array<GroupMember | { id: number; first_name: string; last_name: string | null }>,
-  currentUserId: number,
+  members: Array<GroupMember | { id: string; first_name: string; last_name: string | null }>,
+  currentUserId: string,
 ): PersonLookup {
   const byId = new Map(members.map((m) => [m.id, m]));
   return (userId) => {
@@ -39,7 +39,7 @@ export function ExpenseList({
   empty = "Nothing yet.",
 }: {
   expenses: ExpenseSummary[];
-  currentUserId: number;
+  currentUserId: string;
   nameOf: PersonLookup;
   /** Label each row with the group it belongs to. */
   showGroup?: boolean;

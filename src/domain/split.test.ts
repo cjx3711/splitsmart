@@ -65,9 +65,9 @@ describe("money", () => {
 describe("computeSplit", () => {
   test("equal split of an indivisible amount still balances", () => {
     const result = computeSplit(1000, "equal", [
-      { userId: 1, paidMinor: 1000 },
-      { userId: 2, paidMinor: 0 },
-      { userId: 3, paidMinor: 0 },
+      { userId: "1", paidMinor: 1000 },
+      { userId: "2", paidMinor: 0 },
+      { userId: "3", paidMinor: 0 },
     ]);
     assert.deepEqual(
       result.map((r) => r.owedMinor),
@@ -79,23 +79,41 @@ describe("computeSplit", () => {
 
   test("is stable regardless of input order", () => {
     const a = computeSplit(1000, "equal", [
-      { userId: 3, paidMinor: 0 },
-      { userId: 1, paidMinor: 1000 },
-      { userId: 2, paidMinor: 0 },
+      { userId: "3", paidMinor: 0 },
+      { userId: "1", paidMinor: 1000 },
+      { userId: "2", paidMinor: 0 },
     ]);
     const b = computeSplit(1000, "equal", [
-      { userId: 1, paidMinor: 1000 },
-      { userId: 2, paidMinor: 0 },
-      { userId: 3, paidMinor: 0 },
+      { userId: "1", paidMinor: 1000 },
+      { userId: "2", paidMinor: 0 },
+      { userId: "3", paidMinor: 0 },
     ]);
     assert.deepEqual(a, b);
   });
 
+  test("leftover cents follow lexicographic userId order, not numeric", () => {
+    // "10" < "2" < "3" as strings; numerically 2 < 3 < 10. The odd cent must
+    // land on "10", which is what SQLite's TEXT `<` and friendPair also use.
+    const result = computeSplit(1000, "equal", [
+      { userId: "2", paidMinor: 0 },
+      { userId: "10", paidMinor: 1000 },
+      { userId: "3", paidMinor: 0 },
+    ]);
+    assert.deepEqual(
+      result.map((r) => ({ id: r.userId, owed: r.owedMinor })),
+      [
+        { id: "10", owed: 334 },
+        { id: "2", owed: 333 },
+        { id: "3", owed: 333 },
+      ],
+    );
+  });
+
   test("supports multiple payers", () => {
     const result = computeSplit(3000, "equal", [
-      { userId: 1, paidMinor: 2000 },
-      { userId: 2, paidMinor: 1000 },
-      { userId: 3, paidMinor: 0 },
+      { userId: "1", paidMinor: 2000 },
+      { userId: "2", paidMinor: 1000 },
+      { userId: "3", paidMinor: 0 },
     ]);
     assert.equal(sum(result.map((r) => r.paidMinor)), 3000);
     assert.deepEqual(
@@ -106,16 +124,16 @@ describe("computeSplit", () => {
 
   test("exact split must add up to the total", () => {
     const ok = computeSplit(1000, "exact", [
-      { userId: 1, paidMinor: 1000, input: 600 },
-      { userId: 2, paidMinor: 0, input: 400 },
+      { userId: "1", paidMinor: 1000, input: 600 },
+      { userId: "2", paidMinor: 0, input: 400 },
     ]);
     assert.deepEqual(ok.map((r) => r.owedMinor), [600, 400]);
 
     assert.throws(
       () =>
         computeSplit(1000, "exact", [
-          { userId: 1, paidMinor: 1000, input: 600 },
-          { userId: 2, paidMinor: 0, input: 300 },
+          { userId: "1", paidMinor: 1000, input: 600 },
+          { userId: "2", paidMinor: 0, input: 300 },
         ]),
       SplitError,
     );
@@ -123,9 +141,9 @@ describe("computeSplit", () => {
 
   test("percent split handles thirds", () => {
     const result = computeSplit(1000, "percent", [
-      { userId: 1, paidMinor: 1000, input: 33.33 },
-      { userId: 2, paidMinor: 0, input: 33.33 },
-      { userId: 3, paidMinor: 0, input: 33.34 },
+      { userId: "1", paidMinor: 1000, input: 33.33 },
+      { userId: "2", paidMinor: 0, input: 33.33 },
+      { userId: "3", paidMinor: 0, input: 33.34 },
     ]);
     assert.equal(sum(result.map((r) => r.owedMinor)), 1000);
   });
@@ -134,8 +152,8 @@ describe("computeSplit", () => {
     assert.throws(
       () =>
         computeSplit(1000, "percent", [
-          { userId: 1, paidMinor: 1000, input: 50 },
-          { userId: 2, paidMinor: 0, input: 30 },
+          { userId: "1", paidMinor: 1000, input: 50 },
+          { userId: "2", paidMinor: 0, input: 30 },
         ]),
       SplitError,
     );
@@ -143,8 +161,8 @@ describe("computeSplit", () => {
 
   test("shares split divides by weight", () => {
     const result = computeSplit(3000, "shares", [
-      { userId: 1, paidMinor: 3000, input: 2 },
-      { userId: 2, paidMinor: 0, input: 1 },
+      { userId: "1", paidMinor: 3000, input: 2 },
+      { userId: "2", paidMinor: 0, input: 1 },
     ]);
     assert.deepEqual(result.map((r) => r.owedMinor), [2000, 1000]);
   });
@@ -152,9 +170,9 @@ describe("computeSplit", () => {
   test("adjustment applies fixed amounts then splits the rest", () => {
     // 30.00 total, user 2 had a 6.00 dessert nobody else shares.
     const result = computeSplit(3000, "adjustment", [
-      { userId: 1, paidMinor: 3000, input: 0 },
-      { userId: 2, paidMinor: 0, input: 600 },
-      { userId: 3, paidMinor: 0, input: 0 },
+      { userId: "1", paidMinor: 3000, input: 0 },
+      { userId: "2", paidMinor: 0, input: 600 },
+      { userId: "3", paidMinor: 0, input: 0 },
     ]);
     assert.deepEqual(result.map((r) => r.owedMinor), [800, 1400, 800]);
     assert.equal(sum(result.map((r) => r.owedMinor)), 3000);
@@ -164,8 +182,8 @@ describe("computeSplit", () => {
     assert.throws(
       () =>
         computeSplit(1000, "equal", [
-          { userId: 1, paidMinor: 900 },
-          { userId: 2, paidMinor: 0 },
+          { userId: "1", paidMinor: 900 },
+          { userId: "2", paidMinor: 0 },
         ]),
       SplitError,
     );
@@ -175,8 +193,8 @@ describe("computeSplit", () => {
     assert.throws(
       () =>
         computeSplit(1000, "equal", [
-          { userId: 1, paidMinor: 1000 },
-          { userId: 1, paidMinor: 0 },
+          { userId: "1", paidMinor: 1000 },
+          { userId: "1", paidMinor: 0 },
         ]),
       SplitError,
     );
@@ -186,7 +204,7 @@ describe("computeSplit", () => {
     for (let total = 0; total <= 500; total += 7) {
       for (let n = 1; n <= 6; n++) {
         const participants = Array.from({ length: n }, (_, i) => ({
-          userId: i + 1,
+          userId: String(i + 1),
           paidMinor: i === 0 ? total : 0,
         }));
         const result = computeSplit(total, "equal", participants);
@@ -200,18 +218,18 @@ describe("computeSplit", () => {
 describe("computeSplit: itemized", () => {
   // Three people, a bill where each line is shared by a different subset.
   const paidByOne = (total: number) => [
-    { userId: 1, paidMinor: total },
-    { userId: 2, paidMinor: 0 },
-    { userId: 3, paidMinor: 0 },
+    { userId: "1", paidMinor: total },
+    { userId: "2", paidMinor: 0 },
+    { userId: "3", paidMinor: 0 },
   ];
   const people = paidByOne(5000);
 
   test("charges each line only to the people who shared it", () => {
     const result = computeSplit(5000, "itemized", people, {
       items: [
-        { label: "Steak", amountMinor: 3000, participantIds: [1] },
-        { label: "Salad", amountMinor: 1000, participantIds: [2] },
-        { label: "Wine", amountMinor: 1000, participantIds: [1, 2, 3] },
+        { label: "Steak", amountMinor: 3000, participantIds: ["1"] },
+        { label: "Salad", amountMinor: 1000, participantIds: ["2"] },
+        { label: "Wine", amountMinor: 1000, participantIds: ["1", "2", "3"] },
       ],
     });
 
@@ -227,8 +245,8 @@ describe("computeSplit: itemized", () => {
     // they carry 3/4 of the charge; the whole point of proportional tax.
     const result = computeSplit(5000, "itemized", people, {
       items: [
-        { label: "Steak", amountMinor: 3000, participantIds: [1] },
-        { label: "Salad", amountMinor: 1000, participantIds: [2] },
+        { label: "Steak", amountMinor: 3000, participantIds: ["1"] },
+        { label: "Salad", amountMinor: 1000, participantIds: ["2"] },
       ],
     });
 
@@ -243,7 +261,7 @@ describe("computeSplit: itemized", () => {
     // A bill that is pure service charge: every line is zero, so there are no
     // weights. splitByWeights would throw here; the fallback must not.
     const result = computeSplit(1000, "itemized", paidByOne(1000), {
-      items: [{ label: "Cover charge", amountMinor: 0, participantIds: [1, 2, 3] }],
+      items: [{ label: "Cover charge", amountMinor: 0, participantIds: ["1", "2", "3"] }],
     });
 
     assert.deepEqual(
@@ -254,10 +272,10 @@ describe("computeSplit: itemized", () => {
 
   test("allocates a line's odd minor unit deterministically, whatever the input order", () => {
     const forwards = computeSplit(1000, "itemized", paidByOne(1000), {
-      items: [{ amountMinor: 1000, participantIds: [1, 2, 3] }],
+      items: [{ amountMinor: 1000, participantIds: ["1", "2", "3"] }],
     });
     const backwards = computeSplit(1000, "itemized", paidByOne(1000), {
-      items: [{ amountMinor: 1000, participantIds: [3, 2, 1] }],
+      items: [{ amountMinor: 1000, participantIds: ["3", "2", "1"] }],
     });
 
     assert.deepEqual(forwards, backwards);
@@ -271,7 +289,7 @@ describe("computeSplit: itemized", () => {
     assert.throws(
       () =>
         computeSplit(1000, "itemized", people, {
-          items: [{ label: "Steak", amountMinor: 9000, participantIds: [1] }],
+          items: [{ label: "Steak", amountMinor: 9000, participantIds: ["1"] }],
         }),
       SplitError,
     );
@@ -281,7 +299,7 @@ describe("computeSplit: itemized", () => {
     assert.throws(
       () =>
         computeSplit(5000, "itemized", people, {
-          items: [{ amountMinor: 5000, participantIds: [99] }],
+          items: [{ amountMinor: 5000, participantIds: ["99"] }],
         }),
       SplitError,
     );
@@ -302,7 +320,7 @@ describe("computeSplit: itemized", () => {
     assert.throws(
       () =>
         computeSplit(5000, "itemized", people, {
-          items: [{ amountMinor: 5000, participantIds: [1, 1] }],
+          items: [{ amountMinor: 5000, participantIds: ["1", "1"] }],
         }),
       SplitError,
     );
@@ -316,7 +334,7 @@ describe("computeSplit: itemized", () => {
     assert.throws(
       () =>
         computeSplit(5000, "equal", people, {
-          items: [{ amountMinor: 5000, participantIds: [1] }],
+          items: [{ amountMinor: 5000, participantIds: ["1"] }],
         }),
       SplitError,
     );
@@ -325,31 +343,31 @@ describe("computeSplit: itemized", () => {
 
 describe("deriveRepayments", () => {
   test("single payer produces one debt per other participant", () => {
-    const shares = simpleEqualSplit(3000, 1, [1, 2, 3]);
+    const shares = simpleEqualSplit(3000, "1", ["1", "2", "3"]);
     const repayments = deriveRepayments(shares);
     assert.equal(repayments.length, 2);
-    assert.ok(repayments.every((r) => r.toUserId === 1));
+    assert.ok(repayments.every((r) => r.toUserId === "1"));
     assert.equal(sum(repayments.map((r) => r.amountMinor)), 2000);
   });
 
   test("a fully settled expense produces no repayments", () => {
     const shares = computeSplit(1000, "exact", [
-      { userId: 1, paidMinor: 600, input: 600 },
-      { userId: 2, paidMinor: 400, input: 400 },
+      { userId: "1", paidMinor: 600, input: 600 },
+      { userId: "2", paidMinor: 400, input: 400 },
     ]);
     assert.deepEqual(deriveRepayments(shares), []);
   });
 
   test("repayments always net out to zero", () => {
     const shares = computeSplit(6000, "equal", [
-      { userId: 1, paidMinor: 4000 },
-      { userId: 2, paidMinor: 2000 },
-      { userId: 3, paidMinor: 0 },
-      { userId: 4, paidMinor: 0 },
+      { userId: "1", paidMinor: 4000 },
+      { userId: "2", paidMinor: 2000 },
+      { userId: "3", paidMinor: 0 },
+      { userId: "4", paidMinor: 0 },
     ]);
     const repayments = deriveRepayments(shares);
 
-    const net = new Map<number, number>();
+    const net = new Map<string, number>();
     for (const r of repayments) {
       net.set(r.fromUserId, (net.get(r.fromUserId) ?? 0) - r.amountMinor);
       net.set(r.toUserId, (net.get(r.toUserId) ?? 0) + r.amountMinor);
@@ -361,9 +379,9 @@ describe("deriveRepayments", () => {
 
   test("is deterministic", () => {
     const shares = computeSplit(1000, "equal", [
-      { userId: 1, paidMinor: 500 },
-      { userId: 2, paidMinor: 500 },
-      { userId: 3, paidMinor: 0 },
+      { userId: "1", paidMinor: 500 },
+      { userId: "2", paidMinor: 500 },
+      { userId: "3", paidMinor: 0 },
     ]);
     assert.deepEqual(deriveRepayments(shares), deriveRepayments(shares));
   });

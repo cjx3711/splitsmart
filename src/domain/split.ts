@@ -20,7 +20,7 @@ export type SplitType =
   | "itemized";
 
 export interface SplitParticipant {
-  userId: number;
+  userId: string;
   /** How much cash this person actually put in, in minor units. */
   paidMinor: number;
   /**
@@ -50,7 +50,7 @@ export interface SplitItem {
   label?: string | null;
   amountMinor: number;
   /** Who shared this line. Must be a subset of the expense's participants. */
-  participantIds: number[];
+  participantIds: string[];
 }
 
 export interface SplitOptions {
@@ -59,7 +59,7 @@ export interface SplitOptions {
 }
 
 export interface SplitResult {
-  userId: number;
+  userId: string;
   paidMinor: number;
   owedMinor: number;
   /** Preserved so the UI can reopen the expense in the editor the user used. */
@@ -67,9 +67,14 @@ export interface SplitResult {
 }
 
 export interface Repayment {
-  fromUserId: number; // debtor
-  toUserId: number; // creditor
+  fromUserId: string; // debtor
+  toUserId: string; // creditor
   amountMinor: number;
+}
+
+/** Lexicographic `<` on ULIDs (and any other string id). Not localeCompare. */
+function compareIds(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 export class SplitError extends Error {}
@@ -97,7 +102,7 @@ export function computeSplit(
     throw new SplitError(`Invalid total: ${totalMinor}`);
   }
 
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   for (const p of participants) {
     if (seen.has(p.userId)) {
       throw new SplitError(`Duplicate participant: user ${p.userId}`);
@@ -105,7 +110,7 @@ export function computeSplit(
     seen.add(p.userId);
   }
 
-  const sorted = [...participants].sort((a, b) => a.userId - b.userId);
+  const sorted = [...participants].sort((a, b) => compareIds(a.userId, b.userId));
 
   const paidTotal = sorted.reduce((sum, p) => sum + p.paidMinor, 0);
   if (paidTotal !== totalMinor) {
@@ -269,7 +274,7 @@ function computeItemizedShares(
 
     // Sorted so the leftover minor unit is allocated deterministically, and
     // deduped so listing someone twice cannot quietly double their share.
-    const sharers = [...new Set(item.participantIds)].sort((a, b) => a - b);
+    const sharers = [...new Set(item.participantIds)].sort(compareIds);
     if (sharers.length !== item.participantIds.length) {
       throw new SplitError(`${where} lists the same person more than once`);
     }
@@ -324,8 +329,8 @@ function requireInput(p: SplitParticipant, type: SplitType): number {
  * if the two ever disagree, expense_users wins. `yarn db:check` verifies it.
  */
 export function deriveRepayments(shares: SplitResult[]): Repayment[] {
-  const creditors: Array<{ userId: number; amount: number }> = [];
-  const debtors: Array<{ userId: number; amount: number }> = [];
+  const creditors: Array<{ userId: string; amount: number }> = [];
+  const debtors: Array<{ userId: string; amount: number }> = [];
 
   for (const s of shares) {
     const net = s.paidMinor - s.owedMinor;
@@ -335,8 +340,8 @@ export function deriveRepayments(shares: SplitResult[]): Repayment[] {
 
   // Largest amounts first; userId breaks ties so ordering never depends on the
   // caller's array order.
-  creditors.sort((a, b) => b.amount - a.amount || a.userId - b.userId);
-  debtors.sort((a, b) => b.amount - a.amount || a.userId - b.userId);
+  creditors.sort((a, b) => b.amount - a.amount || compareIds(a.userId, b.userId));
+  debtors.sort((a, b) => b.amount - a.amount || compareIds(a.userId, b.userId));
 
   const repayments: Repayment[] = [];
   let ci = 0;
@@ -370,8 +375,8 @@ export function deriveRepayments(shares: SplitResult[]): Repayment[] {
  */
 export function simpleEqualSplit(
   totalMinor: number,
-  payerId: number,
-  participantIds: number[],
+  payerId: string,
+  participantIds: string[],
 ): SplitResult[] {
   if (!participantIds.includes(payerId)) {
     throw new SplitError("The payer must be one of the participants");

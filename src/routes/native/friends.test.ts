@@ -32,19 +32,22 @@ const { createExpense } = await import("../../domain/expenses.ts");
 const { listRelatedUserIds, addFriendship, friendPair } = await import(
   "../../domain/friends.ts"
 );
+const { ulid } = await import("../../domain/ulid.ts");
 
 let apiToken: string;
-let aliceId: number;
-let bobId: number;
-let groupId: number;
+let aliceId: string;
+let bobId: string;
+let groupId: string;
 
 before(async () => {
   migrate(process.env.DATABASE_PATH!);
   seed(process.env.DATABASE_PATH!);
 
-  const alice = await db
+  aliceId = ulid();
+  await db
     .insertInto("users")
     .values({
+      id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
       first_name: "Alice",
@@ -52,24 +55,32 @@ before(async () => {
       default_currency: "USD",
       is_ghost: 0,
     })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  aliceId = alice.id;
+    .execute();
 
   // Bob shares a group with Alice but no friendships row: a DERIVED friend.
-  const bob = await db
+  bobId = ulid();
+  await db
     .insertInto("users")
-    .values({ first_name: "Bob", last_name: "Brown", default_currency: "USD", is_ghost: 1 })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  bobId = bob.id;
+    .values({
+      id: bobId,
+      first_name: "Bob",
+      last_name: "Brown",
+      default_currency: "USD",
+      is_ghost: 1,
+    })
+    .execute();
 
-  const group = await db
+  groupId = ulid();
+  await db
     .insertInto("groups")
-    .values({ name: "Test Trip", group_type: "trip", default_currency: "USD", created_by: aliceId })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  groupId = group.id;
+    .values({
+      id: groupId,
+      name: "Test Trip",
+      group_type: "trip",
+      default_currency: "USD",
+      created_by: aliceId,
+    })
+    .execute();
 
   await db
     .insertInto("group_members")
@@ -113,23 +124,26 @@ function authed(path: string, init: RequestInit = {}) {
 
 describe("friendships are stored canonically", () => {
   test("friendPair orders the ids either way round", () => {
-    assert.deepEqual(friendPair(9, 4), { userAId: 4, userBId: 9 });
-    assert.deepEqual(friendPair(4, 9), { userAId: 4, userBId: 9 });
+    const a = "01ARZ3NDEKTSV4RRFFQ69G5FAA";
+    const b = "01ARZ3NDEKTSV4RRFFQ69G5FAB";
+    assert.deepEqual(friendPair(b, a), { userAId: a, userBId: b });
+    assert.deepEqual(friendPair(a, b), { userAId: a, userBId: b });
   });
 
   test("a user cannot befriend themselves", () => {
-    assert.throws(() => friendPair(3, 3));
+    assert.throws(() => friendPair("01ARZ3NDEKTSV4RRFFQ69G5FAA", "01ARZ3NDEKTSV4RRFFQ69G5FAA"));
   });
 
   test("adding the same friendship twice is a no-op, not an error", async () => {
     await addFriendship(db, aliceId, bobId);
     await addFriendship(db, bobId, aliceId);
 
+    const { userAId, userBId } = friendPair(aliceId, bobId);
     const rows = await db
       .selectFrom("friendships")
       .selectAll()
-      .where("user_a_id", "=", Math.min(aliceId, bobId))
-      .where("user_b_id", "=", Math.max(aliceId, bobId))
+      .where("user_a_id", "=", userAId)
+      .where("user_b_id", "=", userBId)
       .execute();
     assert.equal(rows.length, 1);
 
@@ -150,7 +164,7 @@ describe("who counts as a friend", () => {
 
   test("the list reports derived friends as not removable", async () => {
     const res = await authed("/api/v1/friends");
-    const body = (await res.json()) as { friends: Array<{ id: number; is_explicit: boolean }> };
+    const body = (await res.json()) as { friends: Array<{ id: string; is_explicit: boolean }> };
     const bob = body.friends.find((f) => f.id === bobId);
     assert.equal(bob?.is_explicit, false);
   });
@@ -165,7 +179,7 @@ describe("adding a friend", () => {
     assert.equal(res.status, 201);
 
     const body = (await res.json()) as {
-      friend: { id: number; is_ghost: number; email: string | null };
+      friend: { id: string; is_ghost: number; email: string | null };
       recoveryCode?: string;
     };
     assert.equal(body.friend.is_ghost, 1);
@@ -191,17 +205,18 @@ describe("adding a friend", () => {
   });
 
   test("an existing account is linked, not duplicated", async () => {
-    const dave = await db
+    const daveId = ulid();
+    await db
       .insertInto("users")
       .values({
+        id: daveId,
         email: "dave@example.com",
         password_hash: "scrypt$131072$8$1$AAAA$AAAA",
         first_name: "Dave",
         default_currency: "USD",
         is_ghost: 0,
       })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+      .execute();
 
     const res = await authed("/api/v1/friends", {
       method: "POST",
@@ -210,12 +225,12 @@ describe("adding a friend", () => {
     });
 
     const body = (await res.json()) as {
-      friend: { id: number; first_name: string };
+      friend: { id: string; first_name: string };
       existingAccount: boolean;
       recoveryCode?: string;
     };
     assert.equal(body.existingAccount, true);
-    assert.equal(body.friend.id, dave.id);
+    assert.equal(body.friend.id, daveId);
     assert.equal(body.friend.first_name, "Dave");
     // No new account, so there is no code to hand out.
     assert.equal(body.recoveryCode, undefined);
@@ -235,7 +250,7 @@ describe("adding a friend", () => {
       body: JSON.stringify({ firstName: "Erin", email: "erin@example.com" }),
     });
     const { friend, recoveryCode } = (await added.json()) as {
-      friend: { id: number };
+      friend: { id: string };
       recoveryCode: string;
     };
 
@@ -269,14 +284,14 @@ describe("adding a friend", () => {
 });
 
 describe("one-on-one expenses", () => {
-  let frankId: number;
+  let frankId: string;
 
   before(async () => {
     const res = await authed("/api/v1/friends", {
       method: "POST",
       body: JSON.stringify({ firstName: "Frank" }),
     });
-    frankId = ((await res.json()) as { friend: { id: number } }).friend.id;
+    frankId = ((await res.json()) as { friend: { id: string } }).friend.id;
   });
 
   test("belong to no group", async () => {
@@ -338,8 +353,8 @@ describe("one-on-one expenses", () => {
     const res = await authed("/api/v1/friends");
     const body = (await res.json()) as {
       friends: Array<{
-        id: number;
-        breakdown: Array<{ groupId: number | null; groupName: string | null }>;
+        id: string;
+        breakdown: Array<{ groupId: string | null; groupName: string | null }>;
       }>;
     };
     const bob = body.friends.find((f) => f.id === bobId);
@@ -366,7 +381,7 @@ describe("removing a friend", () => {
 });
 
 /** Alice's net USD position with one other person, or undefined if settled. */
-async function balanceWith(otherUserId: number): Promise<number | undefined> {
+async function balanceWith(otherUserId: string): Promise<number | undefined> {
   const { getBalanceBetween } = await import("../../domain/balances.ts");
   const balances = await getBalanceBetween(db, aliceId, otherUserId);
   return balances.find((b) => b.currencyCode === "USD")?.amountMinor;

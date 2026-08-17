@@ -14,13 +14,14 @@ import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
 import { createExpense, updateExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
-import { expenseBodySchema, genericExpenseBodySchema } from "./expense-schema.ts";
+import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
+import { isUlid, ulid } from "../../domain/ulid.ts";
 
 export const groupRoutes = new Hono<AppEnv>();
 groupRoutes.use("*", requireAuth);
 
 /** Throws a 403-shaped result if the caller isn't in the group. */
-async function assertMember(groupId: number, userId: number) {
+async function assertMember(groupId: string, userId: string) {
   const membership = await db
     .selectFrom("group_members")
     .select(["role"])
@@ -70,6 +71,7 @@ groupRoutes.post(
       const created = await trx
         .insertInto("groups")
         .values({
+          id: ulid(),
           name: input.name,
           group_type: input.groupType,
           default_currency: input.defaultCurrency,
@@ -97,7 +99,8 @@ groupRoutes.post(
 
 groupRoutes.get("/:id", async (c) => {
   const auth = c.get("user");
-  const groupId = Number(c.req.param("id"));
+  const groupId = c.req.param("id");
+  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
   if (!(await assertMember(groupId, auth.id))) {
     return c.json({ error: "Not a member of this group" }, 403);
@@ -142,14 +145,15 @@ groupRoutes.get("/:id", async (c) => {
 /** Suggested settle-up transfers, per currency. Presentational only. */
 groupRoutes.get("/:id/settle", async (c) => {
   const auth = c.get("user");
-  const groupId = Number(c.req.param("id"));
+  const groupId = c.req.param("id");
+  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
   if (!(await assertMember(groupId, auth.id))) {
     return c.json({ error: "Not a member of this group" }, 403);
   }
 
   const balances = await getGroupBalances(db, groupId);
-  const byCurrency = new Map<string, Array<{ userId: number; amountMinor: number }>>();
+  const byCurrency = new Map<string, Array<{ userId: string; amountMinor: number }>>();
 
   for (const member of balances) {
     for (const b of member.balances) {
@@ -169,7 +173,8 @@ groupRoutes.get("/:id/settle", async (c) => {
 
 groupRoutes.get("/:id/expenses", async (c) => {
   const auth = c.get("user");
-  const groupId = Number(c.req.param("id"));
+  const groupId = c.req.param("id");
+  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
   if (!(await assertMember(groupId, auth.id))) {
     return c.json({ error: "Not a member of this group" }, 403);
@@ -202,7 +207,7 @@ groupRoutes.get("/:id/expenses", async (c) => {
     .where("expense_id", "in", expenses.map((e) => e.id))
     .execute();
 
-  const sharesByExpense = new Map<number, typeof shares>();
+  const sharesByExpense = new Map<string, typeof shares>();
   for (const s of shares) {
     const list = sharesByExpense.get(s.expense_id) ?? [];
     list.push(s);
@@ -219,7 +224,8 @@ groupRoutes.post(
   zValidator("json", expenseBodySchema),
   async (c) => {
     const auth = c.get("user");
-    const groupId = Number(c.req.param("id"));
+    const groupId = c.req.param("id");
+    if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
     if (!(await assertMember(groupId, auth.id))) {
       return c.json({ error: "Not a member of this group" }, 403);
@@ -250,8 +256,8 @@ groupRoutes.post(
   zValidator(
     "json",
     z.object({
-      fromUserId: z.number().int().positive(),
-      toUserId: z.number().int().positive(),
+      fromUserId: ulidSchema,
+      toUserId: ulidSchema,
       amountMinor: z.number().int().positive(),
       currencyCode: z.string().length(3).toUpperCase(),
       date: z.string().optional(),
@@ -259,7 +265,8 @@ groupRoutes.post(
   ),
   async (c) => {
     const auth = c.get("user");
-    const groupId = Number(c.req.param("id"));
+    const groupId = c.req.param("id");
+    if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
     if (!(await assertMember(groupId, auth.id))) {
       return c.json({ error: "Not a member of this group" }, 403);
@@ -375,7 +382,7 @@ expenseRoutes.get("/", async (c) => {
     .where("expense_id", "in", expenses.map((e) => e.id))
     .execute();
 
-  const byExpense = new Map<number, typeof shares>();
+  const byExpense = new Map<string, typeof shares>();
   for (const s of shares) {
     const list = byExpense.get(s.expense_id) ?? [];
     list.push(s);
@@ -414,7 +421,7 @@ expenseRoutes.get("/currencies/frequent", async (c) => {
 });
 
 /** Throws a 404-shaped result unless the caller is on this expense. */
-async function assertParticipant(expenseId: number, userId: number) {
+async function assertParticipant(expenseId: string, userId: string) {
   return db
     .selectFrom("expense_users")
     .select("user_id")
@@ -430,8 +437,8 @@ async function assertParticipant(expenseId: number, userId: number) {
  */
 expenseRoutes.get("/:id", async (c) => {
   const auth = c.get("user");
-  const expenseId = Number(c.req.param("id"));
-  if (!Number.isInteger(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
   if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
 
@@ -463,8 +470,8 @@ expenseRoutes.get("/:id", async (c) => {
 /** Replaces an expense's contents via the domain layer's updateExpense. */
 expenseRoutes.patch("/:id", zValidator("json", genericExpenseBodySchema), async (c) => {
   const auth = c.get("user");
-  const expenseId = Number(c.req.param("id"));
-  if (!Number.isInteger(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
   if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
 
@@ -505,7 +512,8 @@ expenseRoutes.patch("/:id", zValidator("json", genericExpenseBodySchema), async 
 
 expenseRoutes.delete("/:id", async (c) => {
   const auth = c.get("user");
-  const expenseId = Number(c.req.param("id"));
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
   // Only a participant may delete an expense.
   if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);

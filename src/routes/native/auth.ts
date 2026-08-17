@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { setCookie, deleteCookie, getCookie } from "hono/cookie";
-import { db } from "../../db/index.ts";
+import { db, transaction } from "../../db/index.ts";
 import { env } from "../../env.ts";
 import { hashPassword, verifyPassword, needsRehash } from "../../auth/password.ts";
 import {
@@ -24,6 +24,7 @@ import {
   issueVerificationToken,
   consumeVerificationToken,
 } from "../../email/verification.ts";
+import { ulid } from "../../domain/ulid.ts";
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -70,18 +71,21 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
   }
 
-  const user = await db
-    .insertInto("users")
-    .values({
-      email: input.email,
-      password_hash: await hashPassword(input.password),
-      first_name: input.firstName,
-      last_name: input.lastName ?? null,
-      default_currency: input.defaultCurrency,
-      is_ghost: 0,
-    })
-    .returning(["id", "email", "first_name", "last_name", "default_currency"])
-    .executeTakeFirstOrThrow();
+  const user = await transaction(async (trx) => {
+    return trx
+      .insertInto("users")
+      .values({
+        id: ulid(),
+        email: input.email,
+        password_hash: await hashPassword(input.password),
+        first_name: input.firstName,
+        last_name: input.lastName ?? null,
+        default_currency: input.defaultCurrency,
+        is_ghost: 0,
+      })
+      .returning(["id", "email", "first_name", "last_name", "default_currency"])
+      .executeTakeFirstOrThrow();
+  });
 
   // Fire-and-forget: a mail outage must not turn a successful registration into
   // an error. sendEmail never throws, and the user can request another link.
@@ -324,7 +328,7 @@ function meUser(user: AuthenticatedUser) {
 }
 
 function toPublicUser(user: {
-  id: number;
+  id: string;
   email: string | null;
   first_name: string;
   last_name: string | null;

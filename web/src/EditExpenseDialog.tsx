@@ -48,7 +48,7 @@ function reconstructSplit(
 
   if (expense.split_type === "itemized") {
     const meta = expense.split_meta ? (JSON.parse(expense.split_meta) as {
-      items: Array<{ label: string | null; amountMinor: number; participantIds: number[] }>;
+      items: Array<{ label: string | null; amountMinor: number; participantIds: string[] }>;
       taxMinor?: number;
       tipMinor?: number;
     }) : { items: [] };
@@ -93,7 +93,7 @@ export function EditExpenseDialog({
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [groupId, setGroupId] = useState<number | null>(expense.group_id);
+  const [groupId, setGroupId] = useState<string | null>(expense.group_id);
   const [members, setMembers] = useState<Person[] | null>(null);
 
   useEffect(() => {
@@ -124,7 +124,7 @@ export function EditExpenseDialog({
   }, [open, groupId, user]);
 
   const initialParticipantIds = useMemo(
-    () => expense.shares.map((s) => s.user_id).sort((a, b) => a - b),
+    () => expense.shares.map((s) => s.user_id).sort(),
     [expense],
   );
 

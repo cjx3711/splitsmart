@@ -30,6 +30,7 @@ import {
 import { createSession, SESSION_COOKIE } from "../../auth/session.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { issueVerificationToken } from "../../email/verification.ts";
+import { isUlid, ulid } from "../../domain/ulid.ts";
 
 export const inviteRoutes = new Hono<AppEnv>();
 
@@ -103,6 +104,7 @@ inviteRoutes.post(
       const user = await trx
         .insertInto("users")
         .values({
+          id: ulid(),
           first_name: firstName ?? displayName,
           last_name: lastName,
           default_currency: group.default_currency,
@@ -234,7 +236,8 @@ inviteRoutes.post(
 /** Rotates a group's invite token. Existing members are unaffected. */
 inviteRoutes.post("/groups/:groupId/rotate", requireAuth, async (c) => {
   const auth = c.get("user");
-  const groupId = Number(c.req.param("groupId"));
+  const groupId = c.req.param("groupId");
+  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
   const membership = await db
     .selectFrom("group_members")

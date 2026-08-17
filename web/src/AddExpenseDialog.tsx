@@ -29,9 +29,9 @@ export function AddExpenseDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  initialGroupId?: number | null;
+  initialGroupId?: string | null;
   /** Pre-selects one friend, for the friend screen. */
-  initialFriendId?: number | null;
+  initialFriendId?: string | null;
   title?: string;
   onCreated?: () => void | Promise<void>;
 }) {
@@ -40,7 +40,7 @@ export function AddExpenseDialog({
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [groupId, setGroupId] = useState<number | null>(initialGroupId);
+  const [groupId, setGroupId] = useState<string | null>(initialGroupId);
   const [members, setMembers] = useState<Person[] | null>(null);
 
   // Everything is loaded when the dialog opens rather than on mount: this

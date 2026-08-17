@@ -25,17 +25,20 @@ const { seed } = await import("../../db/seed.ts");
 const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
+const { ulid } = await import("../../domain/ulid.ts");
 
 let apiToken: string;
-let userId: number;
+let userId: string;
 
 before(async () => {
   migrate(process.env.DATABASE_PATH!);
   seed(process.env.DATABASE_PATH!);
 
-  const user = await db
+  userId = ulid();
+  await db
     .insertInto("users")
     .values({
+      id: userId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
       first_name: "Alice",
@@ -43,9 +46,7 @@ before(async () => {
       default_currency: "USD",
       is_ghost: 0,
     })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  userId = user.id;
+    .execute();
   apiToken = (await createApiToken(userId, "test")).token;
 });
 

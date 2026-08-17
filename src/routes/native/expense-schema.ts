@@ -11,6 +11,9 @@
  * duplicating those rules in Zod would just create two places to be wrong.
  */
 import { z } from "zod";
+import { isUlid } from "../../domain/ulid.ts";
+
+export const ulidSchema = z.string().refine(isUlid, { message: "Invalid id" });
 
 export const splitTypeSchema = z.enum([
   "equal",
@@ -22,7 +25,7 @@ export const splitTypeSchema = z.enum([
 ]);
 
 export const participantSchema = z.object({
-  userId: z.number().int().positive(),
+  userId: ulidSchema,
   paidMinor: z.number().int().min(0),
   /**
    * Per-person figure whose meaning depends on splitType: minor units for
@@ -35,7 +38,7 @@ export const participantSchema = z.object({
 export const itemSchema = z.object({
   label: z.string().max(200).nullable().optional(),
   amountMinor: z.number().int().min(0),
-  participantIds: z.array(z.number().int().positive()).min(1),
+  participantIds: z.array(ulidSchema).min(1),
 });
 
 /**
@@ -62,6 +65,8 @@ export const expenseBodyFields = {
   items: z.array(itemSchema).min(1).max(200).optional(),
   taxMinor: z.number().int().min(0).optional(),
   tipMinor: z.number().int().min(0).optional(),
+  /** Client-minted expense id. Absent: the server mints one. */
+  id: ulidSchema.optional(),
 } as const;
 
 /**
@@ -118,6 +123,6 @@ export const expenseBodySchema = z.object(expenseBodyFields).superRefine(checkIt
 export const genericExpenseBodySchema = z
   .object({
     ...expenseBodyFields,
-    groupId: z.number().int().positive().nullable().optional(),
+    groupId: ulidSchema.nullable().optional(),
   })
   .superRefine(checkItemRules);

@@ -20,10 +20,11 @@
 --    `npm run db:check`. Any code path writing expense_users MUST go through
 --    src/domain/expenses.ts.
 --
--- 4. SPLITWISE ID PRESERVATION. Tables exposed through the Splitwise-compatible
---    API carry a nullable `splitwise_id`. The importer inserts rows with
---    `id = splitwise_id` so external references stay valid forever.
---    See docs/SPLITWISE_COMPAT.md.
+-- 4. ENTITY IDS ARE ULIDS, INCLUDING ON THE COMPAT WIRE. There is no parallel
+--    integer `compat_id`. After a Splitwise import the original integer lives
+--    only in `metadata.splitwise_id` (JSON), used for re-import matching, and
+--    is never returned as `id`. Category ids stay Splitwise's integers.
+--    See docs/SPLITWISE_COMPAT.md and docs/ULIDS.md.
 --
 -- This app has never been deployed, so there is exactly one migration: schema
 -- changes during development are folded back into this file rather than
@@ -69,8 +70,10 @@ CREATE TABLE currencies (
 -- flipping is_ghost to 0. Upgrading in place (rather than creating a new row and
 -- merging) is deliberate: expense history stays attached and balances never move.
 CREATE TABLE users (
-  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-  splitwise_id       INTEGER UNIQUE,
+  id                 TEXT    PRIMARY KEY,      -- ULID; see src/domain/ulid.ts
+  -- JSON object. splitwise_id (import matching), notes, and other unindexed
+  -- leftovers. See src/domain/metadata.ts. Default '{}' so inserts can omit it.
+  metadata           TEXT    NOT NULL DEFAULT '{}',
 
   email              TEXT UNIQUE COLLATE NOCASE,
   password_hash      TEXT,                     -- see src/auth/password.ts for format
@@ -90,6 +93,9 @@ CREATE TABLE users (
   deleted_at         TEXT,
 
   CHECK (is_ghost IN (0, 1)),
+  CHECK (LENGTH(id) = 26),
+  CHECK (json_valid(metadata)),
+  CHECK (json_type(metadata) = 'object'),
   -- A real (non-ghost) account must be able to authenticate.
   CHECK (is_ghost = 1 OR (email IS NOT NULL AND password_hash IS NOT NULL)),
   -- A ghost must not carry credentials it cannot use.
@@ -97,7 +103,9 @@ CREATE TABLE users (
 ) STRICT;
 
 CREATE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
-CREATE INDEX idx_users_splitwise_id ON users(splitwise_id) WHERE splitwise_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_users_splitwise_id
+  ON users(json_extract(metadata, '$.splitwise_id'))
+  WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- sessions: browser cookie sessions
@@ -105,13 +113,15 @@ CREATE INDEX idx_users_splitwise_id ON users(splitwise_id) WHERE splitwise_id IS
 -- We store a HASH of the session token, not the token. A leaked database should
 -- not hand out live sessions.
 CREATE TABLE sessions (
-  id             TEXT    PRIMARY KEY,          -- random id, safe to log
+  id             TEXT    PRIMARY KEY,          -- ULID, safe to log
   token_hash     TEXT    NOT NULL UNIQUE,      -- sha256 of the cookie value
-  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   user_agent     TEXT,
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   last_seen_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-  expires_at     TEXT    NOT NULL
+  expires_at     TEXT    NOT NULL,
+
+  CHECK (LENGTH(id) = 26)
 ) STRICT;
 
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
@@ -124,14 +134,16 @@ CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 -- story, and different threat model. splitwise-to-toshl uses one of these.
 -- Only the hash is stored; the plaintext is shown once at creation.
 CREATE TABLE api_tokens (
-  id           TEXT    PRIMARY KEY,
+  id           TEXT    PRIMARY KEY,            -- ULID
   token_hash   TEXT    NOT NULL UNIQUE,
-  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id      TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name         TEXT    NOT NULL,               -- e.g. "splitwise-to-toshl"
   last_used_at TEXT,
   created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
   expires_at   TEXT,                           -- NULL = never expires
-  revoked_at   TEXT
+  revoked_at   TEXT,
+
+  CHECK (LENGTH(id) = 26)
 ) STRICT;
 
 CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
@@ -146,9 +158,9 @@ CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
 -- As everywhere else in this codebase, only the token HASH is stored. A leaked
 -- database must not hand out working verification links.
 CREATE TABLE email_tokens (
-  id         TEXT    PRIMARY KEY,
+  id         TEXT    PRIMARY KEY,              -- ULID
   token_hash TEXT    NOT NULL UNIQUE,
-  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   purpose    TEXT    NOT NULL,
 
   -- SNAPSHOT of the address this token was issued for.
@@ -164,7 +176,8 @@ CREATE TABLE email_tokens (
   expires_at TEXT    NOT NULL,
   used_at    TEXT,
 
-  CHECK (purpose IN ('verify_email', 'reset_password'))
+  CHECK (purpose IN ('verify_email', 'reset_password')),
+  CHECK (LENGTH(id) = 26)
 ) STRICT;
 
 CREATE INDEX idx_email_tokens_user_purpose ON email_tokens(user_id, purpose);
@@ -177,8 +190,8 @@ CREATE INDEX idx_email_tokens_expires_at ON email_tokens(expires_at);
 -- can join the group and self-create a ghost account. It is rotatable, and
 -- rotating it does not affect anyone who already joined.
 CREATE TABLE groups (
-  id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  splitwise_id      INTEGER UNIQUE,
+  id                TEXT    PRIMARY KEY,       -- ULID
+  metadata          TEXT    NOT NULL DEFAULT '{}',
 
   name              TEXT    NOT NULL,
   group_type        TEXT    NOT NULL DEFAULT 'other',
@@ -191,23 +204,29 @@ CREATE TABLE groups (
   invite_token      TEXT    UNIQUE,            -- NULL disables joining entirely
   invite_rotated_at TEXT,
 
-  created_by        INTEGER REFERENCES users(id),
+  created_by        TEXT    REFERENCES users(id),
   created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at        TEXT    NOT NULL DEFAULT (datetime('now')),
   deleted_at        TEXT,
 
   CHECK (group_type IN ('home', 'trip', 'couple', 'event', 'project', 'other')),
-  CHECK (simplify_by_default IN (0, 1))
+  CHECK (simplify_by_default IN (0, 1)),
+  CHECK (LENGTH(id) = 26),
+  CHECK (json_valid(metadata)),
+  CHECK (json_type(metadata) = 'object')
 ) STRICT;
 
 CREATE INDEX idx_groups_invite_token ON groups(invite_token) WHERE invite_token IS NOT NULL;
+CREATE UNIQUE INDEX idx_groups_splitwise_id
+  ON groups(json_extract(metadata, '$.splitwise_id'))
+  WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- group_members
 -- ---------------------------------------------------------------------------
 CREATE TABLE group_members (
-  group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_id   TEXT    NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role       TEXT    NOT NULL DEFAULT 'member',
   -- How this person got in. 'invite_link' means they self-created a ghost.
   joined_via TEXT    NOT NULL DEFAULT 'added',
@@ -227,8 +246,8 @@ CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 -- Stored canonically with user_a_id < user_b_id so a pair can only exist once.
 -- Query helper lives in src/domain/friends.ts; do not hand-roll the UNION.
 CREATE TABLE friendships (
-  user_a_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  user_b_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_a_id  TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_b_id  TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT    NOT NULL DEFAULT (datetime('now')),
 
   PRIMARY KEY (user_a_id, user_b_id),
@@ -267,10 +286,10 @@ CREATE INDEX idx_categories_parent_id ON categories(parent_id);
 --
 -- group_id NULL = a one-on-one expense not attached to any group.
 CREATE TABLE expenses (
-  id             INTEGER PRIMARY KEY AUTOINCREMENT,
-  splitwise_id   INTEGER UNIQUE,
+  id             TEXT    PRIMARY KEY,          -- ULID; clients may mint this
+  metadata       TEXT    NOT NULL DEFAULT '{}',
 
-  group_id       INTEGER REFERENCES groups(id),
+  group_id       TEXT    REFERENCES groups(id),
   description    TEXT    NOT NULL,
   details        TEXT,
 
@@ -299,14 +318,14 @@ CREATE TABLE expenses (
   -- untyped so a future split type doesn't need a schema change.
   --
   -- Shape, for split_type = 'itemized':
-  --   {"items":[{"label":"Ramen","amountMinor":1200,"participantIds":[1,2]}]}
+  --   {"items":[{"label":"Ramen","amountMinor":1200,"participantIds":["01ARZ3NDEKTSV4RRFFQ69G5FAV"]}]}
   split_meta     TEXT,
 
   is_payment     INTEGER NOT NULL DEFAULT 0,
   payment_method TEXT,
 
-  created_by     INTEGER REFERENCES users(id),
-  updated_by     INTEGER REFERENCES users(id),
+  created_by     TEXT    REFERENCES users(id),
+  updated_by     TEXT    REFERENCES users(id),
   created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at     TEXT    NOT NULL DEFAULT (datetime('now')),
   -- Soft delete. The compat API must surface this as `deleted_at`, and callers
@@ -316,6 +335,9 @@ CREATE TABLE expenses (
   CHECK (cost_minor >= 0),
   CHECK (is_payment IN (0, 1)),
   CHECK (split_type IN ('equal', 'exact', 'percent', 'shares', 'adjustment', 'itemized')),
+  CHECK (LENGTH(id) = 26),
+  CHECK (json_valid(metadata)),
+  CHECK (json_type(metadata) = 'object'),
   -- Cheap guard against a non-JSON string being written here. json_valid() is
   -- built in, so this costs nothing and stops a malformed blob from reaching
   -- the editor as a parse error at read time.
@@ -327,7 +349,9 @@ CREATE TABLE expenses (
 
 CREATE INDEX idx_expenses_group_id ON expenses(group_id);
 CREATE INDEX idx_expenses_date ON expenses(date);
-CREATE INDEX idx_expenses_splitwise_id ON expenses(splitwise_id) WHERE splitwise_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_expenses_splitwise_id
+  ON expenses(json_extract(metadata, '$.splitwise_id'))
+  WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
 CREATE INDEX idx_expenses_live ON expenses(date) WHERE deleted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
@@ -342,8 +366,8 @@ CREATE INDEX idx_expenses_live ON expenses(date) WHERE deleted_at IS NULL;
 -- (percent, share count, exact amount, or adjustment) purely so the editor can
 -- be reopened. It is NEVER used to compute balances.
 CREATE TABLE expense_users (
-  expense_id       INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
-  user_id          INTEGER NOT NULL REFERENCES users(id),
+  expense_id       TEXT    NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+  user_id          TEXT    NOT NULL REFERENCES users(id),
 
   paid_share_minor INTEGER NOT NULL DEFAULT 0,
   owed_share_minor INTEGER NOT NULL DEFAULT 0,
@@ -370,10 +394,10 @@ CREATE INDEX idx_expense_users_user_id ON expense_users(user_id);
 -- verifiable at any time with `npm run db:check`. Treat as a cache: never write
 -- here directly, and never let it be the source of truth.
 CREATE TABLE expense_repayments (
-  expense_id   INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+  expense_id   TEXT    NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
   seq          INTEGER NOT NULL,               -- stable ordering within expense
-  from_user_id INTEGER NOT NULL REFERENCES users(id),  -- debtor
-  to_user_id   INTEGER NOT NULL REFERENCES users(id),  -- creditor
+  from_user_id TEXT    NOT NULL REFERENCES users(id),  -- debtor
+  to_user_id   TEXT    NOT NULL REFERENCES users(id),  -- creditor
   amount_minor INTEGER NOT NULL,
 
   PRIMARY KEY (expense_id, seq),
@@ -388,29 +412,38 @@ CREATE INDEX idx_repayments_to_user ON expense_repayments(to_user_id);
 -- comments
 -- ---------------------------------------------------------------------------
 CREATE TABLE comments (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  splitwise_id INTEGER UNIQUE,
-  expense_id   INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
-  user_id      INTEGER NOT NULL REFERENCES users(id),
+  id           TEXT    PRIMARY KEY,            -- ULID
+  metadata     TEXT    NOT NULL DEFAULT '{}',
+  expense_id   TEXT    NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+  user_id      TEXT    NOT NULL REFERENCES users(id),
   content      TEXT    NOT NULL,
   created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-  deleted_at   TEXT
+  deleted_at   TEXT,
+
+  CHECK (LENGTH(id) = 26),
+  CHECK (json_valid(metadata)),
+  CHECK (json_type(metadata) = 'object')
 ) STRICT;
 
 CREATE INDEX idx_comments_expense_id ON comments(expense_id);
+CREATE UNIQUE INDEX idx_comments_splitwise_id
+  ON comments(json_extract(metadata, '$.splitwise_id'))
+  WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- activity (the feed)
 -- ---------------------------------------------------------------------------
 -- Append-only. `payload` is JSON with a shape determined by `action`.
 CREATE TABLE activity (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id    INTEGER REFERENCES users(id),     -- actor
-  group_id   INTEGER REFERENCES groups(id),
-  expense_id INTEGER REFERENCES expenses(id),
+  id         TEXT    PRIMARY KEY,              -- ULID; not exposed on the compat wire
+  user_id    TEXT    REFERENCES users(id),     -- actor
+  group_id   TEXT    REFERENCES groups(id),
+  expense_id TEXT    REFERENCES expenses(id),
   action     TEXT    NOT NULL,
   payload    TEXT,                             -- JSON
-  created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+
+  CHECK (LENGTH(id) = 26)
 ) STRICT;
 
 CREATE INDEX idx_activity_group_id ON activity(group_id, created_at DESC);

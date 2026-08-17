@@ -14,7 +14,6 @@ import { useAuth, useSidebarRefresh } from "../App.tsx";
 
 export function ExpenseDetail() {
   const { id } = useParams<{ id: string }>();
-  const expenseId = Number(id);
   const { user } = useAuth();
   const navigate = useNavigate();
   const refreshSidebar = useSidebarRefresh();
@@ -27,9 +26,10 @@ export function ExpenseDetail() {
   const [deleting, setDeleting] = useState(false);
 
   async function load() {
+    if (!id) return;
     try {
       const [detail, friendList] = await Promise.all([
-        api.getExpense(expenseId),
+        api.getExpense(id),
         api.listFriends(),
       ]);
       setExpense(detail.expense);
@@ -40,14 +40,15 @@ export function ExpenseDetail() {
   }
 
   useEffect(() => {
-    if (Number.isInteger(expenseId)) void load();
+    if (id) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the id in the URL changes
-  }, [expenseId]);
+  }, [id]);
 
   async function handleDelete() {
+    if (!id) return;
     setDeleting(true);
     try {
-      await api.deleteExpense(expenseId);
+      await api.deleteExpense(id);
       refreshSidebar();
       navigate(expense?.group_id ? `/groups/${expense.group_id}` : "/expenses");
     } catch (err) {

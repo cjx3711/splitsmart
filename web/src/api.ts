@@ -18,7 +18,7 @@ import type { SplitItem, SplitType } from "../../src/domain/split.ts";
 export type { SplitItem, SplitType };
 
 export interface ApiUser {
-  id: number;
+  id: string;
   email: string | null;
   firstName: string;
   lastName: string | null;
@@ -30,7 +30,7 @@ export interface ApiUser {
 }
 
 export interface Group {
-  id: number;
+  id: string;
   name: string;
   group_type: string;
   default_currency: string;
@@ -43,7 +43,7 @@ export interface CurrencyAmount {
 }
 
 export interface GroupMember {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string | null;
   is_ghost: number;
@@ -53,14 +53,14 @@ export interface GroupMember {
 
 /** One person's balance with you, attributed to the group it arose in. */
 export interface FriendBreakdown {
-  groupId: number | null;
+  groupId: string | null;
   /** NULL group means one-on-one expenses; the UI supplies the wording. */
   groupName: string | null;
   balances: CurrencyAmount[];
 }
 
 export interface Friend {
-  id: number;
+  id: string;
   email: string | null;
   first_name: string;
   last_name: string | null;
@@ -72,7 +72,7 @@ export interface Friend {
 }
 
 export interface ExpenseSummary {
-  id: number;
+  id: string;
   description: string;
   cost_minor: number;
   currency_code: string;
@@ -80,17 +80,17 @@ export interface ExpenseSummary {
   is_payment: number;
   split_type: string;
   category_name: string | null;
-  group_id?: number | null;
+  group_id?: string | null;
   group_name?: string | null;
   shares: Array<{
-    user_id: number;
+    user_id: string;
     paid_share_minor: number;
     owed_share_minor: number;
   }>;
 }
 
 export interface ExpenseDetail {
-  id: number;
+  id: string;
   description: string;
   details: string | null;
   cost_minor: number;
@@ -101,10 +101,10 @@ export interface ExpenseDetail {
   split_meta: string | null;
   category_id: number | null;
   category_name: string | null;
-  group_id: number | null;
+  group_id: string | null;
   group_name: string | null;
   shares: Array<{
-    user_id: number;
+    user_id: string;
     paid_share_minor: number;
     owed_share_minor: number;
     split_input: number | null;
@@ -112,13 +112,13 @@ export interface ExpenseDetail {
 }
 
 export interface ActivityEntry {
-  id: number;
+  id: string;
   action: string;
   createdAt: string;
-  actor: { id: number; firstName: string; lastName: string | null } | null;
-  group: { id: number; name: string } | null;
+  actor: { id: string; firstName: string; lastName: string | null } | null;
+  group: { id: string; name: string } | null;
   expense: {
-    id: number;
+    id: string;
     description: string;
     costMinor: number;
     currencyCode: string;
@@ -138,7 +138,7 @@ export interface Currency {
 /** How a Splitwise contact was resolved to a local account. */
 export interface ImportPerson {
   splitwiseId: number;
-  localUserId: number;
+  localUserId: string | null;
   name: string;
   email: string | null;
   matchedBy: "splitwise_id" | "email" | "self" | "created";
@@ -226,7 +226,7 @@ export interface ExpenseInput {
   date: string;
   categoryId?: number | null;
   splitType: SplitType;
-  participants: Array<{ userId: number; paidMinor: number; input?: number }>;
+  participants: Array<{ userId: string; paidMinor: number; input?: number }>;
   /** Itemized splits only. Rejected by the server for any other split type. */
   items?: SplitItem[];
   /**
@@ -292,41 +292,41 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
-  getGroup: (id: number) =>
+  getGroup: (id: string) =>
     request<{
       group: Group & { inviteUrl: string | null };
       members: GroupMember[];
-      balances: Array<{ userId: number; balances: CurrencyAmount[] }>;
+      balances: Array<{ userId: string; balances: CurrencyAmount[] }>;
     }>(`/groups/${id}`),
 
-  getGroupExpenses: (id: number) =>
+  getGroupExpenses: (id: string) =>
     request<{ expenses: ExpenseSummary[] }>(`/groups/${id}/expenses`),
 
-  getSettleSuggestions: (id: number) =>
+  getSettleSuggestions: (id: string) =>
     request<{
       suggestions: Array<{
         currencyCode: string;
-        transfers: Array<{ fromUserId: number; toUserId: number; amountMinor: number }>;
+        transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
       }>;
     }>(`/groups/${id}/settle`),
 
-  createExpense: (groupId: number, input: ExpenseInput) =>
-    request<{ id: number }>(`/groups/${groupId}/expenses`, {
+  createExpense: (groupId: string, input: ExpenseInput) =>
+    request<{ id: string }>(`/groups/${groupId}/expenses`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
 
   createGroupPayment: (
-    groupId: number,
+    groupId: string,
     input: {
-      fromUserId: number;
-      toUserId: number;
+      fromUserId: string;
+      toUserId: string;
       amountMinor: number;
       currencyCode: string;
       date?: string;
     },
   ) =>
-    request<{ id: number }>(`/groups/${groupId}/payments`, {
+    request<{ id: string }>(`/groups/${groupId}/payments`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
@@ -335,14 +335,14 @@ export const api = {
    * The one the add-expense dialog uses: any set of people, group or no group.
    * The group- and friend-scoped creates above stay for the narrower callers.
    */
-  createAnyExpense: (input: ExpenseInput & { groupId: number | null }) =>
-    request<{ id: number }>("/expenses", { method: "POST", body: JSON.stringify(input) }),
+  createAnyExpense: (input: ExpenseInput & { groupId: string | null }) =>
+    request<{ id: string }>("/expenses", { method: "POST", body: JSON.stringify(input) }),
 
-  deleteExpense: (id: number) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
+  deleteExpense: (id: string) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
 
-  getExpense: (id: number) => request<{ expense: ExpenseDetail }>(`/expenses/${id}`),
+  getExpense: (id: string) => request<{ expense: ExpenseDetail }>(`/expenses/${id}`),
 
-  updateExpense: (id: number, input: ExpenseInput & { groupId: number | null }) =>
+  updateExpense: (id: string, input: ExpenseInput & { groupId: string | null }) =>
     request<{ ok: boolean }>(`/expenses/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
 
   listExpenses: () => request<{ expenses: ExpenseSummary[] }>("/expenses"),
@@ -353,7 +353,7 @@ export const api = {
 
   listFriends: () => request<{ friends: Friend[] }>("/friends"),
 
-  getFriend: (id: number) => request<{ friend: Friend }>(`/friends/${id}`),
+  getFriend: (id: string) => request<{ friend: Friend }>(`/friends/${id}`),
 
   addFriend: (input: { firstName: string; lastName?: string; email?: string }) =>
     request<{
@@ -365,20 +365,20 @@ export const api = {
       recoveryCode?: string;
     }>("/friends", { method: "POST", body: JSON.stringify(input) }),
 
-  removeFriend: (id: number) =>
+  removeFriend: (id: string) =>
     request<{ ok: boolean; stillVisible: boolean }>(`/friends/${id}`, { method: "DELETE" }),
 
-  getFriendExpenses: (id: number) =>
+  getFriendExpenses: (id: string) =>
     request<{ expenses: ExpenseSummary[] }>(`/friends/${id}/expenses`),
 
-  createFriendExpense: (friendId: number, input: ExpenseInput) =>
-    request<{ id: number }>(`/friends/${friendId}/expenses`, {
+  createFriendExpense: (friendId: string, input: ExpenseInput) =>
+    request<{ id: string }>(`/friends/${friendId}/expenses`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
 
   createFriendPayment: (
-    friendId: number,
+    friendId: string,
     input: {
       direction: "you_paid" | "they_paid";
       amountMinor: number;
@@ -386,7 +386,7 @@ export const api = {
       date?: string;
     },
   ) =>
-    request<{ id: number }>(`/friends/${friendId}/payments`, {
+    request<{ id: string }>(`/friends/${friendId}/payments`, {
       method: "POST",
       body: JSON.stringify(input),
     }),
@@ -409,7 +409,7 @@ export const api = {
 
   importGroups: (apiKey: string) =>
     request<{
-      groups: Array<{ splitwiseId: number; localGroupId: number; name: string; created: boolean }>;
+      groups: Array<{ splitwiseId: number; localGroupId: string; name: string; created: boolean }>;
       people: ImportPerson[];
       created: number;
       matched: number;
@@ -441,13 +441,13 @@ export const api = {
 
   joinInvite: (token: string, displayName: string) =>
     request<{
-      user: { id: number; firstName: string; isGhost: boolean };
-      group: { id: number; name: string };
+      user: { id: string; firstName: string; isGhost: boolean };
+      group: { id: string; name: string };
       recoveryCode: string;
     }>(`/invite/${token}/join`, { method: "POST", body: JSON.stringify({ displayName }) }),
 
   recover: (recoveryCode: string) =>
-    request<{ user: { id: number; firstName: string } }>("/invite/recover", {
+    request<{ user: { id: string; firstName: string } }>("/invite/recover", {
       method: "POST",
       body: JSON.stringify({ recoveryCode }),
     }),

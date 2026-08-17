@@ -12,7 +12,7 @@
 import { useMemo, useRef, useState } from "react";
 
 export interface Person {
-  id: number;
+  id: string;
   label: string;
 }
 
@@ -25,10 +25,10 @@ export function PeoplePicker({
   emptyHint = "Search your friends by name",
 }: {
   candidates: Person[];
-  selectedIds: number[];
-  onChange: (ids: number[]) => void;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
   /** Cannot be removed. Normally you. */
-  lockedId?: number;
+  lockedId?: string;
   disabled?: boolean;
   emptyHint?: string;
 }) {
@@ -57,7 +57,7 @@ export function PeoplePicker({
     inputRef.current?.focus();
   }
 
-  function remove(id: number) {
+  function remove(id: string) {
     if (id === lockedId) return;
     onChange(selectedIds.filter((x) => x !== id));
   }

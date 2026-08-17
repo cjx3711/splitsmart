@@ -19,8 +19,8 @@ import { convertMinor, useExchangeRates } from "./exchangeRates.ts";
 import { type Payer } from "./ExpenseForm.tsx";
 
 export interface SettlePayment {
-  fromUserId: number;
-  toUserId: number;
+  fromUserId: string;
+  toUserId: string;
   amountMinor: number;
   currencyCode: string;
   date: string;
@@ -38,7 +38,7 @@ export function SettleUpForm({
   /** Currencies actually in play between these people, most useful first. */
   currencies: string[];
   /** Prefill, e.g. from the group's suggested settle-up. */
-  initial?: { fromUserId: number; toUserId: number; amount: string; currencyCode: string };
+  initial?: { fromUserId: string; toUserId: string; amount: string; currencyCode: string };
   /** Target for the display-only "show in …" conversion. */
   preferredCurrency?: string;
   onSubmit: (payment: SettlePayment) => Promise<void>;
@@ -47,9 +47,9 @@ export function SettleUpForm({
   const parseInCurrency = useParseMoney();
   const { decimalsFor } = useCurrencies();
 
-  const [fromUserId, setFromUserId] = useState(initial?.fromUserId ?? people[0]?.id ?? 0);
+  const [fromUserId, setFromUserId] = useState(initial?.fromUserId ?? people[0]?.id ?? "");
   const [toUserId, setToUserId] = useState(
-    initial?.toUserId ?? people.find((p) => p.id !== (initial?.fromUserId ?? people[0]?.id))?.id ?? 0,
+    initial?.toUserId ?? people.find((p) => p.id !== (initial?.fromUserId ?? people[0]?.id))?.id ?? "",
   );
   const [amount, setAmount] = useState(initial?.amount ?? "");
   const [currency, setCurrency] = useState(initial?.currencyCode ?? currencies[0] ?? "USD");
@@ -104,7 +104,7 @@ export function SettleUpForm({
     }
   }
 
-  const nameOf = (id: number) => people.find((p) => p.id === id)?.label ?? "someone";
+  const nameOf = (id: string) => people.find((p) => p.id === id)?.label ?? "someone";
 
   return (
     <form onSubmit={handleSubmit} className={className}>
@@ -116,7 +116,7 @@ export function SettleUpForm({
           <select
             id="settleFrom"
             value={fromUserId}
-            onChange={(e) => setFromUserId(Number(e.target.value))}
+            onChange={(e) => setFromUserId(e.target.value)}
           >
             {people.map((p) => (
               <option key={p.id} value={p.id}>
@@ -130,7 +130,7 @@ export function SettleUpForm({
           <select
             id="settleTo"
             value={toUserId}
-            onChange={(e) => setToUserId(Number(e.target.value))}
+            onChange={(e) => setToUserId(e.target.value)}
           >
             {people.map((p) => (
               <option key={p.id} value={p.id}>

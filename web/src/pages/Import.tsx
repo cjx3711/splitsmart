@@ -104,7 +104,7 @@ export function Import() {
 
       // Paged rather than one long request: progress is real, and a failure
       // costs one page instead of the whole run. Every page is resumable
-      // because the server matches on splitwise_id.
+      // because the server matches on metadata.splitwise_id.
       let offset: number | null = 0;
       let seen = 0;
       while (offset !== null) {

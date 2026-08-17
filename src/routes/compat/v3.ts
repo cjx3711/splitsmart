@@ -7,8 +7,9 @@
  * surface and what is still missing.
  *
  * RULES FOR THIS DIRECTORY:
- *   1. Never change a response shape to be "nicer". Wrong-but-compatible beats
- *      right-but-broken. If Splitwise wraps a list in {"friends": [...]}, so do we.
+ *   1. Never change a response shape to be "nicer", except the documented ID
+ *      break: entity ids are ULID strings, not Splitwise integers. See
+ *      docs/SPLITWISE_COMPAT.md. Category ids stay integers.
  *   2. Money crosses this boundary as decimal strings, and only here.
  *   3. New native features get native routes. Do not extend v3.0 with fields
  *      Splitwise never had; clients may validate strictly.
@@ -20,6 +21,7 @@ import { getPairwiseBalances, getBalanceBetween } from "../../domain/balances.ts
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { createExpense } from "../../domain/expenses.ts";
 import { parseAmount } from "../../domain/money.ts";
+import { isUlid } from "../../domain/ulid.ts";
 import {
   serializeCurrentUser,
   serializeFriend,
@@ -56,6 +58,28 @@ const USER_COLUMNS = [
   "is_ghost",
 ] as const;
 
+type UserRow = {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  default_currency: string;
+  is_ghost: number;
+};
+
+function toSerializableUser(user: UserRow): SerializableUser {
+  return {
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+    avatar_url: user.avatar_url,
+    default_currency: user.default_currency,
+    is_ghost: user.is_ghost,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // GET /get_current_user
 // ---------------------------------------------------------------------------
@@ -70,7 +94,7 @@ compatV3.get("/get_current_user", async (c) => {
 
   if (!user) return c.json({ error: "User not found" }, 404);
 
-  return c.json({ user: serializeCurrentUser(user as SerializableUser) });
+  return c.json({ user: serializeCurrentUser(toSerializableUser(user)) });
 });
 
 // ---------------------------------------------------------------------------
@@ -97,7 +121,7 @@ compatV3.get("/get_friends", async (c) => {
   const balanceByUser = new Map(balances.map((b) => [b.otherUserId, b.balances]));
 
   const friends = users.map((u) =>
-    serializeFriend(u as SerializableUser, balanceByUser.get(u.id) ?? [], decimals),
+    serializeFriend(toSerializableUser(u), balanceByUser.get(u.id) ?? [], decimals),
   );
 
   return c.json({ friends });
@@ -108,8 +132,8 @@ compatV3.get("/get_friends", async (c) => {
 // ---------------------------------------------------------------------------
 compatV3.get("/get_friend/:id", async (c) => {
   const auth = c.get("user");
-  const friendId = Number(c.req.param("id"));
-  if (!Number.isInteger(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+  const friendId = c.req.param("id");
+  if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
   const decimals = await decimalPlaces();
 
@@ -122,8 +146,8 @@ compatV3.get("/get_friend/:id", async (c) => {
 
   if (!user) return c.json({ error: "Friend not found" }, 404);
 
-  const balances = await getBalanceBetween(db, auth.id, friendId);
-  return c.json({ friend: serializeFriend(user as SerializableUser, balances, decimals) });
+  const balances = await getBalanceBetween(db, auth.id, user.id);
+  return c.json({ friend: serializeFriend(toSerializableUser(user), balances, decimals) });
 });
 
 // ---------------------------------------------------------------------------
@@ -174,10 +198,15 @@ compatV3.get("/get_expenses", async (c) => {
 
   const limit = clamp(Number(c.req.query("limit") ?? 20), 0, 1000) || 20;
   const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
-  const friendId = c.req.query("friend_id") ? Number(c.req.query("friend_id")) : null;
-  const groupId = c.req.query("group_id") ? Number(c.req.query("group_id")) : null;
+  const friendParam = c.req.query("friend_id");
+  const groupParam = c.req.query("group_id");
   const datedAfter = c.req.query("dated_after");
   const datedBefore = c.req.query("dated_before");
+
+  if (friendParam && !isUlid(friendParam)) return c.json({ expenses: [] });
+  if (groupParam && !isUlid(groupParam)) return c.json({ expenses: [] });
+  const friendId = friendParam ?? null;
+  const groupId = groupParam ?? null;
 
   let query = db
     .selectFrom("expenses")
@@ -241,7 +270,7 @@ compatV3.get("/get_expenses", async (c) => {
       .innerJoin("users", "users.id", "expense_users.user_id")
       .select([
         "expense_users.expense_id",
-        "expense_users.user_id",
+        "users.id as user_id",
         "expense_users.paid_share_minor",
         "expense_users.owed_share_minor",
         "users.id as u_id",
@@ -256,9 +285,16 @@ compatV3.get("/get_expenses", async (c) => {
       .execute(),
     db
       .selectFrom("expense_repayments")
-      .select(["expense_id", "from_user_id", "to_user_id", "amount_minor"])
-      .where("expense_id", "in", expenseIds)
-      .orderBy("seq")
+      .innerJoin("users as from_user", "from_user.id", "expense_repayments.from_user_id")
+      .innerJoin("users as to_user", "to_user.id", "expense_repayments.to_user_id")
+      .select([
+        "expense_repayments.expense_id",
+        "from_user.id as from_user_id",
+        "to_user.id as to_user_id",
+        "expense_repayments.amount_minor",
+      ])
+      .where("expense_repayments.expense_id", "in", expenseIds)
+      .orderBy("expense_repayments.seq")
       .execute(),
   ]);
 
@@ -267,7 +303,22 @@ compatV3.get("/get_expenses", async (c) => {
 
   const serialized = expenses.map((expense) =>
     serializeExpense(
-      expense,
+      {
+        id: expense.id,
+        group_id: expense.group_id,
+        description: expense.description,
+        details: expense.details,
+        cost_minor: expense.cost_minor,
+        currency_code: expense.currency_code,
+        date: expense.date,
+        category_id: expense.category_id,
+        category_name: expense.category_name,
+        is_payment: expense.is_payment,
+        created_by: expense.created_by,
+        created_at: expense.created_at,
+        updated_at: expense.updated_at,
+        deleted_at: expense.deleted_at,
+      },
       (sharesByExpense.get(expense.id) ?? []).map((s) => ({
         user_id: s.user_id,
         paid_share_minor: s.paid_share_minor,
@@ -323,20 +374,42 @@ compatV3.post("/create_expense", async (c) => {
       );
     }
 
-    const participants = rawUsers.map((u) => {
-      const userId = Number(u.user_id);
-      if (!Number.isInteger(userId)) throw new Error(`Invalid user_id: ${String(u.user_id)}`);
-      return {
+    const participants = [];
+    for (const u of rawUsers) {
+      const userId = String(u.user_id ?? "");
+      if (!isUlid(userId)) throw new Error(`Invalid user_id: ${String(u.user_id)}`);
+      const exists = await db
+        .selectFrom("users")
+        .select("id")
+        .where("id", "=", userId)
+        .where("deleted_at", "is", null)
+        .executeTakeFirst();
+      if (!exists) throw new Error(`Unknown user_id: ${userId}`);
+      participants.push({
         userId,
         paidMinor: parseAmount(String(u.paid_share ?? "0"), dp),
         // Splitwise's create_expense always sends explicit owed shares, so this
         // maps to our "exact" split type rather than being recomputed.
         input: parseAmount(String(u.owed_share ?? "0"), dp),
-      };
-    });
+      });
+    }
+
+    let groupId: string | null = null;
+    if (body.group_id) {
+      const gid = String(body.group_id);
+      if (!isUlid(gid)) throw new Error("Invalid group_id");
+      const group = await db
+        .selectFrom("groups")
+        .select("id")
+        .where("id", "=", gid)
+        .where("deleted_at", "is", null)
+        .executeTakeFirst();
+      if (!group) throw new Error("Unknown group_id");
+      groupId = group.id;
+    }
 
     const expenseId = await createExpense({
-      groupId: body.group_id ? Number(body.group_id) : null,
+      groupId,
       description: String(body.description ?? "").trim() || "Expense",
       details: body.details ? String(body.details) : null,
       costMinor,
@@ -353,9 +426,12 @@ compatV3.post("/create_expense", async (c) => {
       .selectFrom("expenses")
       .leftJoin("categories", "categories.id", "expenses.category_id")
       .select([
-        "expenses.id", "expenses.group_id", "expenses.description", "expenses.details",
+        "expenses.id",
+        "expenses.group_id",
+        "expenses.description", "expenses.details",
         "expenses.cost_minor", "expenses.currency_code", "expenses.date",
-        "expenses.category_id", "expenses.is_payment", "expenses.created_by",
+        "expenses.category_id", "expenses.is_payment",
+        "expenses.created_by",
         "expenses.created_at", "expenses.updated_at", "expenses.deleted_at",
         "categories.name as category_name",
       ])
@@ -366,7 +442,7 @@ compatV3.post("/create_expense", async (c) => {
       .selectFrom("expense_users")
       .innerJoin("users", "users.id", "expense_users.user_id")
       .select([
-        "expense_users.user_id", "expense_users.paid_share_minor",
+        "users.id as user_id", "expense_users.paid_share_minor",
         "expense_users.owed_share_minor", "users.id as u_id", "users.first_name",
         "users.last_name", "users.email", "users.avatar_url",
         "users.default_currency", "users.is_ghost",
@@ -376,9 +452,15 @@ compatV3.post("/create_expense", async (c) => {
 
     const repayments = await db
       .selectFrom("expense_repayments")
-      .select(["from_user_id", "to_user_id", "amount_minor"])
-      .where("expense_id", "=", expenseId)
-      .orderBy("seq")
+      .innerJoin("users as from_user", "from_user.id", "expense_repayments.from_user_id")
+      .innerJoin("users as to_user", "to_user.id", "expense_repayments.to_user_id")
+      .select([
+        "from_user.id as from_user_id",
+        "to_user.id as to_user_id",
+        "expense_repayments.amount_minor",
+      ])
+      .where("expense_repayments.expense_id", "=", expenseId)
+      .orderBy("expense_repayments.seq")
       .execute();
 
     return c.json({

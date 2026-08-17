@@ -5,15 +5,20 @@ invariants that are easy to break and hard to notice.
 
 ## What this is
 
-A self-hosted Splitwise replacement with **byte-level API compatibility** for the
-endpoints Splitwise clients actually use. Two consumers matter:
+A self-hosted Splitwise replacement with API compatibility for the endpoints
+Splitwise clients actually use, except entity ids are ULID strings rather than
+integers (see `docs/SPLITWISE_COMPAT.md`). Two consumers matter:
 
 1. The React frontend in `web/` talks to the native API at `/api/v1`.
 2. External tools (notably `splitwise-to-toshl`) talk to the compat API at
-   `/api/sw/v3.0`, which mimics Splitwise's v3.0 wire format exactly.
+   `/api/sw/v3.0`, which mimics Splitwise's v3.0 wire format except that entity
+   ids are ULID strings rather than integers.
 
 The long-term goal is full API parity. See `docs/PLAN.md` for the roadmap and
-`docs/SPLITWISE_COMPAT.md` for the endpoint-by-endpoint status.
+`docs/SPLITWISE_COMPAT.md` for the endpoint-by-endpoint status. Native entity
+ids are ULIDs (`docs/ULIDS.md`); `/api/sw/v3.0` uses those same ULID strings
+as `id` (a documented break from Splitwise integers — see
+`docs/SPLITWISE_COMPAT.md`).
 
 ## Stack
 
@@ -122,6 +127,9 @@ parts that are ugly:
 - `users__0__paid_share` flattened keys on `create_expense` input
 - `deleted_at` tombstones returned to the client, not filtered out
 - both `user_id` **and** nested `user.id` on expense participants
+- entity `id` / `user_id` / `group_id` values are ULID **strings**, not
+  Splitwise integers. Category ids stay Splitwise integers. See
+  `docs/SPLITWISE_COMPAT.md`.
 
 Wrong-but-compatible beats right-but-broken. **Do not "improve" a response
 shape.** `src/routes/compat/v3.test.ts` asserts on these field names and string
@@ -145,6 +153,8 @@ src/
     money.ts         parse/format/split helpers
     split.ts         The split engine. Pure. Heavily tested. Also imported by
                      the frontend. See "Split types" below.
+    ulid.ts          Crockford ULID. Pure. Also imported by the frontend.
+    metadata.ts      JSON bag on users/groups/expenses/comments
     balances.ts      Balance queries + simplifyDebts
     expenses.ts      The ONLY writer of expense tables
     friends.ts       Explicit vs derived friendships. ONE definition of "friend"
@@ -405,11 +415,13 @@ client, the real routes and the real expense writer end to end.
 
 Four things this must keep doing:
 
-- **Identity is `splitwise_id` first, email second.** Every imported row carries
-  the id it came from, so a second run matches instead of duplicating. Email is
-  the *only* heuristic, used just to link a Splitwise contact to a SplitSmart
-  account that already exists, and the preview names every person it applies to
-  before anything is written, because a wrong match merges two people's money.
+- **Identity is `metadata.splitwise_id` first, email second.** Every imported
+  row carries the Splitwise id it came from in the JSON metadata bag, so a
+  second run matches instead of duplicating. The native PK is always a fresh
+  ULID. Email is the *only* heuristic, used just to link a Splitwise contact
+  to a SplitSmart account that already exists, and the preview names every
+  person it applies to before anything is written, because a wrong match
+  merges two people's money.
 - **Splitwise's own `owed_share` is imported as an `exact` split.** Never
   re-derive an equal split from the total: the two disagree by a cent on
   three-way splits, and a cent is a balance.
@@ -459,8 +471,9 @@ untrusted bytes, so it needs an explicit decision, not an incidental one.
   one exists.
 - **Rounding must be deterministic.** `splitEvenly` gives leftover minor units to
   the earliest participants, and participants are sorted by `userId` before
-  allocation. Change that ordering and re-saving an expense shuffles whose cent
-  it is, drifting balances.
+  allocation. `userId` is a ULID; sort with `<`, not numeric coerce or
+  `localeCompare`. Change that ordering and re-saving an expense shuffles whose
+  cent it is, drifting balances.
 - **`STRICT` tables.** SQLite will reject a type mismatch rather than coercing.
   This is intentional. Do not remove it.
 - **Soft deletes only.** Every balance query filters `deleted_at IS NULL`, and

@@ -8,14 +8,17 @@
  *
  * FOUR RULES THIS MODULE LIVES BY:
  *
- * 1. IDENTITY IS `splitwise_id` FIRST, EMAIL SECOND. Every row we create carries
- *    the Splitwise id it came from, so a second run matches instead of
- *    duplicating. Only when there is no id match do we fall back to matching an
- *    existing local account by email; that is the one heuristic in here, and
- *    the UI has to say so out loud before the user starts.
+ * 1. IDENTITY IS `metadata.splitwise_id` FIRST, EMAIL SECOND. Every row we
+ *    create carries the Splitwise id it came from in the JSON metadata bag, so
+ *    a second run matches instead of duplicating. The native PK is a fresh
+ *    ULID — the original integer is not reused as `id`. Only when there is no
+ *    id match do we fall back to matching an existing local account by email;
+ *    that is the one heuristic in here, and the UI has to say so out loud
+ *    before the user starts.
  *
  * 2. NOTHING IS WRITTEN TWICE. Groups and expenses are looked up by
- *    `splitwise_id` before insert. Re-running a step is a no-op plus a report.
+ *    `json_extract(metadata, '$.splitwise_id')` before insert. Re-running a
+ *    step is a no-op plus a report.
  *
  * 3. EXPENSES GO THROUGH `createExpense`. No exceptions. See CLAUDE.md rule 3.
  *    Splitwise's own per-person `owed_share` values are imported as an `exact`
@@ -30,11 +33,18 @@
  * The API key never reaches this module as anything but a live client object,
  * and is never persisted. See src/splitwise/client.ts.
  */
-import { db } from "../db/index.ts";
+import { db, transaction } from "../db/index.ts";
 import { generateRecoveryCode, normaliseRecoveryCode, hashPassword } from "../auth/password.ts";
 import { parseAmount } from "./money.ts";
 import { createExpense } from "./expenses.ts";
 import { addFriendship, listRelatedUserIds } from "./friends.ts";
+import { ulid } from "./ulid.ts";
+import {
+  metadataFromSplitwise,
+  metadataWithSplitwiseId,
+  splitwiseIdOf,
+  splitwiseIdSql,
+} from "./metadata.ts";
 import type {
   SplitwiseClient,
   SplitwiseExpense,
@@ -47,7 +57,8 @@ const NON_GROUP_ID = 0;
 
 export interface PersonResult {
   splitwiseId: number;
-  localUserId: number;
+  /** Null in a preview for someone who would be created. */
+  localUserId: string | null;
   name: string;
   email: string | null;
   /** How this person was resolved: the UI shows the email matches explicitly. */
@@ -83,12 +94,12 @@ export class PersonResolver {
   // properties: `--experimental-strip-types` rejects those outright
   // (ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX), and there is no build step in dev.
   /** The local account doing the import. */
-  private readonly ownerId: number;
+  private readonly ownerId: string;
   /** Their Splitwise id, so their own rows resolve to themselves. */
   private readonly ownerSplitwiseId: number;
   private readonly defaultCurrency: string;
 
-  constructor(ownerId: number, ownerSplitwiseId: number, defaultCurrency: string) {
+  constructor(ownerId: string, ownerSplitwiseId: number, defaultCurrency: string) {
     this.ownerId = ownerId;
     this.ownerSplitwiseId = ownerSplitwiseId;
     this.defaultCurrency = defaultCurrency;
@@ -125,7 +136,7 @@ export class PersonResolver {
     const byEmail = person.email ? await this.findByEmail(person.email) : undefined;
     if (byEmail) return this.describe(person, byEmail.id, "email");
 
-    return this.describe(person, 0, "created");
+    return this.describe(person, null, "created");
   }
 
   private async lookupOrCreate(person: SplitwiseUser): Promise<PersonResult> {
@@ -138,20 +149,17 @@ export class PersonResolver {
 
     // The documented heuristic: someone who already has a SplitSmart account at
     // the address Splitwise knows them by IS that person. Stamping the
-    // splitwise_id on them makes every later lookup an id match, so this branch
-    // runs at most once per person per account.
+    // splitwise_id into metadata makes every later lookup an id match, so this
+    // branch runs at most once per person per account.
     if (person.email) {
       const byEmail = await this.findByEmail(person.email);
       if (byEmail) {
-        if (byEmail.splitwise_id === null) {
+        if (splitwiseIdOf(byEmail.metadata) === null) {
           await db
             .updateTable("users")
-            .set({ splitwise_id: person.id })
+            .set({ metadata: metadataWithSplitwiseId(byEmail.metadata, person.id) })
             .where("id", "=", byEmail.id)
-            // Belt and braces: splitwise_id is UNIQUE, and a concurrent import
-            // could have claimed it. Losing the race is harmless; the id match
-            // above will find it next time.
-            .where("splitwise_id", "is", null)
+            .where(splitwiseIdSql(), "is", null)
             .execute();
         }
         return this.describe(person, byEmail.id, "email");
@@ -161,28 +169,31 @@ export class PersonResolver {
     // Nobody local: create a placeholder, exactly as POST /api/v1/friends does.
     // The recovery code is generated here or never; only its hash is kept.
     const recoveryCode = generateRecoveryCode();
-    const created = await db
-      .insertInto("users")
-      .values({
-        splitwise_id: person.id,
-        first_name: displayFirstName(person),
-        last_name: person.last_name ?? null,
-        // A ghost may carry an unverified address; login refuses ghosts outright
-        // so this can never become a working credential. See CLAUDE.md.
-        email: person.email ?? null,
-        default_currency: this.defaultCurrency,
-        is_ghost: 1,
-        recovery_code_hash: await hashPassword(normaliseRecoveryCode(recoveryCode)),
-      })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+    const created = await transaction(async (trx) => {
+      return trx
+        .insertInto("users")
+        .values({
+          id: ulid(millisFromIso(person.created_at)),
+          metadata: metadataFromSplitwise(person.id),
+          first_name: displayFirstName(person),
+          last_name: person.last_name ?? null,
+          // A ghost may carry an unverified address; login refuses ghosts outright
+          // so this can never become a working credential. See CLAUDE.md.
+          email: person.email ?? null,
+          default_currency: this.defaultCurrency,
+          is_ghost: 1,
+          recovery_code_hash: await hashPassword(normaliseRecoveryCode(recoveryCode)),
+        })
+        .returning("id")
+        .executeTakeFirstOrThrow();
+    });
 
     return { ...this.describe(person, created.id, "created"), recoveryCode };
   }
 
   private describe(
     person: SplitwiseUser,
-    localUserId: number,
+    localUserId: string | null,
     matchedBy: PersonResult["matchedBy"],
   ): PersonResult {
     return {
@@ -197,8 +208,8 @@ export class PersonResolver {
   private findBySplitwiseId(splitwiseId: number) {
     return db
       .selectFrom("users")
-      .select(["id", "splitwise_id"])
-      .where("splitwise_id", "=", splitwiseId)
+      .select(["id", "metadata"])
+      .where(splitwiseIdSql(), "=", splitwiseId)
       .where("deleted_at", "is", null)
       .executeTakeFirst();
   }
@@ -206,7 +217,7 @@ export class PersonResolver {
   private findByEmail(email: string) {
     return db
       .selectFrom("users")
-      .select(["id", "splitwise_id"])
+      .select(["id", "metadata"])
       // users.email is COLLATE NOCASE, so this is already case-insensitive.
       .where("email", "=", email)
       .where("deleted_at", "is", null)
@@ -221,6 +232,13 @@ function displayFirstName(person: SplitwiseUser): string {
   const last = person.last_name?.trim();
   if (last) return last;
   return person.email?.split("@")[0] ?? `Splitwise user ${person.id}`;
+}
+
+function localId(person: PersonResult): string {
+  if (person.localUserId === null) {
+    throw new Error(`Splitwise user ${person.splitwiseId} was not resolved to a local account`);
+  }
+  return person.localUserId;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,7 +259,7 @@ export interface LocalFootprint {
  * The wizard's "you already have data" warning is built from this, so it counts
  * only what the caller can actually see, not everything in the database.
  */
-export async function localFootprint(userId: number): Promise<LocalFootprint> {
+export async function localFootprint(userId: string): Promise<LocalFootprint> {
   const [groups, friendIds, expenses, imported] = await Promise.all([
     db
       .selectFrom("group_members")
@@ -265,7 +283,7 @@ export async function localFootprint(userId: number): Promise<LocalFootprint> {
       .select((eb) => eb.fn.countAll<number>().as("n"))
       .where("expense_users.user_id", "=", userId)
       .where("expenses.deleted_at", "is", null)
-      .where("expenses.splitwise_id", "is not", null)
+      .where(splitwiseIdSql("expenses"), "is not", null)
       .executeTakeFirstOrThrow(),
   ]);
 
@@ -296,7 +314,7 @@ export interface ImportPreview {
  */
 export async function previewImport(
   client: SplitwiseClient,
-  userId: number,
+  userId: string,
 ): Promise<ImportPreview> {
   const owner = await requireOwner(userId);
   const swMe = await client.getCurrentUser();
@@ -402,7 +420,7 @@ export interface FriendsImportResult {
  */
 export async function importFriends(
   client: SplitwiseClient,
-  userId: number,
+  userId: string,
 ): Promise<FriendsImportResult> {
   const owner = await requireOwner(userId);
   const swMe = await client.getCurrentUser();
@@ -414,7 +432,7 @@ export async function importFriends(
   for (const friend of await client.getFriends()) {
     if (friend.id === swMe.id) continue;
     const person = await resolver.resolve(friend);
-    await addFriendship(db, userId, person.localUserId);
+    await addFriendship(db, userId, localId(person));
     people.push(person);
   }
 
@@ -432,7 +450,7 @@ export async function importFriends(
 export interface GroupImportResult {
   groups: Array<{
     splitwiseId: number;
-    localGroupId: number;
+    localGroupId: string;
     name: string;
     created: boolean;
     membersAdded: number;
@@ -452,7 +470,7 @@ export interface GroupImportResult {
  */
 export async function importGroups(
   client: SplitwiseClient,
-  userId: number,
+  userId: string,
 ): Promise<GroupImportResult> {
   const owner = await requireOwner(userId);
   const swMe = await client.getCurrentUser();
@@ -467,26 +485,29 @@ export async function importGroups(
     const existing = await db
       .selectFrom("groups")
       .select(["id"])
-      .where("splitwise_id", "=", swGroup.id)
+      .where(splitwiseIdSql(), "=", swGroup.id)
       .executeTakeFirst();
 
     const localGroupId =
       existing?.id ??
       (
-        await db
-          .insertInto("groups")
-          .values({
-            splitwise_id: swGroup.id,
-            name: swGroup.name,
-            group_type: mapGroupType(swGroup.group_type),
-            default_currency: owner.default_currency,
-            simplify_by_default: swGroup.simplify_by_default ? 1 : 0,
-            // No invite_token: an imported group is not something you have
-            // decided to share yet. Rotate one in from the group screen.
-            created_by: userId,
-          })
-          .returning("id")
-          .executeTakeFirstOrThrow()
+        await transaction(async (trx) => {
+          return trx
+            .insertInto("groups")
+            .values({
+              id: ulid(millisFromIso(swGroup.created_at)),
+              metadata: metadataFromSplitwise(swGroup.id),
+              name: swGroup.name,
+              group_type: mapGroupType(swGroup.group_type),
+              default_currency: owner.default_currency,
+              simplify_by_default: swGroup.simplify_by_default ? 1 : 0,
+              // No invite_token: an imported group is not something you have
+              // decided to share yet. Rotate one in from the group screen.
+              created_by: userId,
+            })
+            .returning("id")
+            .executeTakeFirstOrThrow();
+        })
       ).id;
 
     // The importer is always a member, even if Splitwise's member list is
@@ -496,7 +517,7 @@ export async function importGroups(
     for (const member of swGroup.members ?? []) {
       if (member.id === swMe.id) continue;
       const person = await resolver.resolve(member);
-      if (await ensureMember(localGroupId, person.localUserId, "import")) membersAdded++;
+      if (await ensureMember(localGroupId, localId(person), "import")) membersAdded++;
     }
 
     groups.push({
@@ -539,8 +560,8 @@ function mapGroupType(type: string | null | undefined): string {
 
 /** Returns true if a membership row was added or revived. */
 async function ensureMember(
-  groupId: number,
-  userId: number,
+  groupId: string,
+  userId: string,
   joinedVia: "import" | "creator",
 ): Promise<boolean> {
   const existing = await db
@@ -599,11 +620,11 @@ export interface ExpensePageResult {
  *
  * Paged rather than all-at-once so the wizard can show real progress and so a
  * failure halfway through costs you one page, not the whole run. Re-running a
- * page is free; everything already imported matches on `splitwise_id`.
+ * page is free; everything already imported matches on `metadata.splitwise_id`.
  */
 export async function importExpensePage(
   client: SplitwiseClient,
-  userId: number,
+  userId: string,
   params: { offset?: number; limit?: number } = {},
 ): Promise<ExpensePageResult> {
   const owner = await requireOwner(userId);
@@ -658,11 +679,11 @@ export async function importExpensePage(
 }
 
 interface ExpenseContext {
-  userId: number;
+  userId: string;
   resolver: PersonResolver;
   decimalsByCurrency: Map<string, number>;
   categoryIds: Set<number>;
-  groupIdBySplitwiseId: Map<number, number>;
+  groupIdBySplitwiseId: Map<number, string>;
 }
 
 /** Throws with a human-readable reason; the caller turns that into a skip. */
@@ -673,7 +694,7 @@ async function importOneExpense(
   const existing = await db
     .selectFrom("expenses")
     .select("id")
-    .where("splitwise_id", "=", swExpense.id)
+    .where(splitwiseIdSql(), "=", swExpense.id)
     .executeTakeFirst();
   if (existing) return "present";
 
@@ -690,7 +711,7 @@ async function importOneExpense(
   }
 
   const swGroupId = swExpense.group_id ?? NON_GROUP_ID;
-  let groupId: number | null = null;
+  let groupId: string | null = null;
   if (swGroupId !== NON_GROUP_ID) {
     groupId = ctx.groupIdBySplitwiseId.get(swGroupId) ?? null;
     if (groupId === null) {
@@ -703,14 +724,14 @@ async function importOneExpense(
 
   const costMinor = parseAmount(swExpense.cost, decimals);
 
-  const participants: Array<{ userId: number; paidMinor: number; input: number }> = [];
+  const participants: Array<{ userId: string; paidMinor: number; input: number }> = [];
   for (const share of swUsers) {
     const person = share.user ?? (share.user_id ? { id: share.user_id } : null);
     if (!person?.id) throw new Error("Participant with no user id");
 
     const resolved = await ctx.resolver.resolve(person as SplitwiseUser);
     participants.push({
-      userId: resolved.localUserId,
+      userId: localId(resolved),
       paidMinor: parseAmount(share.paid_share ?? "0", decimals),
       // Splitwise's own owed_share, imported as an `exact` split. Re-deriving
       // it from a split type would move cents, and cents are balances.
@@ -731,7 +752,8 @@ async function importOneExpense(
       : null;
 
   await createExpense({
-    splitwiseId: swExpense.id,
+    id: ulid(millisFromIso(swExpense.created_at) ?? millisFromIso(swExpense.date)),
+    metadata: { splitwise_id: swExpense.id },
     groupId,
     description: swExpense.description || "(no description)",
     details: swExpense.details ?? null,
@@ -755,10 +777,10 @@ async function importOneExpense(
 // Shared lookups
 // ---------------------------------------------------------------------------
 
-async function requireOwner(userId: number) {
+async function requireOwner(userId: string) {
   const owner = await db
     .selectFrom("users")
-    .select(["id", "email", "splitwise_id", "default_currency", "is_ghost"])
+    .select(["id", "email", "metadata", "default_currency", "is_ghost"])
     .where("id", "=", userId)
     .executeTakeFirstOrThrow();
   return owner;
@@ -771,16 +793,23 @@ async function requireOwner(userId: number) {
  * accounts here are importing the same Splitwise account, and silently moving
  * the id between them would be worse than leaving it where it is.
  */
-async function stampOwnerSplitwiseId(userId: number, splitwiseId: number): Promise<void> {
+async function stampOwnerSplitwiseId(userId: string, splitwiseId: number): Promise<void> {
+  const owner = await db
+    .selectFrom("users")
+    .select(["id", "metadata"])
+    .where("id", "=", userId)
+    .executeTakeFirst();
+  if (!owner || splitwiseIdOf(owner.metadata) !== null) return;
+
   await db
     .updateTable("users")
-    .set({ splitwise_id: splitwiseId })
+    .set({ metadata: metadataWithSplitwiseId(owner.metadata, splitwiseId) })
     .where("id", "=", userId)
-    .where("splitwise_id", "is", null)
+    .where(splitwiseIdSql(), "is", null)
     .where((eb) =>
       eb.not(
         eb.exists(
-          eb.selectFrom("users as other").select("other.id").where("other.splitwise_id", "=", splitwiseId),
+          eb.selectFrom("users as other").select("other.id").where(splitwiseIdSql("other"), "=", splitwiseId),
         ),
       ),
     )
@@ -797,24 +826,36 @@ async function loadCategoryIds(): Promise<Set<number>> {
   return new Set(rows.map((r) => r.id));
 }
 
-async function loadGroupMap(): Promise<Map<number, number>> {
+async function loadGroupMap(): Promise<Map<number, string>> {
   const rows = await db
     .selectFrom("groups")
-    .select(["id", "splitwise_id"])
-    .where("splitwise_id", "is not", null)
+    .select(["id", "metadata"])
+    .where(splitwiseIdSql(), "is not", null)
     .where("deleted_at", "is", null)
     .execute();
-  return new Map(rows.map((r) => [r.splitwise_id as number, r.id]));
+  const map = new Map<number, string>();
+  for (const r of rows) {
+    const id = splitwiseIdOf(r.metadata);
+    if (id != null) map.set(id, r.id);
+  }
+  return map;
 }
 
 async function findGroupsBySplitwiseIds(ids: number[]): Promise<Set<number>> {
   if (ids.length === 0) return new Set();
   const rows = await db
     .selectFrom("groups")
-    .select("splitwise_id")
-    .where("splitwise_id", "in", ids)
+    .select("metadata")
+    .where(splitwiseIdSql(), "in", ids)
     .execute();
-  return new Set(rows.map((r) => r.splitwise_id as number));
+  return new Set(rows.map((r) => splitwiseIdOf(r.metadata)).filter((id): id is number => id != null));
+}
+
+/** Splitwise ISO timestamps → ULID millis. Missing or junk falls through to `Date.now()`. */
+function millisFromIso(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) && ms >= 0 ? ms : undefined;
 }
 
 export type { SplitwiseGroup };

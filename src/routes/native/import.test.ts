@@ -35,7 +35,7 @@ const swFriends = [
   // Matches an existing SplitSmart account by email; the heuristic under test.
   { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com" },
   // No local account: becomes a placeholder.
-  { id: 2002, first_name: "Carol", last_name: "Clark", email: "carol@example.com" },
+  { id: 2002, first_name: "Carol", last_name: "Clark", email: "carol@example.com", created_at: "2021-04-01T00:00:00Z" },
 ];
 
 const swGroups = [
@@ -46,6 +46,7 @@ const swGroups = [
     name: "Flat",
     group_type: "apartment",
     simplify_by_default: true,
+    created_at: "2019-06-01T00:00:00Z",
     members: [
       { id: ME_SW_ID, first_name: "Alice", last_name: "Anderson", email: "alice@example.com" },
       ...swFriends,
@@ -61,6 +62,7 @@ const swExpenses = [
     cost: "1000.00",
     currency_code: "USD",
     date: "2026-03-01T00:00:00Z",
+    created_at: "2026-03-02T15:30:00Z",
     category: { id: 13, name: "Dining out" },
     users: [
       { user: swGroups[1]!.members[0], paid_share: "1000.00", owed_share: "333.34" },
@@ -186,10 +188,12 @@ const { seed } = await import("../../db/seed.ts");
 const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
+const { ulid, isUlid, ulidTime } = await import("../../domain/ulid.ts");
+const { splitwiseIdOf, splitwiseIdSql } = await import("../../domain/metadata.ts");
 
 let apiToken: string;
-let aliceId: number;
-let bobId: number;
+let aliceId: string;
+let bobId: string;
 
 async function post(path: string, body: unknown, token = apiToken) {
   const res = await app.request(`/api/v1${path}`, {
@@ -211,9 +215,11 @@ before(async () => {
   migrate(process.env.DATABASE_PATH!);
   seed(process.env.DATABASE_PATH!);
 
-  const alice = await db
+  aliceId = ulid();
+  await db
     .insertInto("users")
     .values({
+      id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
       first_name: "Alice",
@@ -221,15 +227,15 @@ before(async () => {
       default_currency: "USD",
       is_ghost: 0,
     })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  aliceId = alice.id;
+    .execute();
 
   // Bob already has a real SplitSmart account at the address Splitwise knows
   // him by. He must be matched, not duplicated.
-  const bob = await db
+  bobId = ulid();
+  await db
     .insertInto("users")
     .values({
+      id: bobId,
       email: "bob@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
       first_name: "Bob",
@@ -237,9 +243,7 @@ before(async () => {
       default_currency: "USD",
       is_ghost: 0,
     })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  bobId = bob.id;
+    .execute();
 
   apiToken = (await createApiToken(aliceId, "test")).token;
 });
@@ -289,6 +293,7 @@ describe("preview", () => {
     assert.equal(bob.matchedBy, "email");
     assert.equal(bob.localUserId, bobId);
     assert.equal(carol.matchedBy, "created");
+    assert.equal(carol.localUserId, null, "preview must not mint an id for someone it has not created");
 
     assert.ok(
       body.warnings.some((w: string) => w.includes("Bob Brown") && /email address/i.test(w)),
@@ -315,8 +320,18 @@ describe("friends", () => {
 
     const carol = body.people.find((p: any) => p.email === "carol@example.com");
     assert.equal(carol.matchedBy, "created");
+    assert.ok(isUlid(carol.localUserId));
     // Same contract as POST /friends: shown once, or never again.
     assert.match(carol.recoveryCode, /\S/);
+
+    const carolRow = await db
+      .selectFrom("users")
+      .select(["id", "metadata"])
+      .where("id", "=", carol.localUserId)
+      .executeTakeFirstOrThrow();
+    assert.equal(splitwiseIdOf(carolRow.metadata), 2002);
+    assert.ok(isUlid(carolRow.id));
+    assert.equal(ulidTime(carolRow.id), Date.parse("2021-04-01T00:00:00Z"));
 
     const friends = await get("/friends");
     const names = friends.body.friends.map((f: any) => f.first_name).sort();
@@ -328,10 +343,10 @@ describe("friends", () => {
     assert.equal(bobs.length, 1);
     const bobRow = await db
       .selectFrom("users")
-      .select(["splitwise_id", "is_ghost"])
+      .select(["metadata", "is_ghost"])
       .where("id", "=", bobId)
       .executeTakeFirstOrThrow();
-    assert.equal(bobRow.splitwise_id, 2001);
+    assert.equal(splitwiseIdOf(bobRow.metadata), 2001);
     assert.equal(bobRow.is_ghost, 0, "matching must not demote a real account to a ghost");
   });
 
@@ -364,8 +379,11 @@ describe("groups", () => {
     const group = await db
       .selectFrom("groups")
       .selectAll()
-      .where("splitwise_id", "=", 3001)
+      .where(splitwiseIdSql(), "=", 3001)
       .executeTakeFirstOrThrow();
+    assert.ok(isUlid(group.id));
+    assert.equal(ulidTime(group.id), Date.parse("2019-06-01T00:00:00Z"));
+    assert.equal(splitwiseIdOf(group.metadata), 3001);
     assert.equal(group.group_type, "home");
     assert.equal(group.simplify_by_default, 1);
     assert.equal(group.invite_token, null, "an imported group is not shared until you share it");
@@ -400,8 +418,11 @@ describe("expenses", () => {
     const rent = await db
       .selectFrom("expenses")
       .selectAll()
-      .where("splitwise_id", "=", 4001)
+      .where(splitwiseIdSql(), "=", 4001)
       .executeTakeFirstOrThrow();
+    assert.ok(isUlid(rent.id));
+    assert.equal(ulidTime(rent.id), Date.parse("2026-03-02T15:30:00Z"), "ULID time is created_at, not date");
+    assert.equal(splitwiseIdOf(rent.metadata), 4001);
     assert.equal(rent.cost_minor, 100_000);
     assert.equal(rent.currency_code, "USD");
     assert.equal(rent.category_id, 13);
@@ -427,18 +448,19 @@ describe("expenses", () => {
     const ramen = await db
       .selectFrom("expenses")
       .selectAll()
-      .where("splitwise_id", "=", 4002)
+      .where(splitwiseIdSql(), "=", 4002)
       .executeTakeFirstOrThrow();
     assert.equal(ramen.group_id, null, "Splitwise group 0 is not a group");
     assert.equal(ramen.currency_code, "JPY");
     assert.equal(ramen.cost_minor, 3400, "3400 JPY is 3400 minor units, not 340000");
+    assert.equal(ulidTime(ramen.id), Date.parse("2026-03-02T00:00:00Z"), "without created_at, ULID time is the expense date");
   });
 
   test("a settle-up lands as a payment", async () => {
     const payment = await db
       .selectFrom("expenses")
       .selectAll()
-      .where("splitwise_id", "=", 4003)
+      .where(splitwiseIdSql(), "=", 4003)
       .executeTakeFirstOrThrow();
     assert.equal(payment.is_payment, 1);
   });
@@ -454,7 +476,7 @@ describe("expenses", () => {
       const row = await db
         .selectFrom("expenses")
         .select("id")
-        .where("splitwise_id", "=", id)
+        .where(splitwiseIdSql(), "=", id)
         .executeTakeFirst();
       assert.equal(row, undefined, `expense ${id} must not be half-written`);
     }
@@ -540,12 +562,17 @@ describe("run", () => {
 
 describe("guests", () => {
   test("cannot import", async () => {
-    const ghost = await db
+    const ghostId = ulid();
+    await db
       .insertInto("users")
-      .values({ first_name: "Ghost", is_ghost: 1, default_currency: "USD" })
-      .returning("id")
-      .executeTakeFirstOrThrow();
-    const ghostToken = (await createApiToken(ghost.id, "ghost")).token;
+      .values({
+        id: ghostId,
+        first_name: "Ghost",
+        is_ghost: 1,
+        default_currency: "USD",
+      })
+      .execute();
+    const ghostToken = (await createApiToken(ghostId, "ghost")).token;
 
     const { status } = await post("/import/preview", { apiKey: API_KEY }, ghostToken);
     assert.equal(status, 403);

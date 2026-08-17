@@ -55,7 +55,7 @@ export function Activity() {
 
             return (
               <div key={entry.id} className="list-item">
-                <Avatar id={entry.actor?.id ?? 0} name={actorName} size={30} />
+                <Avatar id={entry.actor?.id ?? ""} name={actorName} size={30} />
                 <div className="list-item-body">
                   <div>
                     <strong>{actorName}</strong> {verb}

@@ -23,8 +23,8 @@ import { Amount, useCurrencies } from "./money.tsx";
 import type { Person } from "./PeoplePicker.tsx";
 
 export type Payment =
-  | { kind: "single"; payerId: number }
-  | { kind: "amounts"; amounts: Record<number, string> }
+  | { kind: "single"; payerId: string }
+  | { kind: "amounts"; amounts: Record<string, string> }
   | { kind: "own-share" };
 
 /**
@@ -34,14 +34,14 @@ export type Payment =
  */
 export function resolvePayments(
   payment: Payment,
-  participantIds: number[],
+  participantIds: string[],
   costMinor: number,
   currency: string,
   parseInCurrency: (input: string, currency: string) => number,
-): Map<number, number> | null {
+): Map<string, number> | null {
   if (payment.kind === "own-share") return null;
 
-  const paid = new Map<number, number>(participantIds.map((id) => [id, 0]));
+  const paid = new Map<string, number>(participantIds.map((id) => [id, 0]));
 
   if (payment.kind === "single") {
     paid.set(payment.payerId, costMinor);
@@ -106,7 +106,7 @@ export function PaidByField({
   }, 0);
   const remaining = costMinor - entered;
 
-  function setAmount(id: number, value: string) {
+  function setAmount(id: string, value: string) {
     const amounts = payment.kind === "amounts" ? { ...payment.amounts } : {};
     amounts[id] = value;
     onChange({ kind: "amounts", amounts });

@@ -11,13 +11,13 @@
  */
 import { db } from "../db/index.ts";
 import { generateToken, hashToken } from "./password.ts";
-import { randomUUID } from "node:crypto";
+import { ulid } from "../domain/ulid.ts";
 
 export const SESSION_COOKIE = "splitsmart_session";
 const SESSION_TTL_DAYS = 30;
 
 export interface AuthenticatedUser {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string | null;
   email: string | null;
@@ -31,7 +31,7 @@ export interface AuthenticatedUser {
 }
 
 export async function createSession(
-  userId: number,
+  userId: string,
   userAgent?: string,
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = generateToken();
@@ -40,7 +40,7 @@ export async function createSession(
   await db
     .insertInto("sessions")
     .values({
-      id: randomUUID(),
+      id: ulid(),
       token_hash: hashToken(token),
       user_id: userId,
       user_agent: userAgent ?? null,
@@ -118,11 +118,11 @@ export async function purgeExpiredSessions(): Promise<number> {
  * only its hash is stored, so a lost token must be revoked and reissued.
  */
 export async function createApiToken(
-  userId: number,
+  userId: string,
   name: string,
 ): Promise<{ token: string; id: string }> {
   const token = generateToken(32);
-  const id = randomUUID();
+  const id = ulid();
 
   await db
     .insertInto("api_tokens")
@@ -174,7 +174,7 @@ export async function resolveApiToken(token: string): Promise<AuthenticatedUser 
   };
 }
 
-export async function revokeApiToken(id: string, userId: number): Promise<void> {
+export async function revokeApiToken(id: string, userId: string): Promise<void> {
   await db
     .updateTable("api_tokens")
     .set({ revoked_at: new Date().toISOString() })

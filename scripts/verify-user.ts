@@ -32,7 +32,7 @@ function main(): void {
          WHERE is_ghost = 0 AND email_verified_at IS NULL AND deleted_at IS NULL
          ORDER BY created_at`,
       )
-      .all() as Array<{ id: number; email: string; first_name: string; created_at: string }>;
+      .all() as Array<{ id: string; email: string; first_name: string; created_at: string }>;
 
     if (rows.length === 0) {
       console.log("No unverified accounts.");
@@ -52,7 +52,7 @@ function main(): void {
        FROM users WHERE email = ? AND deleted_at IS NULL`,
     )
     .get(arg) as
-    | { id: number; email: string; first_name: string; email_verified_at: string | null; is_ghost: number }
+    | { id: string; email: string; first_name: string; email_verified_at: string | null; is_ghost: number }
     | undefined;
 
   if (!user) {

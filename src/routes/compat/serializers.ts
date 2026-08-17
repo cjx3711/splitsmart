@@ -21,7 +21,7 @@ import { formatAmount } from "../../domain/money.ts";
 import type { CurrencyAmount } from "../../domain/balances.ts";
 
 export interface SerializableUser {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string | null;
   email: string | null;
@@ -38,8 +38,10 @@ export type DecimalPlacesLookup = (currencyCode: string) => number;
  * `user.email` as an invalid account and refuses to start. Synthesising a
  * non-routable address keeps those clients working. `.invalid` is reserved by
  * RFC 2606 precisely so it can never resolve to a real mailbox.
+ *
+ * The suffix is the native ULID. Toshl only needs a truthy email.
  */
-export function emailFor(user: { id: number; email: string | null }): string {
+export function emailFor(user: { id: string; email: string | null }): string {
   return user.email ?? `ghost-${user.id}@splitsmart.invalid`;
 }
 
@@ -104,8 +106,8 @@ export function serializeFriend(
 }
 
 export interface SerializableExpense {
-  id: number;
-  group_id: number | null;
+  id: string;
+  group_id: string | null;
   description: string;
   details: string | null;
   cost_minor: number;
@@ -114,22 +116,22 @@ export interface SerializableExpense {
   category_id: number | null;
   category_name: string | null;
   is_payment: number;
-  created_by: number | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
 }
 
 export interface SerializableExpenseUser {
-  user_id: number;
+  user_id: string;
   paid_share_minor: number;
   owed_share_minor: number;
   user: SerializableUser;
 }
 
 export interface SerializableRepayment {
-  from_user_id: number;
-  to_user_id: number;
+  from_user_id: string;
+  to_user_id: string;
   amount_minor: number;
 }
 
@@ -218,8 +220,8 @@ export function serializeCategory(category: SerializableCategory) {
 /**
  * Parses Splitwise's flattened participant keys back into an array.
  *
- *   { users__0__user_id: 5, users__0__paid_share: "20.00", ... }
- *     -> [{ user_id: 5, paid_share: "20.00", ... }]
+ *   { users__0__user_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", users__0__paid_share: "20.00", ... }
+ *     -> [{ user_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", paid_share: "20.00", ... }]
  *
  * Indices need not be contiguous or ordered; real clients emit gaps.
  */
