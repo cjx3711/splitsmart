@@ -27,7 +27,13 @@
     "export:splitwise": "node --env-file=.env --experimental-strip-types scripts/export-splitwise.ts",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\" \"web/src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
-    "lint": "eslint src web/src scripts"
+    "lint": "eslint src web/src scripts",
+    "smoke:reset": "rm -f data/smoke.db data/smoke.db-wal data/smoke.db-shm && DATABASE_PATH=./data/smoke.db APP_ORIGIN=http://localhost:5644 yarn db:migrate && DATABASE_PATH=./data/smoke.db APP_ORIGIN=http://localhost:5644 yarn db:seed && DATABASE_PATH=./data/smoke.db APP_ORIGIN=http://localhost:5644 yarn seed:demo",
+    "smoke:server": "DATABASE_PATH=./data/smoke.db PORT=5645 API_PORT=5645 WEB_PORT=5644 APP_ORIGIN=http://localhost:5644 concurrently -n smoke-api,smoke-web -c blue,magenta \"node --env-file=.env --experimental-strip-types src/server.ts\" \"vite --config web/vite.config.ts\"",
+    "smoke:check": "DATABASE_PATH=./data/smoke.db yarn db:check",
+    "smoke:new": "node --experimental-strip-types scripts/smoke-run.ts",
+    "smoke:snapshot": "node --experimental-strip-types scripts/smoke-snapshot.ts",
+    "smoke:report": "node --experimental-strip-types scripts/smoke-report.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

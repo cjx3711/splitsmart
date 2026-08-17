@@ -660,6 +660,9 @@ expenseRoutes.get("/:id", async (c) => {
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.category_id", "expenses.group_id",
       "expenses.repeat_interval", "expenses.next_repeat", "expenses.repeat_of",
+      // What an offline edit sends back as `baseVersion`, so a stale write is a
+      // conflict rather than an overwrite. See docs/OFFLINE.md.
+      "expenses.version",
       "categories.name as category_name", "groups.name as group_name",
     ])
     .where("expenses.id", "=", expenseId)

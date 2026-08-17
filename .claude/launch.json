@@ -18,6 +18,12 @@
       "runtimeExecutable": "yarn",
       "runtimeArgs": ["dev"],
       "port": 5444
+    },
+    {
+      "name": "smoke",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["smoke:server"],
+      "port": 5644
     }
   ]
 }

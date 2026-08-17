@@ -94,6 +94,13 @@ export interface ExpenseSummary {
     paid_share_minor: number;
     owed_share_minor: number;
   }>;
+  /**
+   * Set only when the row came from the offline mirror: 'pending' has a write
+   * queued, 'conflict' needs a person to choose, 'rejected' is in quarantine.
+   * Absent means it came straight off the network, so it is the server's own copy.
+   * See docs/OFFLINE.md and web/src/db/local.ts.
+   */
+  syncState?: "synced" | "pending" | "conflict" | "rejected";
 }
 
 export interface ExpenseDetail {
@@ -116,6 +123,11 @@ export interface ExpenseDetail {
   repeat_of?: string | null;
   /** Bills this template has generated so far. Zero unless this IS a template. */
   series_count?: number;
+  /**
+   * The optimistic-concurrency counter. An edit sends it back as `baseVersion` so
+   * a stale write is a conflict rather than an overwrite (docs/OFFLINE.md).
+   */
+  version?: number;
   shares: Array<{
     user_id: string;
     paid_share_minor: number;

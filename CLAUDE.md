@@ -49,6 +49,23 @@ yarn db:reset                # wipe and rebuild the local database
 yarn seed:demo              # a demo account: groups, comments, a repeat series
 ```
 
+## The AI smoke suite
+
+`yarn test` covers the logic. `docs/AI_SMOKE_TESTS.md` covers the part a unit
+test cannot see: an agent drives a browser through the app and judges each
+screen by looking at it (is JPY shown without decimals, do the split shares add
+up, does the sidebar survive a phone viewport). Run it with the `ai-smoke-test`
+skill; it reports and never repairs, so a red run stays informative.
+
+It runs against **its own** database and ports — `data/smoke.db` on 5644/5645 —
+so it never touches your dev data. `yarn smoke:reset` rebuilds that database
+only; `yarn db:reset` is still the one that wipes yours.
+
+Text snapshots of each page live in `smoke/baselines/` and ARE committed, after
+`scripts/smoke-snapshot.ts` strips the values that legitimately churn (ULIDs,
+dates, `ref_N`, link secrets, the live FX estimate). Update a baseline in the
+commit that changed the UI, never to quiet a failing run.
+
 ## The five rules
 
 These are the things that will silently corrupt financial data if broken.

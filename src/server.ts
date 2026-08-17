@@ -26,6 +26,7 @@ import { activityRoutes } from "./routes/native/activity.ts";
 import { importRoutes } from "./routes/native/import.ts";
 import { commentRoutes, expenseCommentRoutes } from "./routes/native/comments.ts";
 import { exportRoutes } from "./routes/native/export.ts";
+import { syncRoutes } from "./routes/native/sync.ts";
 import { startRecurringScheduler } from "./domain/scheduler.ts";
 import { compatV3 } from "./routes/compat/v3.ts";
 
@@ -58,6 +59,10 @@ app.route("/api/v1/comments", commentRoutes);
 app.route("/api/v1/activity", activityRoutes);
 app.route("/api/v1/categories", categoryRoutes);
 app.route("/api/v1/import", importRoutes);
+// Replication for offline-capable clients (docs/OFFLINE.md). Logged-in accounts
+// only: requireAuth refuses a guest `link_` secret, and there is deliberately no
+// guest equivalent of this tree.
+app.route("/api/v1/sync", syncRoutes);
 // `/api/v1/expenses.csv` is a sibling of `/api/v1/expenses`, not a child, so it
 // cannot live inside a router mounted on that path.
 app.route("/api/v1", exportRoutes);

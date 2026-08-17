@@ -58,12 +58,15 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5444,
+    // Both ports are overridable so a second stack can run beside your dev one
+    // without fighting it for a port: `yarn smoke:server` puts an isolated
+    // copy (its own database) on 5644/5645 while dev keeps 5444/5445.
+    port: Number(process.env.WEB_PORT ?? 5444),
     // In dev the API runs as a separate process; in production the same Node
     // server serves both, so the frontend always talks to a same-origin /api.
     proxy: {
       "/api": {
-        target: "http://localhost:5445",
+        target: `http://localhost:${process.env.API_PORT ?? 5445}`,
         changeOrigin: true,
       },
     },

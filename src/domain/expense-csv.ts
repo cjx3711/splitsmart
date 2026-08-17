@@ -51,6 +51,74 @@ export function csvRow(values: Array<string | number | null | undefined>): strin
 }
 
 /**
+ * One expense, as the CSV needs it, with names and decimal places already
+ * resolved.
+ *
+ * This exists so `csvDocument` below is PURE and the offline mirror can call it:
+ * a download built from Dexie has to be byte-identical to one built from SQLite,
+ * or the same filter bar produces two different files depending on whether the
+ * network happened to be up. Both sides gather these rows their own way and then
+ * share the formatting.
+ */
+export interface CsvExpenseRow {
+  date: string;
+  description: string;
+  categoryName: string | null;
+  groupName: string | null;
+  currencyCode: string;
+  costMinor: number;
+  /** The currency's own decimal places. Required, never defaulted; see rule 1. */
+  decimalPlaces: number;
+  isPayment: boolean;
+  details: string | null;
+  commentCount: number;
+  repeatInterval: string | null;
+  repeatOf: string | null;
+  people: Array<{ name: string; paidMinor: number; owedMinor: number }>;
+}
+
+/**
+ * The whole document, header included, from already-gathered rows.
+ *
+ * Rows arrive in the order they should appear; sorting is the caller's job because
+ * only the caller knows whether it can lean on an index.
+ */
+export function csvDocument(rows: CsvExpenseRow[]): string {
+  const header = csvRow([...CSV_COLUMNS]);
+  if (rows.length === 0) return `${header}\n`;
+
+  const lines = rows.map((row) => {
+    const money = (minor: number) => formatAmount(minor, row.decimalPlaces);
+    const people = row.people
+      .slice()
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+    return csvRow([
+      row.date.slice(0, 10),
+      row.description,
+      row.categoryName,
+      row.groupName,
+      row.currencyCode,
+      money(row.costMinor),
+      row.isPayment ? "yes" : "no",
+      people
+        .filter((p) => p.paidMinor > 0)
+        .map((p) => `${p.name}: ${money(p.paidMinor)}`)
+        .join("; "),
+      people
+        .filter((p) => p.owedMinor > 0)
+        .map((p) => `${p.name}: ${money(p.owedMinor)}`)
+        .join("; "),
+      row.details,
+      row.commentCount,
+      row.repeatInterval ?? (row.repeatOf ? "occurrence" : ""),
+    ]);
+  });
+
+  return `${header}\n${lines.join("\n")}\n`;
+}
+
+/**
  * Builds the whole document for a set of expense ids.
  *
  * The ids come from the caller, which is what keeps this honest about
@@ -59,8 +127,7 @@ export function csvRow(values: Array<string | number | null | undefined>): strin
  * scope, because it never works one out.
  */
 export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promise<string> {
-  const header = csvRow([...CSV_COLUMNS]);
-  if (expenseIds.length === 0) return `${header}\n`;
+  if (expenseIds.length === 0) return csvDocument([]);
 
   const expenses = await database
     .selectFrom("expenses")
@@ -85,7 +152,7 @@ export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promi
     .orderBy("expenses.id", "desc")
     .execute();
 
-  if (expenses.length === 0) return `${header}\n`;
+  if (expenses.length === 0) return csvDocument([]);
 
   const ids = expenses.map((e) => e.id);
 
@@ -124,40 +191,29 @@ export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promi
     commentCounts.set(comment.expense_id, (commentCounts.get(comment.expense_id) ?? 0) + 1);
   }
 
-  const lines = expenses.map((expense) => {
-    // A currency that is not in the table cannot happen (foreign key), but
-    // defaulting to 2 keeps a broken seed from throwing mid-download.
-    const decimals = decimalsByCode.get(expense.currency_code) ?? 2;
-    const money = (minor: number) => formatAmount(minor, decimals);
-    const people = (sharesByExpense.get(expense.id) ?? []).slice().sort((a, b) => {
-      const left = fullName(a);
-      const right = fullName(b);
-      return left < right ? -1 : left > right ? 1 : 0;
-    });
-
-    return csvRow([
-      expense.date.slice(0, 10),
-      expense.description,
-      expense.category_name,
-      expense.group_name,
-      expense.currency_code,
-      money(expense.cost_minor),
-      expense.is_payment === 1 ? "yes" : "no",
-      people
-        .filter((p) => p.paid_share_minor > 0)
-        .map((p) => `${fullName(p)}: ${money(p.paid_share_minor)}`)
-        .join("; "),
-      people
-        .filter((p) => p.owed_share_minor > 0)
-        .map((p) => `${fullName(p)}: ${money(p.owed_share_minor)}`)
-        .join("; "),
-      expense.details,
-      commentCounts.get(expense.id) ?? 0,
-      expense.repeat_interval ?? (expense.repeat_of ? "occurrence" : ""),
-    ]);
-  });
-
-  return `${header}\n${lines.join("\n")}\n`;
+  return csvDocument(
+    expenses.map((expense) => ({
+      date: expense.date,
+      description: expense.description,
+      categoryName: expense.category_name,
+      groupName: expense.group_name,
+      currencyCode: expense.currency_code,
+      costMinor: expense.cost_minor,
+      // A currency that is not in the table cannot happen (foreign key), but
+      // defaulting to 2 keeps a broken seed from throwing mid-download.
+      decimalPlaces: decimalsByCode.get(expense.currency_code) ?? 2,
+      isPayment: expense.is_payment === 1,
+      details: expense.details,
+      commentCount: commentCounts.get(expense.id) ?? 0,
+      repeatInterval: expense.repeat_interval,
+      repeatOf: expense.repeat_of,
+      people: (sharesByExpense.get(expense.id) ?? []).map((share) => ({
+        name: fullName(share),
+        paidMinor: share.paid_share_minor,
+        owedMinor: share.owed_share_minor,
+      })),
+    })),
+  );
 }
 
 function fullName(person: { first_name: string; last_name: string | null }): string {
