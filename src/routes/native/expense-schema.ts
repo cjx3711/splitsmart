@@ -1,7 +1,7 @@
 /**
  * The shared request shape for creating an expense.
  *
- * Group expenses and one-on-one expenses accept the same body — they differ
+ * Group expenses and one-on-one expenses accept the same body; they differ
  * only in who is allowed to appear in `participants`, which each route enforces
  * for itself. The schema lives here so a new split type cannot be added to one
  * endpoint and forgotten on the other.
@@ -25,7 +25,7 @@ export const participantSchema = z.object({
   userId: z.number().int().positive(),
   paidMinor: z.number().int().min(0),
   /**
-   * Per-person figure whose meaning depends on splitType — minor units for
+   * Per-person figure whose meaning depends on splitType: minor units for
    * exact and adjustment, a percentage for percent, a count for shares. Not an
    * integer, because percentages and share counts are legitimately fractional.
    */
@@ -69,7 +69,7 @@ export const expenseBodyFields = {
  * endpoint cannot accidentally accept line items on a percent split.
  *
  * A superRefine rather than a chain of .refine() calls because superRefine
- * leaves the object's inferred type alone — a plain .refine() on a generic
+ * leaves the object's inferred type alone; a plain .refine() on a generic
  * would widen every field to `any` at the call sites.
  */
 function checkItemRules(
@@ -112,8 +112,8 @@ export const expenseBodySchema = z.object(expenseBodyFields).superRefine(checkIt
 
 /**
  * The same body plus the group it belongs to, for the endpoint that is not
- * already scoped to one. A null group is a non-group expense — Splitwise's
- * "Non-group expenses" bucket — not a missing value.
+ * already scoped to one. A null group is a non-group expense (Splitwise's
+ * "Non-group expenses" bucket, not a missing value.
  */
 export const genericExpenseBodySchema = z
   .object({

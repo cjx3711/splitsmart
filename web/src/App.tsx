@@ -54,7 +54,7 @@ export function useAuth() {
  * Lets any page tell the sidebar its group/friend lists are stale.
  *
  * The sidebar owns those lists so they survive navigation, but the screens that
- * change them are elsewhere in the tree. A bumped counter is enough - no shared
+ * change them are elsewhere in the tree. A bumped counter is enough; no shared
  * cache, no state library.
  */
 const RefreshContext = createContext<{ version: number; refresh: () => void }>({

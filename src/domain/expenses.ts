@@ -7,7 +7,7 @@
  * The reason is the expense invariant from migrations/001: paid shares and owed
  * shares must each sum to the expense total, and expense_repayments must be a
  * faithful derivation of expense_users. SQLite cannot enforce either across
- * rows, so correctness depends on every write taking this path — inside one
+ * rows, so correctness depends on every write taking this path, inside one
  * transaction, with the split engine deciding the numbers.
  */
 import { sql } from "kysely";
@@ -35,7 +35,7 @@ export interface CreateExpenseInput {
   /**
    * Line items, for `splitType: "itemized"` only. They decide the owed shares
    * and are also persisted verbatim to `expenses.split_meta` so the editor can
-   * reopen the bill — but the shares in expense_users stay authoritative.
+   * reopen the bill, but the shares in expense_users stay authoritative.
    */
   items?: SplitItem[];
   /**
@@ -43,7 +43,7 @@ export interface CreateExpenseInput {
    * `itemized` only. Presentation detail: the engine already spreads whatever
    * the lines do not cover in proportion to what each person ordered, so these
    * change no share. They are stored so the editor reopens the bill with the
-   * same two boxes, and are rejected unless they agree with that gap — a stored
+   * same two boxes, and are rejected unless they agree with that gap; a stored
    * tip that does not match the money is worse than no tip at all.
    */
   taxMinor?: number | null;
@@ -55,7 +55,7 @@ export interface CreateExpenseInput {
   splitwiseId?: number | null;
   /**
    * Defaults to true. The Splitwise importer sets it false and writes one
-   * summary entry per run instead — a thousand imported expenses would
+   * summary entry per run instead (a thousand imported expenses would
    * otherwise bury every real event in the feed under a wall of history.
    */
   recordActivity?: boolean;
@@ -120,7 +120,7 @@ export async function createExpense(input: CreateExpenseInput): Promise<number> 
 /**
  * Replaces an expense's contents.
  *
- * Shares and repayments are deleted and rewritten rather than diffed — an
+ * Shares and repayments are deleted and rewritten rather than diffed; an
  * expense has a handful of rows, and a full rewrite cannot leave a stale
  * participant behind the way a partial update can.
  */
@@ -276,7 +276,7 @@ export async function createPayment(params: {
 /**
  * Renders the JSON blob for `expenses.split_meta`.
  *
- * Returns NULL for every split type that is fully described by expense_users —
+ * Returns NULL for every split type that is fully described by expense_users -
  * which is all of them except itemized. The column has a CHECK enforcing that,
  * so this is the only shape the database will accept.
  *
@@ -288,7 +288,7 @@ export async function createPayment(params: {
  * Tax and tip are stored only when they account for the gap between the lines
  * and the total exactly. They are labels on money the engine has already
  * spread, so a pair that does not add up would be a caption contradicting the
- * ledger underneath it — rejected rather than rounded into agreement.
+ * ledger underneath it; rejected rather than rounded into agreement.
  */
 function serialiseSplitMeta(input: {
   splitType: SplitType;

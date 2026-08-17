@@ -1,7 +1,7 @@
 /**
  * Email bodies.
  *
- * Plain functions returning strings — no template engine, no HTML framework.
+ * Plain functions returning strings; no template engine, no HTML framework.
  * Every message ships both an HTML and a text part because Postmark scores
  * text-less mail worse for deliverability, and text is what shows up in the
  * console when Postmark is unconfigured.
@@ -91,7 +91,7 @@ export function friendInviteEmail(input: FriendInviteEmail): {
   const { firstName, inviterName, acceptUrl, isNewAccount } = input;
 
   const lead = isNewAccount
-    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to pick up your account — no password needed to start.`
+    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to pick up your account; no password needed to start.`
     : `${inviterName} added you as a friend on SplitSmart. You can see what you owe each other next time you log in.`;
 
   const action = isNewAccount ? "Accept the invite" : "Open SplitSmart";

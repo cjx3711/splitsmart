@@ -3,7 +3,7 @@
  *
  * This is a separate axis from how the cost is divided, and conflating the two
  * is the mistake worth avoiding: `expense_users` has always had `paid_share`
- * per person, and the split engine has always accepted several payers — it was
+ * per person, and the split engine has always accepted several payers; it was
  * only the form that insisted on exactly one. So this control edits payments
  * and nothing else; SplitEditor still owns who owes what.
  *
@@ -28,7 +28,7 @@ export type Payment =
   | { kind: "own-share" };
 
 /**
- * What each person put in, in minor units — or the reason it cannot be worked
+ * What each person put in, in minor units, or the reason it cannot be worked
  * out yet. `own-share` resolves to null on purpose: what each person owes is
  * not known until the split has been computed, so buildSplit fills it in.
  */
@@ -162,7 +162,7 @@ export function PaidByField({
               Each person paid for their own share
             </button>
             <p className="split-hint" style={{ marginTop: 0 }}>
-              Records what everyone spent without anybody ending up owing anybody — useful for a
+              Records what everyone spent without anybody ending up owing anybody. Useful for a
               night where you all paid your own way but still want it on the ledger.
             </p>
 

@@ -7,7 +7,7 @@ import { useAuth } from "../App.tsx";
 /**
  * The invite-link join page.
  *
- * Anyone with the link can create a ghost account here — no email, no password.
+ * Anyone with the link can create a ghost account here; no email, no password.
  * The recovery code shown afterwards is the ONLY way back into that account
  * from another device, so it is displayed on a blocking step rather than a
  * toast the user can miss.
@@ -68,7 +68,7 @@ export function Join() {
         </div>
         <p style={{ marginTop: "1rem" }}>
           <button onClick={() => navigate(`/groups/${joined.groupId}`)}>
-            I've saved it — continue
+            I've saved it, continue
           </button>
         </p>
       </div>

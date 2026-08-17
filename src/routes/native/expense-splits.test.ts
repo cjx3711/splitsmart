@@ -12,7 +12,7 @@
  *   - the shares that land in expense_users still sum to the cost
  *
  * src/db/index.ts opens its connection at import time, so DATABASE_PATH is set
- * before the first dynamic import below — same pattern as import.test.ts.
+ * before the first dynamic import below, same pattern as import.test.ts.
  */
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -63,7 +63,7 @@ async function stored(expenseId: number) {
   return { expense, shares, owed: shares.map((s) => s.owed_share_minor) };
 }
 
-/** Three people, one payer, 3000 JPY — a total that does not divide by three. */
+/** Three people, one payer, 3000 JPY: a total that does not divide by three. */
 function body(extra: Record<string, unknown>) {
   return {
     description: "Dinner",
@@ -161,7 +161,7 @@ describe("split types over the native API", () => {
   });
 
   test("shares", async () => {
-    // 2:1:1 of 3000 — the odd unit goes to the largest remainder.
+    // 2:1:1 of 3000; the odd unit goes to the largest remainder.
     const { status, body: res } = await post(`/groups/${groupId}/expenses`,
       body({ splitType: "shares", participants: participants([2, 1, 1]) }));
     assert.equal(status, 201);
@@ -200,7 +200,7 @@ describe("split types over the native API", () => {
 
     const { expense, owed } = await stored(res.id);
     // 900 each on the wagyu; the 1200 left over follows those weights, so
-    // Carol — who ordered nothing — owes nothing.
+    // Carol (who ordered nothing) owes nothing.
     assert.deepEqual(owed, [1500, 1500, 0]);
     assert.equal(owed.reduce((a, b) => a + b, 0), 3000);
 
@@ -246,7 +246,7 @@ describe("split types over the native API", () => {
 
   test("editing an itemized expense to another split type clears its line items", async () => {
     // The DB has CHECK (split_meta IS NULL OR split_type = 'itemized'), so a
-    // stale blob is not merely untidy — the write would fail outright.
+    // stale blob is not merely untidy; the write would fail outright.
     const { body: res } = await post(`/groups/${groupId}/expenses`,
       body({
         splitType: "itemized",
@@ -291,7 +291,7 @@ describe("split types over the native API", () => {
     assert.deepEqual(shares.map((s) => s.paid_share_minor), [2000, 1000, 0]);
     assert.deepEqual(owed, [1000, 1000, 1000]);
 
-    // Alice is up 1000 and Bob is square, so only Carol owes — to Alice.
+    // Alice is up 1000 and Bob is square, so only Carol owes, to Alice.
     const repayments = await db
       .selectFrom("expense_repayments")
       .select(["from_user_id", "to_user_id", "amount_minor"])
@@ -316,7 +316,7 @@ describe("split types over the native API", () => {
   });
 
   test("tax and tip are stored alongside the lines they belong to", async () => {
-    // 2600 of food, 100 tax, 300 tip — 3000 in all. The engine spreads the 400
+    // 2600 of food, 100 tax, 300 tip: 3000 in all. The engine spreads the 400
     // in proportion to what each person ordered; the two figures name that gap.
     const { status, body: res } = await post(`/groups/${groupId}/expenses`,
       body({
@@ -362,7 +362,7 @@ describe("split types over the native API", () => {
   });
 });
 
-describe("POST /expenses — the generic endpoint", () => {
+describe("POST /expenses: the generic endpoint", () => {
   test("creates a non-group expense between three people", async () => {
     // Neither of the older endpoints can express this: /groups/:id needs a
     // group, and /friends/:id caps the expense at the two of you.
@@ -464,7 +464,7 @@ describe("POST /expenses — the generic endpoint", () => {
 
 describe("the ledger after all of the above", () => {
   test("every expense written here still satisfies the paid/owed invariant", async () => {
-    // The same check `yarn db:check` runs, scoped to this test's writes — a
+    // The same check `yarn db:check` runs, scoped to this test's writes: a
     // split type that balanced in the engine but was persisted wrong would slip
     // past every assertion above.
     const rows = await db

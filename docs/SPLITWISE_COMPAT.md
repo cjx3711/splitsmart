@@ -1,7 +1,7 @@
 # Splitwise API compatibility
 
 The compat layer lives in `src/routes/compat/` and is mounted at
-`/api/sw/v3.0`. Its wire format is **frozen** — see CLAUDE.md rule 5.
+`/api/sw/v3.0`. Its wire format is **frozen**. See CLAUDE.md rule 5.
 
 Auth is `Authorization: Bearer <token>`, where the token is minted in Settings →
 API tokens. Splitwise's own personal API keys work the same way, which is why no
@@ -21,7 +21,7 @@ source.
 
 **Critical:** `user.id` and `user.email` must both be truthy. `useAccounts.tsx`
 marks the account invalid otherwise. Ghost accounts have no email, so the
-serializer synthesises `ghost-<id>@splitsmart.invalid` — `.invalid` is reserved
+serializer synthesises `ghost-<id>@splitsmart.invalid`: `.invalid` is reserved
 by RFC 2606 and can never resolve to a real mailbox.
 
 ### `GET /get_friends`
@@ -58,7 +58,7 @@ checked in at `fixtures/splitwise/get_categories.json`; `yarn db:seed` uses
 them directly, so `category_id` is portable in both directions with no extra
 step.
 
-The ids could not have been guessed — they are non-sequential and parents and
+The ids could not have been guessed; they are non-sequential and parents and
 children share **one** id space:
 
 | Parent | ID | Example leaf | ID |
@@ -82,7 +82,7 @@ categories, since remapping would silently recategorise them.
 ### Currencies
 
 168 currencies are seeded: the full active ISO 4217 list **plus** all 153 codes
-Splitwise's live `get_currencies` returns. This is deliberate —
+Splitwise's live `get_currencies` returns. This is deliberate -
 `expenses.currency_code` is a foreign key, so a missing currency does not
 degrade gracefully, it rejects the expense.
 
@@ -91,7 +91,7 @@ mostly demonetised ones its users still have history in: BYR, CUC, HRK, LTL,
 SLL, STD, VEF, XCG, ZWL, plus BTC and the non-standard CMG. Omitting any of them
 would make importing an expense denominated in it impossible.
 
-`decimal_places` comes from ISO 4217 and is **never** taken from Splitwise —
+`decimal_places` comes from ISO 4217 and is **never** taken from Splitwise -
 their `get_currencies` returns only `currency_code` and `unit`, with no exponent
 at all. BTC is the reason `migrations/001` allows up to 8 decimal places.
 
@@ -116,10 +116,10 @@ Shape details clients depend on:
 | Field | Requirement |
 |---|---|
 | `cost`, `paid_share`, `owed_share` | decimal **strings**, not numbers |
-| `date` | full ISO timestamp — clients do `date.split("T")[0]` |
+| `date` | full ISO timestamp; clients do `date.split("T")[0]` |
 | `category` | nested object; read as `e.category.name` |
 | `users[].user_id` **and** `users[].user.id` | both present, same value |
-| `deleted_at` | returned, **not** filtered — clients skip them themselves |
+| `deleted_at` | returned, **not** filtered; clients skip them themselves |
 
 ### `POST /create_expense`
 
@@ -137,7 +137,7 @@ Body uses Splitwise's flattened participant keys:
 Indices need not be contiguous or ordered. Because explicit owed shares are
 always supplied, this maps to the `exact` split type.
 
-The compat layer has no notion of a split *type*, in either direction — the wire
+The compat layer has no notion of a split *type*, in either direction; the wire
 format only ever carries per-person `paid_share` / `owed_share`, which is exactly
 what SplitSmart stores in `expense_users`. So a native expense split by percent,
 shares or an itemized bill serialises out here as ordinary owed shares and reads
@@ -175,7 +175,7 @@ token where the Splitwise key goes. That is the entire integration.
 ## Testing parity
 
 `src/routes/compat/v3.test.ts` runs the real Hono app against a throwaway SQLite
-file and asserts on field names and string formats — including zero-decimal
+file and asserts on field names and string formats, including zero-decimal
 currencies (JPY must serialise as `"3000"`, never `"30.00"`).
 
 When adding an endpoint, capture a **real Splitwise response while the API is

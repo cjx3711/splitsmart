@@ -2,7 +2,7 @@
  * Splitwise import endpoints.
  *
  * The wizard in web/src/pages/Import.tsx is a thin shell over these: it collects
- * an API key and then drives one endpoint per step. That split is deliberate —
+ * an API key and then drives one endpoint per step. That split is deliberate -
  * every step is an ordinary authenticated JSON request, so the whole import can
  * be exercised with curl, by a test, or by an agent, with no browser involved.
  *
@@ -17,7 +17,7 @@
  * or `/expenses` will hand back skips saying which group is missing.
  *
  *   GET  /api/v1/import/status    what is already here (no key needed)
- *   POST /api/v1/import/preview   dry run — reads Splitwise, writes nothing
+ *   POST /api/v1/import/preview   dry run: reads Splitwise, writes nothing
  *   POST /api/v1/import/friends   step 1
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call

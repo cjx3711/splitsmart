@@ -1,7 +1,7 @@
 /**
  * Password hashing.
  *
- * Uses scrypt from node:crypto — no native dependency, nothing to compile in
+ * Uses scrypt from node:crypto; no native dependency, nothing to compile in
  * Docker, and it is an OWASP-acceptable password KDF at these parameters.
  *
  * Hashes are stored SELF-DESCRIBING:

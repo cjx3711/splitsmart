@@ -197,7 +197,7 @@ describe("computeSplit", () => {
   });
 });
 
-describe("computeSplit — itemized", () => {
+describe("computeSplit: itemized", () => {
   // Three people, a bill where each line is shared by a different subset.
   const paidByOne = (total: number) => [
     { userId: 1, paidMinor: total },
@@ -224,7 +224,7 @@ describe("computeSplit — itemized", () => {
 
   test("spreads unitemised tax and tip in proportion to what each person ordered", () => {
     // 4000 of items, 1000 of service charge. User 1 ordered 3/4 of the food, so
-    // they carry 3/4 of the charge — the whole point of proportional tax.
+    // they carry 3/4 of the charge; the whole point of proportional tax.
     const result = computeSplit(5000, "itemized", people, {
       items: [
         { label: "Steak", amountMinor: 3000, participantIds: [1] },

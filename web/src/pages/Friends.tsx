@@ -1,5 +1,5 @@
 /**
- * Friends list. Adding one lives on its own page - see NewFriend.tsx.
+ * Friends list. Adding one lives on its own page. See NewFriend.tsx.
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";

@@ -47,5 +47,5 @@ EXPOSE 5545
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD node -e "fetch('http://localhost:5545/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# Migrations run on every boot — they are forward-only and idempotent.
+# Migrations run on every boot; they are forward-only and idempotent.
 CMD ["sh", "-c", "node dist/src/db/migrate.js && node dist/src/db/seed.js && node dist/src/server.js"]

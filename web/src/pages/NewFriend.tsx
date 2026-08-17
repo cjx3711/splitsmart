@@ -72,7 +72,7 @@ export function NewFriend() {
                 <span>
                   {result.delivered
                     ? "Their sign-in code, in case the email goes astray:"
-                    : "No invite was emailed. Give them this sign-in code - it is shown only once:"}
+                    : "No invite was emailed. Give them this sign-in code (shown only once):"}
                 </span>
                 <code>{result.recoveryCode}</code>
               </>

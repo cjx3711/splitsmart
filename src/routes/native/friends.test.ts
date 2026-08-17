@@ -138,7 +138,7 @@ describe("friendships are stored canonically", () => {
 });
 
 describe("who counts as a friend", () => {
-  test("sharing a group is enough — no friendships row needed", async () => {
+  test("sharing a group is enough (no friendships row needed)", async () => {
     const ids = await listRelatedUserIds(db, aliceId);
     assert.ok(ids.includes(bobId));
   });
@@ -249,7 +249,7 @@ describe("adding a friend", () => {
     const cookie = recovered.headers.get("set-cookie")!.split(";")[0]!;
 
     // The ghost already holds erin@example.com. Claiming it must not collide
-    // with itself — this is the whole reason /invite/claim excludes self.
+    // with itself; this is the whole reason /invite/claim excludes self.
     const claimed = await app.request("/api/v1/invite/claim", {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookie },
@@ -358,7 +358,7 @@ describe("removing a friend", () => {
     const res = await authed(`/api/v1/friends/${bobId}`, { method: "DELETE" });
     const body = (await res.json()) as { stillVisible: boolean };
 
-    // Bob is still in the group, so he stays on the list — you cannot un-owe
+    // Bob is still in the group, so he stays on the list; you cannot un-owe
     // someone by unfriending them.
     assert.equal(body.stillVisible, true);
     assert.equal(await balanceWith(bobId), beforeBalance);

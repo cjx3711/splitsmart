@@ -8,7 +8,7 @@
  *
  * Enforcement lives in the auth routes, not here. By default verification is
  * ADVISORY: the account works, the UI shows a banner. Set
- * EMAIL_VERIFICATION_REQUIRED=true to block login until verified — and read the
+ * EMAIL_VERIFICATION_REQUIRED=true to block login until verified; and read the
  * warning on `scripts/verify-user.ts` before you do, because a broken Postmark
  * config plus required verification locks you out of your own server.
  */
@@ -149,7 +149,7 @@ export async function consumeVerificationToken(token: string): Promise<ConsumeOu
   if (row.usedAt) return { status: "already_used" };
   if (new Date(row.expiresAt) < new Date()) return { status: "expired" };
 
-  // The address changed after this token was issued — see the email_tokens
+  // The address changed after this token was issued. See the email_tokens
   // table comment in migrations/001_initial_schema.sql for why this check
   // exists.
   if (row.tokenEmail !== row.currentEmail) return { status: "email_changed" };
@@ -171,7 +171,7 @@ export async function consumeVerificationToken(token: string): Promise<ConsumeOu
   return { status: "verified", userId: row.userId };
 }
 
-/** Housekeeping — safe to call on boot and on a timer. */
+/** Housekeeping: safe to call on boot and on a timer. */
 export async function purgeExpiredEmailTokens(): Promise<number> {
   const result = await db
     .deleteFrom("email_tokens")

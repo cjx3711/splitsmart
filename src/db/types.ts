@@ -8,7 +8,7 @@
  *   yarn db:migrate && yarn db:codegen
  *
  * which regenerates this file from the real schema. If you edit it by hand and
- * forget the migration, you get types that lie — which is worse than no types.
+ * forget the migration, you get types that lie, which is worse than no types.
  */
 import type { Generated, Insertable, Selectable, Updateable } from "kysely";
 
@@ -109,7 +109,7 @@ export interface ExpensesTable {
   date: string;
   category_id: number | null;
   split_type: Generated<string>;
-  /** JSON blob, or NULL. Line items for an itemized split — see migrations/001_initial_schema.sql. */
+  /** JSON blob, or NULL. Line items for an itemized split. See migrations/001_initial_schema.sql. */
   split_meta: string | null;
   is_payment: Generated<number>;
   payment_method: string | null;
@@ -151,7 +151,7 @@ export interface EmailTokensTable {
   token_hash: string;
   user_id: number;
   purpose: string;
-  /** Snapshot of the address at issue time — see migrations/001_initial_schema.sql. */
+  /** Snapshot of the address at issue time. See migrations/001_initial_schema.sql. */
   email: string;
   created_at: Generated<string>;
   expires_at: string;

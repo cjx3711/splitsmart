@@ -11,7 +11,7 @@ splitting, and the API surface under your own control.
 Two differences from Splitwise, both deliberate:
 
 - **Group invite links.** Each group has a secret link. Anyone who opens it can
-  join and create a guest account — no email, no password. One real account is
+  join and create a guest account; no email, no password. One real account is
   enough for a whole group.
 - **Self-hosted.** Single Node process, single SQLite file, one container.
 
@@ -40,7 +40,7 @@ API on `http://localhost:5545`, frontend on `http://localhost:5173`.
 ## Export your Splitwise data first
 
 This is the one step with a deadline. It writes raw, untransformed JSON to
-`splitwise-export/<timestamp>/` and does not touch the database — so re-importing
+`splitwise-export/<timestamp>/` and does not touch the database, so re-importing
 after a schema change never needs another API call.
 
 ```bash
@@ -77,11 +77,11 @@ yarn build           # production build
 
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)** — how the repo works, and the five rules that keep
+- **[CLAUDE.md](CLAUDE.md)**: how the repo works, and the five rules that keep
   financial data correct. Read this before changing anything.
-- [docs/PLAN.md](docs/PLAN.md) — roadmap toward full API parity
-- [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — schema reasoning
-- [docs/SPLITWISE_COMPAT.md](docs/SPLITWISE_COMPAT.md) — endpoint reference
+- [docs/PLAN.md](docs/PLAN.md): roadmap toward full API parity
+- [docs/DATA_MODEL.md](docs/DATA_MODEL.md): schema reasoning
+- [docs/SPLITWISE_COMPAT.md](docs/SPLITWISE_COMPAT.md): endpoint reference
 
 ## Status
 

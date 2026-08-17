@@ -20,12 +20,12 @@ const schema = z.object({
    * There is deliberately NO SPLITWISE_API_KEY here. An import is per-user, so
    * the key belongs to the person doing it, not to the server: it arrives on
    * the request (see src/routes/native/import.ts) and is never stored. The only
-   * reason this URL is configurable is so a test — or an agent driving the
-   * wizard — can point the importer at a fake Splitwise on localhost.
+   * reason this URL is configurable is so a test, or an agent driving the
+   * wizard, can point the importer at a fake Splitwise on localhost.
    */
   SPLITWISE_API_BASE: z.string().url().default("https://secure.splitwise.com/api/v3.0"),
 
-  // Postmark. Absence must be a no-op, never a boot failure — sending degrades
+  // Postmark. Absence must be a no-op, never a boot failure; sending degrades
   // to a console log (see src/email/postmark.ts), which is also how you complete
   // the verification flow locally without a mail provider.
   POSTMARK_SERVER_TOKEN: z.string().optional(),
@@ -42,7 +42,7 @@ const schema = z.object({
    * log in and use everything, and the UI shows a banner.
    *
    * When true, login is blocked until the address is confirmed. Defaulting to
-   * false is deliberate for self-hosted use — combined with a misconfigured
+   * false is deliberate for self-hosted use; combined with a misconfigured
    * Postmark it would otherwise lock you out of your own server. The escape
    * hatch is `yarn verify:user <email>`.
    */

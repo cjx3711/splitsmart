@@ -12,7 +12,7 @@
  * Usage:
  *   SPLITWISE_API_KEY=... yarn export:splitwise
  *
- * Output: splitwise-export/<timestamp>/*.json  (gitignored — contains personal
+ * Output: splitwise-export/<timestamp>/*.json  (gitignored; contains personal
  * financial data; back it up somewhere private.)
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -78,7 +78,7 @@ async function fetchAllExpenses(): Promise<unknown[]> {
     await sleep(REQUEST_DELAY_MS);
 
     if (offset > 100_000) {
-      console.warn("  stopping at 100k expenses — raise the cap if you really have more");
+      console.warn("  stopping at 100k expenses; raise the cap if you really have more");
       break;
     }
   }
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     try {
       save(name, await fn());
     } catch (err) {
-      // A single missing endpoint must not abort the run — the expenses dump
+      // A single missing endpoint must not abort the run; the expenses dump
       // below is the irreplaceable part.
       console.warn(`  WARN ${name}: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -124,7 +124,7 @@ async function main(): Promise<void> {
   });
 
   console.log(`\nDone. ${expenses.length} expenses saved to ${outDir}`);
-  console.log("Back this directory up somewhere private — it is gitignored.");
+  console.log("Back this directory up somewhere private; it is gitignored.");
 }
 
 main().catch((err) => {

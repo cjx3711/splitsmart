@@ -2,7 +2,7 @@
  * Modal dialog, built on native <dialog>.
  *
  * showModal() gives the focus trap, the inert background, the top layer and
- * Escape-to-close for free — all of which a hand-rolled div would have to
+ * Escape-to-close for free; all of which a hand-rolled div would have to
  * reimplement badly.
  *
  * IT DOES NOT CLOSE ON BACKDROP CLICK. That is the browser default for

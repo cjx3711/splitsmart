@@ -8,7 +8,7 @@
  *
  * CURRENCIES ARE NEVER MIXED. Every function here returns per-currency figures,
  * because netting USD against EUR requires an exchange rate and an opinion about
- * when it was taken — neither of which belongs in a ledger.
+ * when it was taken; neither of which belongs in a ledger.
  */
 import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
@@ -98,7 +98,7 @@ export interface PairwiseGroupBalance {
  * This is what lets the dashboard say "Grace owes you 74.02 USD for Non-group
  * expenses and 6198 JPY for 2025 Kyushu Autumn" rather than one opaque net
  * number. Summing a person's rows here reproduces `getPairwiseBalances`
- * exactly — same source table, one extra GROUP BY column.
+ * exactly; same source table, one extra GROUP BY column.
  */
 export async function getPairwiseBalancesByGroup(
   db: DB,
@@ -170,7 +170,7 @@ export async function getBalanceBetween(
  * Each member's net position within a single group.
  *
  * Sums to zero per currency by construction. If it does not, something has
- * written expense_repayments directly — run `yarn db:check`.
+ * written expense_repayments directly; run `yarn db:check`.
  */
 export async function getGroupBalances(
   db: DB,
@@ -245,7 +245,7 @@ export async function getTotalBalance(
  * ("simplify debts").
  *
  * Greedy largest-creditor / largest-debtor matching. This is not guaranteed
- * minimal in the general case — that problem is NP-hard — but it produces at
+ * minimal in the general case; that problem is NP-hard, but it produces at
  * most n-1 transfers and matches what people expect. Purely presentational:
  * nothing here is written to the database.
  */

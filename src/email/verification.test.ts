@@ -53,7 +53,7 @@ async function latestTokenHashFor(userId: number): Promise<string | undefined> {
  *
  * The app only ever stores hashes, so a test cannot read the real token back
  * out. Instead we generate one, overwrite the stored hash with its digest, and
- * carry on — equivalent to intercepting the email.
+ * carry on, equivalent to intercepting the email.
  */
 async function issueAndCapture(userId: number): Promise<string> {
   await issueVerificationToken(userId);
@@ -145,7 +145,7 @@ describe("consuming a token", () => {
     const user = await registerUser();
     const token = await issueAndCapture(user.id);
 
-    // No cookie — the link is often opened in a different browser.
+    // No cookie; the link is often opened in a different browser.
     const res = await app.request(`/api/v1/auth/verify/${token}`, { method: "POST" });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true, status: "verified" });
@@ -348,7 +348,7 @@ describe("login gate", () => {
       body: JSON.stringify({ email: user.email, password: "hunter2hunter2" }),
     });
 
-    // EMAIL_VERIFICATION_REQUIRED defaults to false — a mail outage must not
+    // EMAIL_VERIFICATION_REQUIRED defaults to false; a mail outage must not
     // lock a self-hoster out of their own server.
     assert.equal(res.status, 200);
     const body = (await res.json()) as { emailVerified: boolean };

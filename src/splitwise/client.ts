@@ -7,7 +7,7 @@
  *
  * THE API KEY IS NEVER PERSISTED. It arrives on the request that needs it, is
  * held in a local, and goes out of scope when the handler returns. There is no
- * column for it, no env var read at request time, and no logging of it — see
+ * column for it, no env var read at request time, and no logging of it. See
  * `redact()` below, which scrubs it out of upstream error bodies before they
  * reach a user or a log line.
  *
@@ -138,7 +138,7 @@ export class SplitwiseClient {
    * Counts expenses by walking pages and discarding them.
    *
    * Splitwise has no count endpoint. This is only used by the preview step, so
-   * it is capped — an exact number matters less there than not spending two
+   * it is capped; an exact number matters less there than not spending two
    * minutes before the user has agreed to anything.
    */
   async countExpenses(cap = 5_000): Promise<{ count: number; capped: boolean }> {

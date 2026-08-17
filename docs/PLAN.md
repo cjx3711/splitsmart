@@ -8,12 +8,12 @@ Status legend: ✅ done · 🚧 partial · ⬜ not started
 
 ---
 
-## Phase 0 — Export Splitwise data ⬜ **DO THIS FIRST**
+## Phase 0: Export Splitwise data ⬜ **DO THIS FIRST**
 
 The only genuinely time-boxed item. Splitwise is moving API access behind a
 paywall; once that lands the data is unreachable.
 
-- ✅ `scripts/export-splitwise.ts` — raw JSON dump, no transformation
+- ✅ `scripts/export-splitwise.ts`: raw JSON dump, no transformation
 - ⬜ **Actually run it** and verify the output covers every group and expense
 - ⬜ Back up `splitwise-export/` somewhere private (it is gitignored)
 
@@ -21,11 +21,11 @@ The dump is deliberately raw. The schema will change repeatedly during
 development, and each change would otherwise mean re-hitting an API that may no
 longer be free.
 
-## Phase 1 — Foundation ✅
+## Phase 1: Foundation ✅
 
 - ✅ Schema with the expense invariant documented (`migrations/001`)
 - ✅ Integer minor units + per-currency decimal places
-- ✅ Split engine: equal, exact, percent, shares, adjustment, itemized — pure
+- ✅ Split engine: equal, exact, percent, shares, adjustment, itemized (pure
       and tested
 - ✅ Derived pairwise repayments (`deriveRepayments`)
 - ✅ Balance queries: pairwise, group, total, simplify-debts
@@ -35,44 +35,44 @@ longer be free.
 - ✅ Minimal React frontend
 - ✅ `yarn db:check` integrity audit
 
-## Phase 2 — Feature parity with Splitwise 🚧
+## Phase 2: Feature parity with Splitwise 🚧
 
 Ordered by how much they matter for day-to-day use.
 
-- 🚧 **Expense editing** — server supports it (`updateExpense`), no UI yet
-- ✅ **Split-type UI** — all six types in `web/src/SplitEditor.tsx`: equal,
+- 🚧 **Expense editing**: server supports it (`updateExpense`), no UI yet
+- ✅ **Split-type UI**: all six types in `web/src/SplitEditor.tsx`: equal,
       exact, percent, shares, adjustment, itemized. The editor imports the
       server's own `computeSplit` from `src/domain/split.ts` (it is pure, so the
       browser can run it) and previews per-person amounts live, which means
       there is no second implementation of the rounding to drift and the
       validation messages the user sees are the server's own.
-- ✅ **Itemized splits** — a line-item bill where each line is shared by a
+- ✅ **Itemized splits**: a line-item bill where each line is shared by a
       different subset, with unitemised tax/tip spread in proportion to what
       each person ordered. Lines live in `expenses.split_meta` (JSON) purely so
       the editor can reopen them; the ledger numbers are still the derived
       shares in `expense_users`.
-- ✅ **Settle up in the UI** — on both the friend and group screens, as a dialog
+- ✅ **Settle up in the UI**: on both the friend and group screens, as a dialog
       off the page header. The group one opens prefilled from the largest
       suggested transfer, so `/settle` finally leads somewhere.
-- ✅ **One-on-one expenses** — `POST /api/v1/friends/:id/expenses`, group_id
+- ✅ **One-on-one expenses**: `POST /api/v1/friends/:id/expenses`, group_id
       NULL. Participants are restricted to the pair, because `createExpense`
       skips its membership check when there is no group.
-- ✅ **Friend management** — `src/domain/friends.ts` + `src/routes/native/
+- ✅ **Friend management**: `src/domain/friends.ts` + `src/routes/native/
       friends.ts`. Explicit friendships live in `friendships`; derived ones come
       from shared groups and expenses. `listRelatedUserIds` is the single
       definition, shared with the compat layer's `get_friends`.
-- ✅ **Add a friend by email** — creates a ghost carrying that address and
+- ✅ **Add a friend by email**: creates a ghost carrying that address and
       emails an invite whose link is the ghost's recovery code. Works with
       Postmark unconfigured: the code comes back in the response instead.
 - ⬜ Comments (table exists, no routes)
-- ✅ Activity feed — `GET /api/v1/activity`, scoped to groups you're in plus
+- ✅ Activity feed: `GET /api/v1/activity`, scoped to groups you're in plus
       expenses you're on
 - ⬜ Receipts / image attachments
 - ⬜ Recurring expenses
 - ⬜ Expense search and filters
 - ⬜ CSV export
 
-## Phase 3 — Full API parity 🚧
+## Phase 3: Full API parity 🚧
 
 `docs/SPLITWISE_COMPAT.md` is the authoritative endpoint list. Summary:
 
@@ -81,13 +81,13 @@ Ordered by how much they matter for day-to-day use.
 `get_expenses`, `create_expense`
 
 **Next up ⬜** (roughly in dependency order)
-- `get_groups`, `get_group/:id` — needed by most third-party clients
+- `get_groups`, `get_group/:id`: needed by most third-party clients
 - `create_group`, `add_user_to_group`, `remove_user_from_group`
 - `get_expense/:id`, `update_expense/:id`, `delete_expense/:id`
-- `get_currencies` — trivial, the table already exists
+- `get_currencies`: trivial, the table already exists
 - `create_comment`, `get_comments`
 - `get_notifications`
-- OAuth2 flow — only needed if a third-party client refuses bearer tokens
+- OAuth2 flow: only needed if a third-party client refuses bearer tokens
 
 **Deliberately out of scope**
 - Splitwise Pro features (receipt scanning, currency conversion, charts)
@@ -98,10 +98,10 @@ Ordered by how much they matter for day-to-day use.
 
 `src/routes/compat/v3.test.ts` asserts on exact field names and string formats.
 Extend it for every endpoint added. Where possible, diff responses against real
-Splitwise output captured **while the API is still free** — capturing those
+Splitwise output captured **while the API is still free**: capturing those
 fixtures now is worth more than any amount of guessing later.
 
-## Phase 4 — Email 🚧
+## Phase 4: Email 🚧
 
 Wired to Postmark via `POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`.
 
@@ -109,7 +109,7 @@ Wired to Postmark via `POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`.
 `sendEmail()` logs the message (including the link) to the console instead, so
 the verification flow is completable locally with no mail provider.
 
-- ✅ **Email verification for new accounts** — `src/email/`, `email_tokens` table
+- ✅ **Email verification for new accounts**: `src/email/`, `email_tokens` table
   - ✅ Single-use, 24h, hash-only storage, supersedes previous tokens
   - ✅ Address snapshot on the token so a changed email can't be verified by an
         outstanding link
@@ -117,10 +117,10 @@ the verification flow is completable locally with no mail provider.
   - ✅ Advisory by default; `EMAIL_VERIFICATION_REQUIRED=true` blocks login
   - ✅ `yarn verify:user` lockout escape hatch
   - ✅ 20 tests
-- ⬜ **Password reset** — `email_tokens.purpose` already permits
+- ⬜ **Password reset**: `email_tokens.purpose` already permits
       `'reset_password'`, so this needs routes and a template, not a migration
 - ⬜ Change-email flow (re-verify the new address before it takes effect)
-- ✅ **Invite by email** — friend invites (`POST /api/v1/friends` with an
+- ✅ **Invite by email**: friend invites (`POST /api/v1/friends` with an
       `email`). Deliberately does NOT use `email_tokens`: the link carries the
       ghost's recovery code, so the same flow works when Postmark is
       unconfigured and no migration was needed to add a purpose.
@@ -128,7 +128,7 @@ the verification flow is completable locally with no mail provider.
 - ⬜ Optional expense notifications
 - ⬜ Postmark webhook for bounces and spam complaints
 
-## Phase 5 — Import from Splitwise ✅ (in-app)
+## Phase 5: Import from Splitwise ✅ (in-app)
 
 Importing is a **per-user, in-app** flow, not a server-side script with a
 server-wide key. The user pastes their own Splitwise API key into the wizard at
@@ -137,8 +137,8 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
 
 - ✅ `POST /api/v1/import/{preview,friends,groups,expenses,run}` +
       `GET /api/v1/import/status`. One step per request, so the whole flow is
-      drivable by curl, by a test, or by an agent — no browser needed.
-- ✅ **Testable end to end without Splitwise** — `SPLITWISE_API_BASE` points the
+      drivable by curl, by a test, or by an agent; no browser needed.
+- ✅ **Testable end to end without Splitwise**: `SPLITWISE_API_BASE` points the
       importer at a fake; `src/routes/native/import.test.ts` runs one over HTTP.
 - ✅ Map Splitwise users to local users by `splitwise_id`, then by **email**;
       create ghosts for anyone unmatched. The wizard names the email matches
@@ -146,14 +146,14 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
 - ✅ Idempotent re-import (match on `splitwise_id`; a second run is a no-op)
 - ✅ Splitwise's own `owed_share` allocation imported as an `exact` split, so no
       cent moves in translation
-- ✅ **Category id parity** — `src/db/categories.ts` carries Splitwise's real
+- ✅ **Category id parity**: `src/db/categories.ts` carries Splitwise's real
       ids, captured from the live API and pinned against
       `fixtures/splitwise/get_categories.json`. `yarn db:seed` is enough.
-- ✅ **Currency coverage** — all Splitwise codes present, including demonetised
+- ✅ **Currency coverage**: all Splitwise codes present, including demonetised
       ones (HRK, LTL, VEF) that historical expenses still use
 - ⬜ Re-import as **update in place** (today an already-imported expense edited
       in Splitwise is left alone rather than refreshed)
-- ⬜ Import comments and expense attachments (there is no upload story — see
+- ⬜ Import comments and expense attachments (there is no upload story. See
       CLAUDE.md, "No file uploads")
 - ⬜ Run `yarn db:check` after import and reconcile every balance against the
       Splitwise UI before trusting it
@@ -161,28 +161,45 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
 `scripts/export-splitwise.ts` stays as an independent raw-JSON backup, unrelated
 to this flow. It still takes `SPLITWISE_API_KEY` from the shell.
 
-## Phase 6 — Type safety end to end ⬜
+## Phase 6: Type safety end to end ⬜
 
 - ⬜ Replace `web/src/api.ts` hand-written types with Hono RPC (`hc<AppType>()`)
-- ⬜ `@hono/zod-openapi` on the compat routes to emit an OpenAPI spec — mainly as
+- ⬜ `@hono/zod-openapi` on the compat routes to emit an OpenAPI spec, mainly as
       documentation of the compat surface
 - ⬜ Optionally generate a client for `splitwise-to-toshl` with hey-api, though
       six endpoints of hand-written types is barely worth the build step
 
-## Phase 7 — Deployment ⬜
+## Phase 7: Deployment ⬜
 
 - ⬜ Dockerfile (single container, SQLite on a mounted volume)
-- ⬜ **Backups** — Litestream or a nightly `.backup` to object storage. This is
+- ⬜ **Backups**: Litestream or a nightly `.backup` to object storage. This is
       real financial data in a single file; treat losing it as the top risk.
 - ⬜ Point `splitwise-to-toshl` at this server: set `SPLITWISE_API_URL` in its
       `webapp/server.js` proxy target and paste a SplitSmart API token in as the
       Splitwise key
 
+## Phase 8: Offline-first + PWA ⬜
+
+Full plan in `docs/OFFLINE.md`. Dexie mirror of the user's visible ledger, an
+outbox replayed through the existing domain writers, installable PWA shell,
+unsynced count and last-synced time in the UI.
+
+- ⬜ Foundations: `expenses.client_uuid` + `version`, `sync_log`, pure balance core
+- ⬜ PWA shell: `vite-plugin-pwa`, manifest, icons (ships alone)
+- ⬜ Local read mirror: the app becomes fully usable offline, read-only
+- ⬜ Incremental pull: `/api/v1/sync/pull`, seq cursor, read-time audience
+- ⬜ Offline writes: outbox, `/api/v1/sync/push`, conflict + quarantine UI
+- ⬜ Status UI: unsynced count, last synced, per-expense sync badges
+
+Adding a friend and creating a group stay **online-only** on purpose: both mint
+server-side identities (a ghost user, an `invite_token`), and a queued identity
+reconciled by email is how two people become one.
+
 ---
 
 ## Non-goals
 
-- Multi-tenancy or a hosted service — this is personal, self-hosted software
+- Multi-tenancy or a hosted service: this is personal, self-hosted software
 - Currency conversion (see CLAUDE.md rule 2)
-- Mobile apps — the web UI should be responsive instead
+- Mobile apps: the web UI should be responsive instead
 - Rebranding as Splitwise, or redistributing their icon assets

@@ -2,9 +2,9 @@
  * SplitSmart server entry point.
  *
  * One Node process serves three things:
- *   /api/v1/*       — native API (clean model, used by the React frontend)
- *   /api/sw/v3.0/*  — Splitwise-compatible API (used by external tools)
- *   /*              — the built React app (production only; Vite handles dev)
+ *   /api/v1/*       native API (clean model, used by the React frontend)
+ *   /api/sw/v3.0/*  Splitwise-compatible API (used by external tools)
+ *   /*              the built React app (production only; Vite handles dev)
  */
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -41,7 +41,7 @@ app.route("/api/v1/categories", categoryRoutes);
 app.route("/api/v1/import", importRoutes);
 
 // --- Splitwise-compatible API ----------------------------------------------
-// Mounted at /api/sw/v3.0 — distinct from Splitwise's own base URL
+// Mounted at /api/sw/v3.0, distinct from Splitwise's own base URL
 // (https://secure.splitwise.com/api/v3.0) so it's clear this is a compat
 // shim, not the real thing. External clients (like splitwise-to-toshl) are
 // pointed at this base URL explicitly, so there is no dual mount.

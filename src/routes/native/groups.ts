@@ -291,15 +291,15 @@ expenseRoutes.use("*", requireAuth);
 /**
  * Create an expense anywhere: in a group, or in no group at all.
  *
- * The group-scoped and friend-scoped endpoints stay as they are - they are what
- * the compat layer and existing clients use - but neither can express the one
+ * The group-scoped and friend-scoped endpoints stay as they are; they are what
+ * the compat layer and existing clients use, but neither can express the one
  * shape the add-expense dialog needs: several people, chosen freely, possibly
  * with no group. This is that endpoint, and it is the one the web UI posts to.
  *
  * Who may appear on the expense:
  *
- *   in a group - its current members, enforced by createExpense itself
- *   no group   - you, plus anyone you already share money history with
+ *   in a group: its current members, enforced by createExpense itself
+ *   no group   (you, plus anyone you already share money history with
  *                (src/domain/friends.ts is the ONE definition of that)
  *
  * The caller must be on the expense either way. A non-group expense between two
@@ -390,7 +390,7 @@ expenseRoutes.get("/", async (c) => {
 /**
  * Currencies this user has actually used, most-used first.
  *
- * Backs the "Popular" section of the currency picker - a static top-10 list is
+ * Backs the "Popular" section of the currency picker: a static top-10 list is
  * a poor default for someone whose expenses are mostly in a currency it
  * doesn't include. Deleted expenses are excluded so removing a one-off mistake
  * in a rare currency doesn't keep it pinned at the top forever.
@@ -424,7 +424,7 @@ async function assertParticipant(expenseId: number, userId: number) {
 }
 
 /**
- * One expense in full - every share, plus each one's `split_input` so the edit
+ * One expense in full: every share, plus each one's `split_input` so the edit
  * form can reopen the split exactly as it was entered rather than re-deriving
  * it from the stored amounts.
  */

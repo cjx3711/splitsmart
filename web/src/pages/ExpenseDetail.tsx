@@ -1,5 +1,5 @@
 /**
- * One expense: what it was, who paid, who owes what - plus the edit and
+ * One expense: what it was, who paid, who owes what, plus the edit and
  * delete actions that used to live as a bare "✕" on every list row with no
  * confirmation and no way to fix a typo instead of redoing the whole thing.
  */

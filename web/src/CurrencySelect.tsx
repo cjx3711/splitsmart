@@ -2,7 +2,7 @@
  * A searchable currency picker.
  *
  * A plain <select> with 168 options (see src/db/currencies.ts) is unusable by
- * typing — nothing lets you jump to "SGD" without scrolling past everything
+ * typing; nothing lets you jump to "SGD" without scrolling past everything
  * alphabetically before it. This filters by code, name, or symbol, and pins a
  * handful of commonly-used currencies at the top of the unfiltered list so the
  * common case never needs to type at all.
@@ -90,7 +90,7 @@ export function CurrencySelect({
 
   // The search input only exists in the DOM once `menuStyle` is set (it's
   // gated on `open && menuStyle` below), so focusing it has to wait for that
-  // render rather than happen in the effect above — inputRef is still null there.
+  // render rather than happen in the effect above; inputRef is still null there.
   useEffect(() => {
     if (open && menuStyle) inputRef.current?.focus();
   }, [open, menuStyle]);

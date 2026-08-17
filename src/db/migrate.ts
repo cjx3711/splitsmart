@@ -7,7 +7,7 @@
  * half-applied.
  *
  * Note for future schema changes: SQLite cannot ALTER a CHECK constraint, so
- * changing one means rebuilding the table — and if other tables have foreign
+ * changing one means rebuilding the table; and if other tables have foreign
  * keys into it you need `PRAGMA foreign_keys=OFF`, which is a NO-OP inside a
  * transaction. Such a migration opts out of the wrapper below by putting
  *

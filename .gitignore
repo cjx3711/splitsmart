@@ -9,7 +9,7 @@ data/
 .env.local
 *.swp
 
-# Raw Splitwise export snapshots — may contain personal financial data.
+# Raw Splitwise export snapshots (may contain personal financial data).
 # Keep these OUT of git; back them up somewhere private instead.
 splitwise-export/
 

@@ -4,8 +4,8 @@
  * ExpenseForm is deliberately ignorant of where its people come from; this is
  * the piece that knows. It answers two questions and passes the answers down:
  *
- *   who can be on the expense — the chosen group's members, or your friends
- *   who starts on it        — everyone in the group, or you and one friend
+ *   who can be on the expense: the chosen group's members, or your friends
+ *   who starts on it: everyone in the group, or you and one friend
  *
  * Picking a group therefore REPLACES the candidate pool rather than adding to
  * it, because a group expense may only involve that group's members (the server

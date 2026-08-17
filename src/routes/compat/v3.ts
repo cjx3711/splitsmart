@@ -11,7 +11,7 @@
  *      right-but-broken. If Splitwise wraps a list in {"friends": [...]}, so do we.
  *   2. Money crosses this boundary as decimal strings, and only here.
  *   3. New native features get native routes. Do not extend v3.0 with fields
- *      Splitwise never had — clients may validate strictly.
+ *      Splitwise never had; clients may validate strictly.
  */
 import { Hono } from "hono";
 import { db } from "../../db/index.ts";
@@ -166,7 +166,7 @@ compatV3.get("/get_categories", async (c) => {
 // GET /get_expenses
 // ---------------------------------------------------------------------------
 // Params supported: friend_id, group_id, dated_after, dated_before, limit, offset.
-// Deleted expenses are RETURNED (with deleted_at set), not filtered — clients
+// Deleted expenses are RETURNED (with deleted_at set), not filtered; clients
 // filter them out themselves, and hiding them would break incremental sync.
 compatV3.get("/get_expenses", async (c) => {
   const auth = c.get("user");

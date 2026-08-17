@@ -1,7 +1,7 @@
 /**
  * The add-expense form.
  *
- * One form for every way of adding an expense - a group, a friend, or neither -
+ * One form for every way of adding an expense (a group, a friend, or neither),
  * because the alternative was three forms drifting apart. What varies is the
  * pool of people it offers and whether the group is fixed; both are props.
  *
@@ -33,8 +33,8 @@ export type { Person };
 /**
  * A placeholder in the selected currency's own precision.
  *
- * Typing "30.00" with JPY selected is rejected - correctly, since yen has no
- * subunit - so the hint must not suggest it in the first place.
+ * Typing "30.00" with JPY selected is rejected; correctly, since yen has no
+ * subunit, so the hint must not suggest it in the first place.
  */
 function amountPlaceholder(decimals: number | null): string {
   if (decimals === null) return "30";
@@ -44,7 +44,7 @@ function amountPlaceholder(decimals: number | null): string {
 export interface ExpenseFormInit {
   description: string;
   details?: string | null;
-  /** Raw text, in `defaultCurrency`'s own precision - same convention as the amount box. */
+  /** Raw text, in `defaultCurrency`'s own precision; same convention as the amount box. */
   amount: string;
   date: string;
   categoryId: number;
@@ -70,13 +70,13 @@ export function ExpenseForm({
   initialParticipantIds: number[];
   defaultCurrency: string;
   currentUserId: number;
-  /** Omit to hide the group selector - the friend screen has no use for it. */
+  /** Omit to hide the group selector (the friend screen has no use for it). */
   groups?: Group[];
   groupId: number | null;
   onGroupChange?: (groupId: number | null) => void;
   onSubmit: (input: ExpenseInput) => Promise<void>;
   submitLabel?: string;
-  /** Pass "stack" inside a Modal - the dialog already draws the surround. */
+  /** Pass "stack" inside a Modal (the dialog already draws the surround). */
   className?: string;
   /** Reopens an existing expense instead of starting a blank one. */
   initial?: ExpenseFormInit;
@@ -113,7 +113,7 @@ export function ExpenseForm({
   // The preview needs the amount as minor units on every keystroke, including
   // the keystrokes where it is not a valid amount yet ("12."). Zero means "no
   // total to divide", which the editor renders as an empty preview rather than
-  // an error - the real parse happens on submit and reports properly there.
+  // an error; the real parse happens on submit and reports properly there.
   let costMinor = 0;
   if (itemizing) {
     costMinor = itemizedTotal(draft, currency, parseInCurrency);
@@ -127,7 +127,7 @@ export function ExpenseForm({
 
   useEffect(() => setCurrency(defaultCurrency), [defaultCurrency]);
 
-  // The candidate pool changed under us - a different group, or a friend list
+  // The candidate pool changed under us (a different group, or a friend list
   // that has just loaded. Reset to whatever the caller says belongs on the
   // expense now rather than leaving half a stale selection behind.
   useEffect(() => {
@@ -299,7 +299,7 @@ export function ExpenseForm({
       />
 
       {/* Notes only. There is no image upload in this app and there will not be
-          one without an explicit decision - see CLAUDE.md. */}
+          one without an explicit decision. See CLAUDE.md. */}
       <div>
         {showNotes || notes ? (
           <>

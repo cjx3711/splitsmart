@@ -3,7 +3,7 @@
  *
  * THE ICONS ARE OURS, THE IDS ARE SPLITWISE'S. `src/db/categories.ts` carries
  * Splitwise's real, non-sequential category ids because `category_id` passes
- * straight through the compat layer — so this file keys its icons off those ids
+ * straight through the compat layer, so this file keys its icons off those ids
  * rather than off names, which are duplicated ("Other" appears seven times) and
  * would collide. A category with no entry falls back to a generic tag instead
  * of rendering nothing, so adding a category can never leave a blank square.
@@ -50,7 +50,7 @@ const ICONS: Record<number, IconType> = {
   0: LuWrench,
 };
 
-/** Splitwise's "Uncategorized > General" — what an expense gets by default. */
+/** Splitwise's "Uncategorized > General": what an expense gets by default. */
 export const DEFAULT_CATEGORY_ID = 18;
 
 export interface Category {
@@ -67,7 +67,7 @@ export function CategoryIcon({ id, size = 20 }: { id: number | null; size?: numb
 /**
  * The category list, fetched once per page load and shared.
  *
- * 50 rows that change only when the database is reseeded — refetching them per
+ * 50 rows that change only when the database is reseeded; refetching them per
  * dialog would be three requests to render one icon.
  */
 let cached: Promise<Category[]> | null = null;
@@ -94,7 +94,7 @@ export function useCategories(): Category[] {
  *
  * Splitwise puts a receipt there and opens a two-pane parent/child browser. The
  * nesting here is one <dialog> inside another, which the top layer handles for
- * free — no z-index, no portal.
+ * free (no z-index, no portal).
  */
 export function CategoryButton({
   value,

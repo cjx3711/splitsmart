@@ -3,7 +3,7 @@
  *
  * THE LOCKOUT ESCAPE HATCH. If EMAIL_VERIFICATION_REQUIRED=true and Postmark is
  * misconfigured, down, or the mail is landing in spam, nobody can log in and
- * there is no in-app way out. This script is that way out — it needs only
+ * there is no in-app way out. This script is that way out; it needs only
  * filesystem access to the database, which you have on a self-hosted box.
  *
  * Usage:
@@ -76,7 +76,7 @@ function main(): void {
   const now = new Date().toISOString();
   const run = db.transaction(() => {
     db.prepare("UPDATE users SET email_verified_at = ? WHERE id = ?").run(now, user.id);
-    // Retire outstanding links — the address is confirmed, so they are dead weight.
+    // Retire outstanding links; the address is confirmed, so they are dead weight.
     db.prepare(
       `UPDATE email_tokens SET used_at = ?
        WHERE user_id = ? AND purpose = 'verify_email' AND used_at IS NULL`,

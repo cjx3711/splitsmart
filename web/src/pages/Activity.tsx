@@ -3,7 +3,7 @@
  *
  * Reads the append-only `activity` table, which src/domain/expenses.ts has been
  * writing since day one and nothing was reading. Deleted expenses stay in the
- * feed — "X deleted an expense" is exactly the event people want to see.
+ * feed; "X deleted an expense" is exactly the event people want to see.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";

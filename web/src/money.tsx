@@ -2,7 +2,7 @@
  * Currency-aware money rendering.
  *
  * Decimal places come from the `currencies` table, fetched once and held here.
- * Nothing in the UI may assume 2 — JPY is 0, KWD is 3, BTC is 8, and a wrong
+ * Nothing in the UI may assume 2: JPY is 0, KWD is 3, BTC is 8, and a wrong
  * guess moves the decimal point on someone's balance.
  *
  * Until the table has loaded, amounts render as a dash rather than a
@@ -44,7 +44,7 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       .then((r) => setCurrencies(r.currencies))
       .catch(() => setCurrencies([]))
       .finally(() => setLoaded(true));
-    // Fails silently when signed out — the picker just falls back to a
+    // Fails silently when signed out; the picker just falls back to a
     // popular-currencies default in that case.
     api
       .frequentCurrencies()
@@ -99,7 +99,7 @@ export function Amount({
   currency: string;
   /** Colour by sign: green when owed to you, coral when you owe. */
   signed?: boolean;
-  /** Drop the minus sign — for use next to "you owe" / "owes you" wording. */
+  /** Drop the minus sign (for use next to "you owe" / "owes you" wording. */
   absolute?: boolean;
 }) {
   const format = useFormatMoney();
@@ -108,7 +108,7 @@ export function Amount({
 
   return (
     <span className={`amount ${tone}`.trim()}>
-      {text ?? "—"}
+      {text ?? "-"}
       <span className="code">{currency}</span>
     </span>
   );
@@ -148,7 +148,7 @@ export function Amounts({
  * The per-currency ledger.
  *
  * Deliberately a list, not a total. Currencies are separate ledgers here and
- * there is no exchange-rate table to collapse them with — see
+ * there is no exchange-rate table to collapse them with. See
  * src/domain/balances.ts. Anything that looks like a single grand total across
  * currencies is a bug.
  */

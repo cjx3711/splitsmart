@@ -4,15 +4,15 @@
  * Two things live under the word "friend" in this codebase, and keeping them
  * apart matters:
  *
- *   EXPLICIT — a row in `friendships`. Someone you deliberately added. This is
+ *   EXPLICIT (a row in `friendships`. Someone you deliberately added. This is
  *              the only kind you can remove.
- *   DERIVED  — someone you share a live group or an expense with. There is no
+ *   DERIVED  (someone you share a live group or an expense with. There is no
  *              row for these; joining a group via invite link makes everyone in
  *              it visible immediately, with no extra step.
  *
  * `listRelatedUserIds` returns the union, because that is what every screen and
  * both API trees want to show. `friendships` is stored canonically with
- * user_a_id < user_b_id so a pair can only exist once — go through the helpers
+ * user_a_id < user_b_id so a pair can only exist once; go through the helpers
  * here rather than ordering the ids at each call site.
  */
 import { sql } from "kysely";
@@ -50,7 +50,7 @@ export async function addFriendship(
  *
  * Deliberately does not touch expenses or group membership, so this never moves
  * a balance. Someone you still share a group with stays visible as a DERIVED
- * friend afterwards — see `listRelatedUserIds`.
+ * friend afterwards. See `listRelatedUserIds`.
  */
 export async function removeFriendship(
   db: DB,

@@ -8,7 +8,7 @@ import type { Database } from "./types.ts";
 /**
  * Opens a SQLite connection with the pragmas this app depends on.
  *
- * foreign_keys is OFF by default in SQLite and must be set per connection —
+ * foreign_keys is OFF by default in SQLite and must be set per connection -
  * forgetting it means the FK constraints in the schema silently do nothing.
  */
 export function openDatabase(path: string = env.DATABASE_PATH): SQLite.Database {

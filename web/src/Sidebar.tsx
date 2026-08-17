@@ -3,7 +3,7 @@
  *
  * It owns the group and friend lists rather than each page fetching its own,
  * because they are visible on every screen. Pages that change either list call
- * useSidebarRefresh() - see App.tsx.
+ * useSidebarRefresh(). See App.tsx.
  */
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";

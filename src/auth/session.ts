@@ -3,8 +3,8 @@
  *
  * Two independent authentication paths, deliberately kept apart:
  *
- *   Sessions   — httpOnly cookie, used by the web UI, expires, rotates.
- *   API tokens — bearer header, used by the Splitwise-compatible API and by
+ *   Sessions: httpOnly cookie, used by the web UI, expires, rotates.
+ *   API tokens: bearer header, used by the Splitwise-compatible API and by
  *                external tools like splitwise-to-toshl. Long-lived, revocable.
  *
  * Neither stores the secret in plaintext; only SHA-256 digests are persisted.
@@ -25,7 +25,7 @@ export interface AuthenticatedUser {
   defaultCurrency: string;
   /**
    * Null when unconfirmed. Ghosts have no email, so this is always null for
-   * them — check `isGhost` before treating it as "needs verification".
+   * them; check `isGhost` before treating it as "needs verification".
    */
   emailVerifiedAt: string | null;
 }
@@ -100,7 +100,7 @@ export async function destroySession(token: string): Promise<void> {
   await db.deleteFrom("sessions").where("token_hash", "=", hashToken(token)).execute();
 }
 
-/** Housekeeping — safe to call on boot and on a timer. */
+/** Housekeeping: safe to call on boot and on a timer. */
 export async function purgeExpiredSessions(): Promise<number> {
   const result = await db
     .deleteFrom("sessions")
@@ -114,7 +114,7 @@ export async function purgeExpiredSessions(): Promise<number> {
 // ---------------------------------------------------------------------------
 
 /**
- * Mints an API token. The plaintext is returned ONCE and never recoverable —
+ * Mints an API token. The plaintext is returned ONCE and never recoverable -
  * only its hash is stored, so a lost token must be revoked and reissued.
  */
 export async function createApiToken(

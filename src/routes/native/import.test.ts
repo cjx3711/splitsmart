@@ -2,7 +2,7 @@
  * Splitwise import, end to end against a fake Splitwise.
  *
  * The fake is a real HTTP server on an ephemeral port, and the importer reaches
- * it through SPLITWISE_API_BASE — the same knob an agent would use to drive the
+ * it through SPLITWISE_API_BASE, the same knob an agent would use to drive the
  * wizard without a Splitwise account. Nothing is mocked at the module level, so
  * what this exercises is the actual client, the actual routes, and the actual
  * expense writer.
@@ -16,7 +16,7 @@
  *   - a bad row is skipped with a reason, and never half-written
  *
  * The port is not known until the fake is listening, and src/db/index.ts opens
- * its connection at import time — so both the port and DATABASE_PATH are fixed
+ * its connection at import time, so both the port and DATABASE_PATH are fixed
  * before the first dynamic import below.
  */
 import { test, describe, before, after } from "node:test";
@@ -32,7 +32,7 @@ const ME_SW_ID = 1000;
 // --- the fake Splitwise -----------------------------------------------------
 
 const swFriends = [
-  // Matches an existing SplitSmart account by email — the heuristic under test.
+  // Matches an existing SplitSmart account by email; the heuristic under test.
   { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com" },
   // No local account: becomes a placeholder.
   { id: 2002, first_name: "Carol", last_name: "Clark", email: "carol@example.com" },
@@ -349,7 +349,7 @@ describe("friends", () => {
     assert.equal(second.body.matched, 2);
 
     const users = await db.selectFrom("users").select("id").execute();
-    assert.equal(users.length, 3, "Alice, Bob, Carol — and nobody else");
+    assert.equal(users.length, 3, "Alice, Bob, Carol, and nobody else");
   });
 });
 
@@ -407,7 +407,7 @@ describe("expenses", () => {
     assert.equal(rent.category_id, 13);
     assert.equal(rent.split_type, "exact");
 
-    // 333.34 / 333.33 / 333.33 — Splitwise's rounding, not ours. Re-deriving an
+    // 333.34 / 333.33 / 333.33: Splitwise's rounding, not ours. Re-deriving an
     // equal split here would move a cent and therefore move a balance.
     const shares = await db
       .selectFrom("expense_users")

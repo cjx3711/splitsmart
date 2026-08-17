@@ -5,7 +5,7 @@ import { useAuth } from "./App.tsx";
 /**
  * Nag bar for accounts with an unconfirmed address.
  *
- * Advisory by default — nothing is blocked. It exists because password reset
+ * Advisory by default: nothing is blocked. It exists because password reset
  * depends on a working address, so an unverified account is one typo away from
  * being unrecoverable.
  *
@@ -26,7 +26,7 @@ export function EmailVerificationBanner() {
       setStatus("sent");
       setMessage(
         result.alreadyVerified
-          ? "Already verified — refresh the page."
+          ? "Already verified. Refresh the page."
           : result.delivered
             ? "Sent. Check your inbox."
             : // Mail isn't configured on this server; the link went to the

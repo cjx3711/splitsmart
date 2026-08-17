@@ -53,7 +53,7 @@ before(async () => {
     .executeTakeFirstOrThrow();
   aliceId = alice.id;
 
-  // Bob is a ghost — no email, no password — exactly what the invite flow makes.
+  // Bob is a ghost (no email, no password), exactly what the invite flow makes.
   const bob = await db
     .insertInto("users")
     .values({ first_name: "Bob", last_name: "Brown", default_currency: "USD", is_ghost: 1 })
@@ -83,7 +83,7 @@ before(async () => {
     .executeTakeFirstOrThrow();
   categoryId = category.id;
 
-  // Alice pays 30.00, split evenly — Bob ends up owing her 15.00.
+  // Alice pays 30.00, split evenly; Bob ends up owing her 15.00.
   await createExpense({
     groupId,
     description: "Dinner",
@@ -163,7 +163,7 @@ describe("compat: get_friends", () => {
     assert.equal(bob.first_name, "Bob");
     assert.ok(Array.isArray(bob.balance), "balance must be an array");
     assert.equal(bob.balance[0].currency_code, "USD");
-    // Alice is owed 15.00 — as a decimal STRING, like Splitwise.
+    // Alice is owed 15.00, as a decimal STRING, like Splitwise.
     assert.equal(bob.balance[0].amount, "15.00");
     assert.equal(typeof bob.balance[0].amount, "string");
   });
@@ -203,7 +203,7 @@ describe("compat: get_categories", () => {
     const parent = body.categories[0]!;
     assert.ok(parent.id);
     assert.ok(parent.name);
-    // SplitwiseBulkAdd.tsx flattens parent.subcategories — the key must exist.
+    // SplitwiseBulkAdd.tsx flattens parent.subcategories; the key must exist.
     assert.ok(Array.isArray(parent.subcategories));
     assert.ok(parent.subcategories.length > 0);
     assert.ok(parent.subcategories[0].id);
@@ -224,7 +224,7 @@ describe("compat: get_expenses", () => {
     assert.equal(expense.description, "Dinner");
     assert.equal(expense.cost, "30.00");
     assert.equal(expense.currency_code, "USD");
-    // Friend.tsx does e.date.split("T")[0] — a bare date would break it.
+    // Friend.tsx does e.date.split("T")[0]; a bare date would break it.
     assert.ok(expense.date.includes("T"), "date must be a full ISO timestamp");
     assert.equal(expense.date.split("T")[0], "2026-08-01");
     // Read as e.category.name, not a flat string.

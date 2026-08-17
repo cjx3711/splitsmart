@@ -5,7 +5,7 @@
  * per-person `paid_share` / `owed_share` amounts, then derives the pairwise
  * repayments those shares imply.
  *
- * This module is PURE — no database, no I/O, no clock. That is deliberate: it
+ * This module is PURE: no database, no I/O, no clock. That is deliberate: it
  * is the piece most likely to be wrong in a way nobody notices for months, so
  * it must be trivially testable. See split.test.ts.
  */
@@ -25,12 +25,12 @@ export interface SplitParticipant {
   paidMinor: number;
   /**
    * Meaning depends on the split type:
-   *   equal      — ignored
-   *   exact      — this person's owed amount, in minor units
-   *   percent    — percentage of the total (0-100)
-   *   shares     — number of shares (any positive number)
-   *   adjustment — fixed amount, in minor units, applied before the even split
-   *   itemized   — ignored; the line items carry the detail
+   *   equal      (ignored)
+   *   exact      (this person's owed amount, in minor units
+   *   percent    (percentage of the total (0-100)
+   *   shares     (number of shares (any positive number)
+   *   adjustment (fixed amount, in minor units, applied before the even split
+   *   itemized   (ignored; the line items carry the detail
    */
   input?: number;
 }
@@ -41,7 +41,7 @@ export interface SplitParticipant {
  * Unlike the other split types, itemization cannot be expressed as one number
  * per person: the same expense has several lines, each shared by a different
  * subset of the table. So it travels alongside the participants rather than
- * inside them, and is persisted as JSON in `expenses.split_meta` — the derived
+ * inside them, and is persisted as JSON in `expenses.split_meta`; the derived
  * per-person totals still land in `expense_users` like every other split, so
  * balances never have to know itemization exists.
  */
@@ -133,7 +133,7 @@ export function computeSplit(
 
   const owedTotal = owed.reduce((a, b) => a + b, 0);
   if (owedTotal !== totalMinor) {
-    // Unreachable if the helpers below are correct — kept as a loud tripwire
+    // Unreachable if the helpers below are correct; kept as a loud tripwire
     // because a silent failure here corrupts balances permanently.
     throw new SplitError(
       `Internal: owed shares summed to ${owedTotal}, expected ${totalMinor}`,
@@ -230,8 +230,8 @@ function computeOwedShares(
  *      same `splitEvenly` as an equal split, over the line's participants in
  *      userId order, so a line's odd cent always lands on the same person.
  *
- *   2. Whatever the lines do not account for — tax, tip, service charge, the
- *      cover you did not itemise — is shared in proportion to what each person
+ *   2. Whatever the lines do not account for (tax, tip, service charge, the
+ *      cover you did not itemise) is shared in proportion to what each person
  *      already owes from step 1. That is what proportional tax actually means:
  *      the person who ordered the lobster pays more of the 10% service charge
  *      than the person who had soup.
@@ -240,7 +240,7 @@ function computeOwedShares(
  * a service charge), there are no weights to be proportional to, so the extra
  * splits evenly rather than throwing.
  *
- * The lines are allowed to under-shoot the total but never to overshoot — a
+ * The lines are allowed to under-shoot the total but never to overshoot; a
  * bill whose items exceed the amount charged is a data-entry error, and
  * silently scaling it down would hide that.
  */
@@ -320,7 +320,7 @@ function requireInput(p: SplitParticipant, type: SplitType): number {
  * expense and is deterministic given a stable sort.
  *
  * This is computed once at write time and stored in expense_repayments so that
- * balance queries stay a plain SUM. It is a cache derived from expense_users —
+ * balance queries stay a plain SUM. It is a cache derived from expense_users -
  * if the two ever disagree, expense_users wins. `yarn db:check` verifies it.
  */
 export function deriveRepayments(shares: SplitResult[]): Repayment[] {

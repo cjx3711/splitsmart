@@ -1,11 +1,11 @@
 /**
- * "With you and: [Jia J. ×] [Bob ×]" — who the expense is between.
+ * "With you and: [Jia J. ×] [Bob ×]": who the expense is between.
  *
  * Behaves like an email To: field, because that is the interaction people
  * already know: type to filter, Enter to add the top match, Backspace on an
  * empty box to take the last one back off.
  *
- * You are always on your own expense and cannot be removed — every screen in
+ * You are always on your own expense and cannot be removed; every screen in
  * this app shows an expense from your side of it, and one you are not part of
  * has nowhere to appear. The server enforces the same rule.
  */

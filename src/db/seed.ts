@@ -1,7 +1,7 @@
 /**
  * Seeds reference data: currencies and Splitwise's category tree.
  *
- * Idempotent — safe to re-run.
+ * Idempotent; safe to re-run.
  *
  * CATEGORY IDS ARE SPLITWISE'S REAL IDS, captured from the live API and kept at
  * fixtures/splitwise/get_categories.json. That matters because `category_id`

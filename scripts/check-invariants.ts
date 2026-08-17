@@ -1,8 +1,8 @@
 /**
  * Data integrity audit.
  *
- * SQLite cannot express the constraints this data model depends on — they span
- * rows and tables — so they are enforced in application code and verified here.
+ * SQLite cannot express the constraints this data model depends on; they span
+ * rows and tables, so they are enforced in application code and verified here.
  * Run after imports, after schema changes, and any time balances look wrong:
  *
  *   yarn db:check

@@ -1,8 +1,8 @@
 /**
  * The Splitwise import wizard.
  *
- * Deliberately thin. Every decision — what matches what, what gets skipped and
- * why, what the user must be warned about — is made by /api/v1/import and shown
+ * Deliberately thin. Every decision (what matches what, what gets skipped and
+ * why, what the user must be warned about) is made by /api/v1/import and shown
  * here verbatim. This file holds no import logic, so the endpoints stay the
  * single source of truth and can be driven without a browser.
  *
@@ -181,7 +181,7 @@ function KeyStep({
           <strong>This account already has data</strong>
           <p style={{ margin: 0 }}>
             {status.local.groups} group(s), {status.local.friends} friend(s) and{" "}
-            {status.local.expenses} expense(s) are already here. Importing <em>adds to</em> that —
+            {status.local.expenses} expense(s) are already here. Importing <em>adds to</em> that -
             nothing is deleted or replaced.
           </p>
           {status.previouslyImported && (
@@ -225,7 +225,7 @@ function KeyStep({
           <a href="https://secure.splitwise.com/apps" target="_blank" rel="noreferrer">
             secure.splitwise.com/apps
           </a>
-          . The key is used for this import only — it is never saved to the database, and it is
+          . The key is used for this import only; it is never saved to the database, and it is
           forgotten as soon as you leave this page.
         </p>
         <button type="submit" disabled={busy || apiKey.trim().length < 10}>
@@ -291,7 +291,7 @@ function ReviewStep({
       <PeopleList
         title="Will be created as placeholder people"
         people={creating}
-        empty="Nobody — everyone already has an account here."
+        empty="Nobody: everyone already has an account here."
       />
 
       <div className="row">
@@ -375,7 +375,7 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
         <div className="card stack">
           <strong>Invite codes for the people just created ({outcome.newPeople.length})</strong>
           <p className="muted" style={{ margin: 0 }}>
-            These are shown once and cannot be retrieved again — only their hashes are stored. Send
+            These are shown once and cannot be retrieved again; only their hashes are stored. Send
             someone their link and they can claim their account with all their history intact.
           </p>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
@@ -401,7 +401,7 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {outcome.skipped.map((skip) => (
               <li key={skip.splitwiseId}>
-                {skip.description} <span className="muted">— {skip.reason}</span>
+                {skip.description} <span className="muted">: {skip.reason}</span>
               </li>
             ))}
           </ul>

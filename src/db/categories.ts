@@ -1,14 +1,14 @@
 /**
  * Splitwise's real category tree.
  *
- * CAPTURED FROM THE LIVE API — not a reconstruction. The raw response is kept
+ * CAPTURED FROM THE LIVE API, not a reconstruction. The raw response is kept
  * verbatim at fixtures/splitwise/get_categories.json, and this file is derived
  * from it. Both are checked in because Splitwise is moving API access behind a
  * paywall and this data becomes unobtainable.
  *
  * WHY THE REAL IDS MATTER: `category_id` is passed straight through to the
  * compat API, so any client or imported expense carrying a Splitwise id must
- * land on the same category here. Guessing is not an option — the real ids are
+ * land on the same category here. Guessing is not an option: the real ids are
  * non-sequential and interleaved (parents are 1, 2, 19, 25, 27, 31, 40 while
  * children are scattered from 3 to 50), and parents and children share ONE id
  * space rather than having separate ranges.

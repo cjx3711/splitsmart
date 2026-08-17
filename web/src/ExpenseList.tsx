@@ -6,7 +6,7 @@
  * for. The cost sits next to it for context.
  *
  * The row itself opens the expense's own page, where editing and deleting
- * live - not here, and not behind a bare "✕" with no confirmation. The group
+ * live on the expense's own page, not here, and not behind a bare "✕" with no confirmation. The group
  * and payer names are their own links to that group's or friend's page, so
  * they need `stopPropagation` to keep the row underneath from also navigating.
  */

@@ -28,7 +28,7 @@
 -- This app has never been deployed, so there is exactly one migration: schema
 -- changes during development are folded back into this file rather than
 -- layered as forward-only steps. Once a real database exists somewhere, that
--- stops being true — see src/db/migrate.ts for the forward-only runner this
+-- stops being true. See src/db/migrate.ts for the forward-only runner this
 -- file is written to run under from that point on.
 
 PRAGMA foreign_keys = ON;
@@ -42,7 +42,7 @@ PRAGMA foreign_keys = ON;
 --
 -- The upper bound is 8 rather than 4 because Splitwise's live currency list
 -- includes BTC, which uses satoshi (1e-8) precision. Since currency_code is a
--- foreign key, a currency we cannot represent does not degrade gracefully — it
+-- foreign key, a currency we cannot represent does not degrade gracefully; it
 -- rejects the expense outright. 8 digits stays well inside MAX_SAFE_INTEGER.
 CREATE TABLE currencies (
   code           TEXT    PRIMARY KEY,          -- ISO 4217, uppercase
@@ -100,7 +100,7 @@ CREATE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
 CREATE INDEX idx_users_splitwise_id ON users(splitwise_id) WHERE splitwise_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
--- sessions — browser cookie sessions
+-- sessions: browser cookie sessions
 -- ---------------------------------------------------------------------------
 -- We store a HASH of the session token, not the token. A leaked database should
 -- not hand out live sessions.
@@ -118,7 +118,7 @@ CREATE INDEX idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
 -- ---------------------------------------------------------------------------
--- api_tokens — bearer tokens for the Splitwise-compatible API
+-- api_tokens: bearer tokens for the Splitwise-compatible API
 -- ---------------------------------------------------------------------------
 -- Deliberately separate from sessions: different lifetime, different revocation
 -- story, and different threat model. splitwise-to-toshl uses one of these.
@@ -137,7 +137,7 @@ CREATE TABLE api_tokens (
 CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
 
 -- ---------------------------------------------------------------------------
--- email_tokens — single-use, expiring tokens sent by email
+-- email_tokens: single-use, expiring tokens sent by email
 -- ---------------------------------------------------------------------------
 -- `purpose` exists so password reset (docs/PLAN.md phase 4) can reuse this
 -- table rather than needing a schema change. Only 'verify_email' is
@@ -156,7 +156,7 @@ CREATE TABLE email_tokens (
   -- Load-bearing: if a user requests verification, then changes their email,
   -- the outstanding token must NOT verify the new address. Consuming a token
   -- compares this against users.email and refuses on mismatch. Without it,
-  -- someone could verify an address they no longer control — or worse, have a
+  -- someone could verify an address they no longer control; or worse, have a
   -- pending token silently validate an attacker-supplied address.
   email      TEXT    NOT NULL,
 
@@ -225,7 +225,7 @@ CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 -- friendships
 -- ---------------------------------------------------------------------------
 -- Stored canonically with user_a_id < user_b_id so a pair can only exist once.
--- Query helper lives in src/domain/friends.ts — do not hand-roll the UNION.
+-- Query helper lives in src/domain/friends.ts; do not hand-roll the UNION.
 CREATE TABLE friendships (
   user_a_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   user_b_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -288,11 +288,11 @@ CREATE TABLE expenses (
   -- exist so the UI can reopen an expense in the same editor the user used.
   split_type     TEXT    NOT NULL DEFAULT 'equal',
 
-  -- JSON, or NULL. Presentation detail for the editor — never ledger data.
+  -- JSON, or NULL. Presentation detail for the editor; never ledger data.
   -- Only 'itemized' populates it: a line-item bill where each line is shared by
   -- a different subset of participants doesn't fit the one-row-per-participant
   -- shape of expense_users, so the lines are kept here purely so the editor can
-  -- reopen them. They are never summed, joined, or filtered on by the server —
+  -- reopen them. They are never summed, joined, or filtered on by the server -
   -- read back verbatim by exactly one consumer, the expense editor. The ledger
   -- numbers are still the derived shares in expense_users; if split_meta were
   -- dropped entirely, every balance in the app would be unchanged. Deliberately
@@ -331,11 +331,11 @@ CREATE INDEX idx_expenses_splitwise_id ON expenses(splitwise_id) WHERE splitwise
 CREATE INDEX idx_expenses_live ON expenses(date) WHERE deleted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
--- expense_users — who paid, and who owes
+-- expense_users: who paid, and who owes
 -- ---------------------------------------------------------------------------
 -- The heart of the model. Two independent numbers per participant:
---   paid_share_minor — how much cash this person actually put in
---   owed_share_minor — how much of the cost is their responsibility
+--   paid_share_minor: how much cash this person actually put in
+--   owed_share_minor: how much of the cost is their responsibility
 -- Their difference is that person's net position on this expense.
 --
 -- split_input stores the raw value the user typed for the expense's split_type
@@ -358,7 +358,7 @@ CREATE TABLE expense_users (
 CREATE INDEX idx_expense_users_user_id ON expense_users(user_id);
 
 -- ---------------------------------------------------------------------------
--- expense_repayments — derived pairwise debts
+-- expense_repayments: derived pairwise debts
 -- ---------------------------------------------------------------------------
 -- Denormalised on purpose. expense_users tells you each person's NET position
 -- but not who owes whom, which is what every balance screen actually needs.
@@ -400,7 +400,7 @@ CREATE TABLE comments (
 CREATE INDEX idx_comments_expense_id ON comments(expense_id);
 
 -- ---------------------------------------------------------------------------
--- activity — the feed
+-- activity (the feed)
 -- ---------------------------------------------------------------------------
 -- Append-only. `payload` is JSON with a shape determined by `action`.
 CREATE TABLE activity (

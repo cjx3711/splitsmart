@@ -14,7 +14,7 @@
  * objects). If you find yourself formatting a decimal string outside
  * src/routes/compat/, something has leaked.
  *
- * Verified against real Splitwise responses — see docs/SPLITWISE_COMPAT.md for
+ * Verified against real Splitwise responses. See docs/SPLITWISE_COMPAT.md for
  * the captured fixtures and the exact field list splitwise-to-toshl consumes.
  */
 import { formatAmount } from "../../domain/money.ts";
@@ -152,7 +152,7 @@ export function serializeExpense(
     currency_code: expense.currency_code,
     // Clients split on "T", so a bare date would break them.
     date: toIsoZ(expense.date),
-    // Nested object, not a flat name — Friend.tsx reads `e.category.name`.
+    // Nested object, not a flat name; Friend.tsx reads `e.category.name`.
     category: {
       id: expense.category_id,
       name: expense.category_name ?? "General",
@@ -171,7 +171,7 @@ export function serializeExpense(
     users: users.map((u) => ({
       user: serializeUser(u.user),
       // Both `user_id` and `user.id` are present in real responses and clients
-      // use them interchangeably — Friend.tsx reads both on the same object.
+      // use them interchangeably; Friend.tsx reads both on the same object.
       user_id: u.user_id,
       paid_share: money(u.paid_share_minor),
       owed_share: money(u.owed_share_minor),

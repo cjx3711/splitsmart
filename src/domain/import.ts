@@ -4,26 +4,26 @@
  * Pulls a Splitwise account into SplitSmart, in the order the data depends on
  * itself: people, then groups, then expenses. Each step is a separate call that
  * can be run on its own and re-run safely, which is what makes the whole thing
- * drivable from a wizard — or from a test — one HTTP request at a time.
+ * drivable from a wizard, or from a test, one HTTP request at a time.
  *
  * FOUR RULES THIS MODULE LIVES BY:
  *
  * 1. IDENTITY IS `splitwise_id` FIRST, EMAIL SECOND. Every row we create carries
  *    the Splitwise id it came from, so a second run matches instead of
  *    duplicating. Only when there is no id match do we fall back to matching an
- *    existing local account by email — that is the one heuristic in here, and
+ *    existing local account by email; that is the one heuristic in here, and
  *    the UI has to say so out loud before the user starts.
  *
  * 2. NOTHING IS WRITTEN TWICE. Groups and expenses are looked up by
  *    `splitwise_id` before insert. Re-running a step is a no-op plus a report.
  *
- * 3. EXPENSES GO THROUGH `createExpense`. No exceptions — see CLAUDE.md rule 3.
+ * 3. EXPENSES GO THROUGH `createExpense`. No exceptions. See CLAUDE.md rule 3.
  *    Splitwise's own per-person `owed_share` values are imported as an `exact`
  *    split so the allocation is preserved byte for byte rather than re-derived
  *    (re-deriving would move cents, and therefore balances).
  *
  * 4. A BAD ROW IS SKIPPED, NEVER FUDGED. Unknown currency, a group that has not
- *    been imported yet, shares that do not add up — each of those returns a
+ *    been imported yet, shares that do not add up; each of those returns a
  *    skip with a reason instead of a guess. A partial import you can see is
  *    worth more than a complete one you cannot trust.
  *
@@ -50,7 +50,7 @@ export interface PersonResult {
   localUserId: number;
   name: string;
   email: string | null;
-  /** How this person was resolved — the UI shows the email matches explicitly. */
+  /** How this person was resolved: the UI shows the email matches explicitly. */
   matchedBy: "splitwise_id" | "email" | "self" | "created";
   /**
    * Only for freshly created placeholders, and only once: it is the sole way
@@ -73,7 +73,7 @@ export interface SkippedRow {
  * Resolves Splitwise people to local users, creating placeholders as needed.
  *
  * Held across a whole step so a person appearing in six groups is looked up
- * once. Not shared between requests — each import call builds a fresh one, and
+ * once. Not shared between requests; each import call builds a fresh one, and
  * the database is the only durable state.
  */
 export class PersonResolver {
@@ -149,7 +149,7 @@ export class PersonResolver {
             .set({ splitwise_id: person.id })
             .where("id", "=", byEmail.id)
             // Belt and braces: splitwise_id is UNIQUE, and a concurrent import
-            // could have claimed it. Losing the race is harmless — the id match
+            // could have claimed it. Losing the race is harmless; the id match
             // above will find it next time.
             .where("splitwise_id", "is", null)
             .execute();
@@ -159,7 +159,7 @@ export class PersonResolver {
     }
 
     // Nobody local: create a placeholder, exactly as POST /api/v1/friends does.
-    // The recovery code is generated here or never — only its hash is kept.
+    // The recovery code is generated here or never; only its hash is kept.
     const recoveryCode = generateRecoveryCode();
     const created = await db
       .insertInto("users")
@@ -231,7 +231,7 @@ export interface LocalFootprint {
   groups: number;
   friends: number;
   expenses: number;
-  /** Expenses of yours that already carry a Splitwise id — a previous import. */
+  /** Expenses of yours that already carry a Splitwise id (a previous import). */
   previouslyImported: number;
 }
 
@@ -325,7 +325,7 @@ export async function previewImport(
   if (local.expenses > 0 || local.groups > 0 || local.friends > 0) {
     warnings.push(
       `This account already has ${local.groups} group(s), ${local.friends} friend(s) and ` +
-        `${local.expenses} expense(s). Importing adds to that — it does not replace it.`,
+        `${local.expenses} expense(s). Importing adds to that; it does not replace it.`,
     );
   }
   if (local.previouslyImported > 0) {
@@ -349,7 +349,7 @@ export async function previewImport(
   if (swMe.email && owner.email && swMe.email.toLowerCase() !== owner.email.toLowerCase()) {
     warnings.push(
       `Your Splitwise address (${swMe.email}) is not your SplitSmart address (${owner.email}). ` +
-        `That is fine — you are matched by the key you supplied, not by email.`,
+        `That is fine; you are matched by the key you supplied, not by email.`,
     );
   }
   if (expenseCount.capped) {
@@ -384,7 +384,7 @@ export async function previewImport(
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — friends
+// Step 1: friends
 // ---------------------------------------------------------------------------
 
 export interface FriendsImportResult {
@@ -426,7 +426,7 @@ export async function importFriends(
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — groups
+// Step 2: groups
 // ---------------------------------------------------------------------------
 
 export interface GroupImportResult {
@@ -448,7 +448,7 @@ export interface GroupImportResult {
  * Must run before expenses: a group expense cannot be written until the group
  * and everyone on it exists, and `createExpense` refuses participants who are
  * not members. Splitwise's group 0 ("Non-group expenses") is not a group and is
- * skipped — those expenses import with a NULL group_id.
+ * skipped; those expenses import with a NULL group_id.
  */
 export async function importGroups(
   client: SplitwiseClient,
@@ -490,7 +490,7 @@ export async function importGroups(
       ).id;
 
     // The importer is always a member, even if Splitwise's member list is
-    // stale — otherwise they cannot see the group they just imported.
+    // stale; otherwise they cannot see the group they just imported.
     let membersAdded = (await ensureMember(localGroupId, userId, "creator")) ? 1 : 0;
 
     for (const member of swGroup.members ?? []) {
@@ -577,7 +577,7 @@ async function ensureMember(
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — expenses
+// Step 3: expenses
 // ---------------------------------------------------------------------------
 
 export interface ExpensePageResult {
@@ -599,7 +599,7 @@ export interface ExpensePageResult {
  *
  * Paged rather than all-at-once so the wizard can show real progress and so a
  * failure halfway through costs you one page, not the whole run. Re-running a
- * page is free — everything already imported matches on `splitwise_id`.
+ * page is free; everything already imported matches on `splitwise_id`.
  */
 export async function importExpensePage(
   client: SplitwiseClient,
@@ -628,8 +628,8 @@ export async function importExpensePage(
     imported: 0,
     alreadyPresent: 0,
     skipped: [],
-    // Splitwise caps page size server-side, so a short page — not a page
-    // shorter than `limit` — is the only reliable end-of-list signal.
+    // Splitwise caps page size server-side, so a short page (not a page
+    // shorter than `limit`: is the only reliable end-of-list signal.
     nextOffset: page.length === 0 ? null : offset + page.length,
     done: page.length === 0,
   };
@@ -694,7 +694,7 @@ async function importOneExpense(
   if (swGroupId !== NON_GROUP_ID) {
     groupId = ctx.groupIdBySplitwiseId.get(swGroupId) ?? null;
     if (groupId === null) {
-      throw new Error(`Group ${swGroupId} has not been imported — run the groups step first`);
+      throw new Error(`Group ${swGroupId} has not been imported; run the groups step first`);
     }
   }
 
@@ -720,7 +720,7 @@ async function importOneExpense(
 
   // Splitwise lets someone leave a group while their expenses stay behind.
   // createExpense rejects non-members, so put them back rather than dropping
-  // the expense — a missing expense is a wrong balance.
+  // the expense; a missing expense expense is a wrong balance.
   if (groupId !== null) {
     for (const p of participants) await ensureMember(groupId, p.userId, "import");
   }
@@ -767,7 +767,7 @@ async function requireOwner(userId: number) {
 /**
  * Records the importer's own Splitwise id so their rows resolve to themselves.
  *
- * Skipped when the id is already taken by another local row — that means two
+ * Skipped when the id is already taken by another local row; that means two
  * accounts here are importing the same Splitwise account, and silently moving
  * the id between them would be worse than leaving it where it is.
  */

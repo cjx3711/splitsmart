@@ -2,7 +2,7 @@
  * Group invite links and ghost accounts.
  *
  * The product rule: one real account is enough. Anyone else joins a group by
- * opening a secret link and picking a name, which creates a GHOST user —
+ * opening a secret link and picking a name, which creates a GHOST user -
  * no email, no password. Identity is possession of a session cookie, with a
  * one-time recovery code as the only way back in from another device.
  *
@@ -11,7 +11,7 @@
  *     Rotating the token cuts off future joins but does not remove members.
  *   - Ghosts are scoped to the group they joined. They cannot see other groups.
  *   - The preview endpoint is intentionally anonymous but returns only the
- *     group name and member count — enough to confirm you have the right link,
+ *     group name and member count; enough to confirm you have the right link,
  *     not enough to leak financial data to a scanner.
  */
 import { Hono } from "hono";

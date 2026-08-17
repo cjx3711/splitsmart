@@ -11,7 +11,7 @@ type State =
 /**
  * Landing page for the emailed verification link.
  *
- * Works signed-out — the link commonly gets opened in a different browser from
+ * Works signed-out; the link commonly gets opened in a different browser from
  * the one that registered, so holding the token is the proof.
  */
 export function Verify() {
@@ -20,7 +20,7 @@ export function Verify() {
   const [state, setState] = useState<State>({ kind: "working" });
 
   // StrictMode double-invokes effects in dev. Without this guard the token is
-  // consumed twice — harmless (the second call is idempotent) but it makes the
+  // consumed twice. Harmless (the second call is idempotent), but it makes the
   // network log confusing.
   const attempted = useRef(false);
 
@@ -36,7 +36,7 @@ export function Verify() {
         try {
           setUser((await api.me()).user);
         } catch {
-          // Not signed in on this device — verification still succeeded.
+          // Not signed in on this device; verification still succeeded.
         }
       })
       .catch((err) => {
@@ -68,7 +68,7 @@ export function Verify() {
       <p className="error">{state.message}</p>
       {user ? (
         <p style={{ marginTop: "1rem" }}>
-          You're signed in — request a fresh link from{" "}
+          You're signed in. Request a fresh link from{" "}
           <Link to="/settings">Settings</Link>.
         </p>
       ) : (

@@ -16,7 +16,7 @@
  *   yarn seed:splitwise -- <dir>     # or point at a specific one
  *
  * Safe to run before importing expenses. NOT safe to run after, if expenses
- * already reference the old category ids — the script refuses in that case.
+ * already reference the old category ids; the script refuses in that case.
  */
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -121,7 +121,7 @@ function main(): void {
           `(using Splitwise ids)`,
       );
 
-      // No sqlite_sequence bump needed — AUTOINCREMENT raises the stored
+      // No sqlite_sequence bump needed; AUTOINCREMENT raises the stored
       // sequence to any explicit id inserted above. (sqlite_sequence has no
       // UNIQUE constraint, so ON CONFLICT against it is not even valid SQL.)
       const maxId = db.prepare("SELECT MAX(id) AS m FROM categories").get() as { m: number };
@@ -140,7 +140,7 @@ function main(): void {
     if (currencyData?.currencies?.length) {
       // Splitwise's get_currencies does NOT report decimal places, so we keep
       // our ISO 4217 exponents and only add codes we were missing. Never let
-      // this path overwrite decimal_places — that is the one field that must
+      // this path overwrite decimal_places; that is the one field that must
       // stay authoritative.
       const insert = db.prepare(
         `INSERT OR IGNORE INTO currencies (code, decimal_places, symbol, name)
@@ -154,7 +154,7 @@ function main(): void {
         const result = insert.run(code, currency.unit ?? null, code);
         if (result.changes > 0) {
           added++;
-          console.log(`    + ${code} (assumed 2 decimals — verify if unusual)`);
+          console.log(`    + ${code} (assumed 2 decimals; verify if unusual)`);
         }
       }
       console.log(`  currencies: ${added} added from Splitwise, existing rows untouched`);

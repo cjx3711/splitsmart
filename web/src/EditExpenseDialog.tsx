@@ -6,7 +6,7 @@
  * expense already on file instead of starting blank. The per-person
  * `split_input` and, for itemized splits, `split_meta` are exactly what lets
  * the split reopen as typed rather than being re-derived from the stored
- * amounts - see src/domain/expenses.ts.
+ * amounts. See src/domain/expenses.ts.
  */
 import { useEffect, useMemo, useState } from "react";
 import { api, fullName, formatMoney, type ExpenseDetail, type Friend, type Group } from "./api.ts";

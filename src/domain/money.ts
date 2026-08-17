@@ -34,7 +34,7 @@ export function parseAmount(input: string | number, decimalPlaces = DEFAULT_DECI
   const [whole = "0", fraction = ""] = unsigned.split(".");
 
   // More precision than the currency supports is a caller bug, not something to
-  // silently round away — rounding here is how money quietly goes missing.
+  // silently round away; rounding here is how money quietly goes missing.
   if (fraction.length > decimalPlaces) {
     throw new MoneyError(
       `${raw} has more than ${decimalPlaces} decimal place(s) for this currency`,
@@ -77,7 +77,7 @@ export function formatAmount(minor: number, decimalPlaces = DEFAULT_DECIMAL_PLAC
  *
  * The remainder is distributed one minor unit at a time to the first N parts.
  * Callers pass participants in a stable order (user_id ascending) so the same
- * expense always produces the same allocation — otherwise re-saving an expense
+ * expense always produces the same allocation; otherwise re-saving an expense
  * would shuffle whose cent it is and balances would drift.
  *
  * splitEvenly(1000, 3) -> [334, 333, 333]

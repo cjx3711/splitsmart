@@ -1,5 +1,5 @@
 /**
- * The SplitSmart mark — a disc split along an off-centre cut, with the pieces
+ * The SplitSmart mark: a disc split along an off-centre cut, with the pieces
  * pulled apart. Colours come from CSS variables (see styles.css) so the mark
  * tracks the light/dark theme.
  */

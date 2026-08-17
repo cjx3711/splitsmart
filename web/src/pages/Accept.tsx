@@ -2,7 +2,7 @@
  * Landing page for an emailed friend invite.
  *
  * The link carries the ghost account's recovery code, so opening it signs the
- * invitee straight in — the same path as POST /invite/recover. From there they
+ * invitee straight in; the same path as POST /invite/recover. From there they
  * can set an email and password to turn the ghost into a real account, which
  * upgrades the row IN PLACE so no balance moves.
  *
@@ -63,7 +63,7 @@ export function Accept() {
       <h1>You're in, {name}</h1>
       <p className="muted">
         You can use SplitSmart as a guest right now. Setting a password gives you a way back in
-        from any device — everything you're already part of stays attached.
+        from any device; everything you're already part of stays attached.
       </p>
       <ClaimForm onClaimed={() => navigate("/")} />
       <button className="secondary" onClick={() => navigate("/")}>

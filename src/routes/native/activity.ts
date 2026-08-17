@@ -86,7 +86,7 @@ activityRoutes.get("/", async (c) => {
             description: r.description ?? "",
             costMinor: r.cost_minor ?? 0,
             currencyCode: r.currency_code ?? "",
-            // Deleted expenses stay in the feed — "X deleted an expense" is the
+            // Deleted expenses stay in the feed; "X deleted an expense" is the
             // event people actually want to see.
             deleted: r.expense_deleted !== null,
           }

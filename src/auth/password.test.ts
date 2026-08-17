@@ -53,7 +53,7 @@ describe("password hashing", () => {
   });
 
   test("normalises unicode so equivalent inputs match", async () => {
-    // "é" composed vs decomposed — same password to a human.
+    // "é" composed vs decomposed: same password to a human.
     const hash = await hashPassword("cafépassword");
     assert.ok(await verifyPassword("cafépassword", hash));
   });

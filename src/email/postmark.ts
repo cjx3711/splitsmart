@@ -1,7 +1,7 @@
 /**
  * Postmark transport.
  *
- * A direct fetch against Postmark's REST API — no SDK. The surface we need is
+ * A direct fetch against Postmark's REST API; no SDK. The surface we need is
  * one POST, and avoiding the dependency keeps the Docker image smaller and the
  * failure modes visible.
  *
@@ -38,7 +38,7 @@ export interface SendResult {
  * Sends an email.
  *
  * NEVER THROWS. Callers are auth routes where a mail outage must not turn a
- * successful registration into a 500 — the account is already created and the
+ * successful registration into a 500; the account is already created and the
  * user can request another link. The result object carries the outcome for
  * logging; check `delivered` if you need to branch on it.
  */
@@ -49,7 +49,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
       [
         "",
         "─".repeat(72),
-        "EMAIL NOT SENT — Postmark is not configured.",
+        "EMAIL NOT SENT: Postmark is not configured.",
         `  To:      ${message.to}`,
         `  Subject: ${message.subject}`,
         "",
@@ -93,7 +93,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
     // an otherwise-200 response. Both must be treated as failure.
     if (!response.ok || (body.ErrorCode ?? 0) !== 0) {
       const reason = `postmark_error_${body.ErrorCode ?? response.status}: ${body.Message ?? response.statusText}`;
-      console.error(`Email to ${message.to} failed — ${reason}`);
+      console.error(`Email to ${message.to} failed: ${reason}`);
       return { delivered: false, reason };
     }
 
@@ -103,7 +103,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
       err instanceof Error && err.name === "AbortError"
         ? "postmark_timeout"
         : `postmark_unreachable: ${err instanceof Error ? err.message : String(err)}`;
-    console.error(`Email to ${message.to} failed — ${reason}`);
+    console.error(`Email to ${message.to} failed: ${reason}`);
     return { delivered: false, reason };
   } finally {
     clearTimeout(timeout);

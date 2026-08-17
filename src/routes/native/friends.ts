@@ -1,7 +1,7 @@
 /**
  * Native friend routes.
  *
- * A "friend" here is anyone you share money history with — see
+ * A "friend" here is anyone you share money history with. See
  * src/domain/friends.ts for the explicit-vs-derived distinction. These routes
  * expose the explicit half (add, remove) plus the one-on-one expenses that only
  * make sense outside a group.
@@ -180,7 +180,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
 
   // Every new friend gets a recovery code, whether or not we can email it. It
   // is the only route back into a ghost account, and generating it lazily later
-  // is impossible — the hash is all we keep.
+  // is impossible; the hash is all we keep.
   const recoveryCode = generateRecoveryCode();
 
   const friend = await transaction(async (trx) => {
@@ -333,7 +333,7 @@ friendRoutes.get("/:id/expenses", async (c) => {
  *
  * createExpense skips its membership check when there is no group, so the
  * "who is allowed to be on this" rule has to be enforced here. It is
- * deliberately the strictest possible version — exactly the two of you — since
+ * deliberately the strictest possible version: exactly the two of you, since
  * a wider set has no screen that can display it.
  */
 friendRoutes.post(
@@ -416,7 +416,7 @@ friendRoutes.post(
 /**
  * Removes the explicit friendship only.
  *
- * Nothing financial is touched — no expense is deleted and no balance moves. If
+ * Nothing financial is touched; no expense is deleted and no balance moves. If
  * you still share a group or an expense they stay in your list as a derived
  * friend, which is correct: you cannot un-owe someone by unfriending them.
  */
