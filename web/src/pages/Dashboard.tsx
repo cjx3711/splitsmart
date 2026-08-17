@@ -1,19 +1,24 @@
 /**
  * The dashboard.
  *
- * Splitwise shows one grand total with an asterisk and a footnote when you hold
- * several currencies. SplitSmart cannot do that honestly - there is no
- * exchange-rate table and there must not be one (see src/domain/balances.ts) -
- * so the summary is a stack of per-currency rows instead. That stack is the
- * page, not a detail of it.
+ * Per-currency rows are the honest picture and stay primary: there is no
+ * exchange-rate table in the ledger and there must not be one (see
+ * src/domain/balances.ts). When a person holds more than one currency, a
+ * labeled ≈ estimate in their preferred currency is added underneath, sourced
+ * from live Frankfurter rates and never persisted. The estimate is opt-in
+ * (it appears only when there are ≥2 currencies and rates loaded), dated, and
+ * additive to the stack, not a replacement for it.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fullName, type Friend, type CurrencyAmount } from "../api.ts";
 import { Amount, Amounts, sumByCurrency } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
+import { useAuth } from "../App.tsx";
+import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function Dashboard() {
+  const { user } = useAuth();
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +30,7 @@ export function Dashboard() {
   }, []);
 
   if (error) return <p className="error">{error}</p>;
-  if (!friends) return <p className="muted">Loading…</p>;
+  if (!friends || !user) return <p className="muted">Loading…</p>;
 
   // Someone can owe you in one currency while you owe them in another, so a
   // person can legitimately appear in both columns.
@@ -57,6 +62,7 @@ export function Dashboard() {
           {/* Signed and not absolute: this column mixes directions, so the
               minus sign has to carry the meaning, not just the colour. */}
           <SummaryLedger balances={net} empty="All settled" signed showSign />
+          <EstimatedTotal balances={net} preferredCurrency={user.defaultCurrency} />
         </div>
         <div>
           <span className="eyebrow">You owe</span>
@@ -69,9 +75,9 @@ export function Dashboard() {
       </div>
 
       <p className="ledger-note">
-        Every currency is a separate ledger. Nothing here is converted, so there is no combined
-        total to show.
+        Every currency is a separate ledger. A combined figure, when shown, is an estimate.
       </p>
+      <ConversionFootnote sets={[net]} preferredCurrency={user.defaultCurrency} />
 
       <div className="columns" style={{ marginTop: "1.75rem" }}>
         <section>

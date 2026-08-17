@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth } from "../App.tsx";
+import { CurrencySelect } from "../CurrencySelect.tsx";
 
 /**
  * Account settings and API tokens.
@@ -11,7 +12,7 @@ import { useAuth } from "../App.tsx";
  * server. See docs/SPLITWISE_COMPAT.md.
  */
 export function Settings() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [tokens, setTokens] = useState<
     Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>
   >([]);
@@ -35,7 +36,7 @@ export function Settings() {
     event.preventDefault();
     try {
       const created = await api.createToken(name);
-      // Shown once — the server only stores a hash.
+      // Shown once; the server only stores a hash.
       setFreshToken(created.token);
       await load();
     } catch (err) {
@@ -47,6 +48,8 @@ export function Settings() {
     <>
       <h1>Settings</h1>
 
+      {error && <p className="error">{error}</p>}
+
       <div className="card">
         <div className="muted">Signed in as</div>
         <strong>
@@ -54,6 +57,30 @@ export function Settings() {
         </strong>
         <div className="muted">{user?.email ?? "Guest account (no email)"}</div>
       </div>
+
+      <h2>Preferred currency</h2>
+      <p className="muted">
+        Used as the default when you add an expense, and as the target for on-screen conversions
+        (settle-up equivalents and estimated totals). Nothing in the ledger changes: balances stay
+        in the currency they were recorded in.
+      </p>
+      {user && (
+        <div style={{ maxWidth: "16rem" }}>
+          <label htmlFor="preferredCurrency">Currency</label>
+          <CurrencySelect
+            id="preferredCurrency"
+            value={user.defaultCurrency}
+            onChange={(code) => {
+              void api
+                .updateMe({ defaultCurrency: code })
+                .then((result) => setUser(result.user))
+                .catch((err) =>
+                  setError(err instanceof Error ? err.message : "Could not save preferred currency"),
+                );
+            }}
+          />
+        </div>
+      )}
 
       <h2>Import from Splitwise</h2>
       <p className="muted">
@@ -68,8 +95,6 @@ export function Settings() {
         Use a token as the bearer credential for the Splitwise-compatible API at{" "}
         <code>/api/sw/v3.0</code>.
       </p>
-
-      {error && <p className="error">{error}</p>}
 
       {freshToken && (
         <div className="notice stack">

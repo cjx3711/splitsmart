@@ -6,12 +6,16 @@
  * query as everything else. Nothing here is special-cased.
  *
  * A payment only clears the currency it is made in. Owing yen and paying in
- * dollars leaves both ledgers open — that follows from currencies never being
+ * dollars leaves both ledgers open; that follows from currencies never being
  * converted, and the form says so rather than letting people discover it.
+ *
+ * The optional convert-to-preferred toggle is display-only: the submitted
+ * amountMinor and currencyCode stay in the debt's own currency.
  */
 import { useState, type FormEvent } from "react";
-import { useCurrencies, useParseMoney } from "./money.tsx";
+import { Amount, useCurrencies, useParseMoney } from "./money.tsx";
 import { CurrencySelect } from "./CurrencySelect.tsx";
+import { convertMinor, useExchangeRates } from "./exchangeRates.ts";
 import { type Payer } from "./ExpenseForm.tsx";
 
 export interface SettlePayment {
@@ -26,6 +30,7 @@ export function SettleUpForm({
   people,
   currencies,
   initial,
+  preferredCurrency,
   onSubmit,
   className = "card stack",
 }: {
@@ -34,6 +39,8 @@ export function SettleUpForm({
   currencies: string[];
   /** Prefill, e.g. from the group's suggested settle-up. */
   initial?: { fromUserId: number; toUserId: number; amount: string; currencyCode: string };
+  /** Target for the display-only "show in …" conversion. */
+  preferredCurrency?: string;
   onSubmit: (payment: SettlePayment) => Promise<void>;
   className?: string;
 }) {
@@ -49,6 +56,26 @@ export function SettleUpForm({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConverted, setShowConverted] = useState(false);
+
+  const convertTarget =
+    preferredCurrency && preferredCurrency !== currency ? preferredCurrency : "";
+  const { rates, loading, error: ratesError } = useExchangeRates(
+    convertTarget,
+    convertTarget ? [currency] : [],
+  );
+  const canConvert = Boolean(convertTarget && rates && !loading && !ratesError);
+
+  let typedMinor: number | null = null;
+  try {
+    typedMinor = amount.trim() ? parseInCurrency(amount, currency) : null;
+  } catch {
+    typedMinor = null;
+  }
+  const convertedMinor =
+    canConvert && showConverted && typedMinor !== null && rates
+      ? convertMinor(typedMinor, currency, convertTarget, rates, decimalsFor)
+      : null;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -126,6 +153,23 @@ export function SettleUpForm({
             autoFocus
             required
           />
+          {canConvert && (
+            <div className="convert-toggle-row">
+              <button
+                type="button"
+                className="secondary inline"
+                aria-pressed={showConverted}
+                onClick={() => setShowConverted((v) => !v)}
+              >
+                Show in {convertTarget}
+              </button>
+              {convertedMinor !== null && (
+                <p className="field-hint" style={{ margin: 0 }}>
+                  ≈ <Amount minor={convertedMinor} currency={convertTarget} /> at today's rate
+                </p>
+              )}
+            </div>
+          )}
         </div>
         <div>
           <label htmlFor="settleCurrency">Currency</label>
@@ -142,8 +186,18 @@ export function SettleUpForm({
           onChange={(e) => setDate(e.target.value)}
         />
         <p className="field-hint">
-          This clears {currency} only. A balance in any other currency is a separate ledger and
-          stays open.
+          {convertedMinor !== null && typedMinor !== null ? (
+            <>
+              Recording <Amount minor={typedMinor} currency={currency} /> to clear this {currency}{" "}
+              balance - about <Amount minor={convertedMinor} currency={convertTarget} /> at today's
+              rate.
+            </>
+          ) : (
+            <>
+              This clears {currency} only. A balance in any other currency is a separate ledger and
+              stays open.
+            </>
+          )}
         </p>
       </div>
 

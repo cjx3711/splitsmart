@@ -15,6 +15,7 @@ import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
+import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ export function GroupDetail() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const formatMoney = useFormatMoney();
 
   async function load() {
@@ -81,6 +83,20 @@ export function GroupDetail() {
     s.transfers.map((t) => ({ ...t, currencyCode: s.currencyCode })),
   )[0];
 
+  const outstandingCurrencies = [
+    ...new Set(balances.flatMap((e) => e.balances.map((b) => b.currencyCode))),
+  ];
+  const showSettlePicker = outstandingCurrencies.length > 1 && settleCurrency === null;
+  const activeCurrency = settleCurrency ?? (outstandingCurrencies.length <= 1 ? outstandingCurrencies[0] : null);
+  const activeTransfer = activeCurrency
+    ? settle.find((s) => s.currencyCode === activeCurrency)?.transfers[0]
+    : topTransfer;
+
+  function closeSettle() {
+    setOpenDialog(null);
+    setSettleCurrency(null);
+  }
+
   return (
     <>
       <div className="page-head">
@@ -110,26 +126,69 @@ export function GroupDetail() {
       <Modal
         open={openDialog === "settle"}
         title={`Settle up in ${group.name}`}
-        onClose={() => setOpenDialog(null)}
+        onClose={closeSettle}
       >
-        <SettleUpForm
-          className="stack"
-          people={people}
-          currencies={currenciesInPlay}
-          initial={
-            topTransfer && {
-              fromUserId: topTransfer.fromUserId,
-              toUserId: topTransfer.toUserId,
-              amount: formatMoney(topTransfer.amountMinor, topTransfer.currencyCode) ?? "",
-              currencyCode: topTransfer.currencyCode,
+        {showSettlePicker ? (
+          <div className="settle-currency-picker">
+            <p className="muted" style={{ margin: 0 }}>
+              Which balance do you want to settle? A payment only clears that currency.
+            </p>
+            {outstandingCurrencies.map((code) => {
+              const transfer = settle.find((s) => s.currencyCode === code)?.transfers[0];
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  className="secondary"
+                  onClick={() => setSettleCurrency(code)}
+                >
+                  {transfer ? (
+                    <>
+                      {nameOf(transfer.fromUserId)} → {nameOf(transfer.toUserId)}{" "}
+                      <Amount minor={transfer.amountMinor} currency={code} />
+                    </>
+                  ) : (
+                    code
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <SettleUpForm
+            className="stack"
+            people={people}
+            currencies={currenciesInPlay}
+            preferredCurrency={user.defaultCurrency}
+            initial={
+              activeTransfer && activeCurrency
+                ? {
+                    fromUserId: activeTransfer.fromUserId,
+                    toUserId: activeTransfer.toUserId,
+                    amount: formatMoney(activeTransfer.amountMinor, activeCurrency) ?? "",
+                    currencyCode: activeCurrency,
+                  }
+                : activeCurrency
+                  ? {
+                      fromUserId: people[0]?.id ?? 0,
+                      toUserId: people[1]?.id ?? 0,
+                      amount: "",
+                      currencyCode: activeCurrency,
+                    }
+                  : topTransfer && {
+                      fromUserId: topTransfer.fromUserId,
+                      toUserId: topTransfer.toUserId,
+                      amount: formatMoney(topTransfer.amountMinor, topTransfer.currencyCode) ?? "",
+                      currencyCode: topTransfer.currencyCode,
+                    }
             }
-          }
-          onSubmit={async (payment) => {
-            await api.createGroupPayment(groupId, payment);
-            setOpenDialog(null);
-            await load();
-          }}
-        />
+            onSubmit={async (payment) => {
+              await api.createGroupPayment(groupId, payment);
+              closeSettle();
+              await load();
+            }}
+          />
+        )}
       </Modal>
 
       <h2 style={{ marginTop: 0 }}>Balances</h2>
@@ -143,18 +202,25 @@ export function GroupDetail() {
               <div className="list-item-body">
                 <div className="list-item-title">{nameOf(entry.userId)}</div>
               </div>
-              <div className="ledger">
-                {entry.balances.map((b) => (
-                  <div key={b.currencyCode} className={b.amountMinor >= 0 ? "positive" : "negative"}>
-                    {b.amountMinor >= 0 ? "gets back " : "owes "}
-                    <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                  </div>
-                ))}
+              <div>
+                <div className="ledger">
+                  {entry.balances.map((b) => (
+                    <div key={b.currencyCode} className={b.amountMinor >= 0 ? "positive" : "negative"}>
+                      {b.amountMinor >= 0 ? "gets back " : "owes "}
+                      <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
+                    </div>
+                  ))}
+                </div>
+                <EstimatedTotal balances={entry.balances} preferredCurrency={user.defaultCurrency} />
               </div>
             </div>
           ))}
         </div>
       )}
+      <ConversionFootnote
+        sets={balances.map((e) => e.balances)}
+        preferredCurrency={user.defaultCurrency}
+      />
 
       {settle.some((s) => s.transfers.length > 0) && (
         <>
@@ -162,7 +228,7 @@ export function GroupDetail() {
           <div className="card stack">
             <p className="muted" style={{ margin: 0 }}>
               The fewest transfers that clear this group, one set per currency. Nothing is recorded
-              until someone actually pays - use <strong>Settle up</strong> above, which starts
+              until someone actually pays. Use <strong>Settle up</strong> above, which starts
               prefilled with the first of these.
             </p>
             {settle
@@ -213,7 +279,7 @@ export function GroupDetail() {
           <div className="card stack">
             <p className="muted" style={{ margin: 0 }}>
               Anyone with this link can join the group and read every expense in it. Sharing it is
-              the only way in - there is no per-person invite for groups.
+              the only way in; there is no per-person invite for groups.
             </p>
             <code>{group.inviteUrl}</code>
             <div>

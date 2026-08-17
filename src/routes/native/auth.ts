@@ -17,6 +17,7 @@ import {
   createApiToken,
   revokeApiToken,
   SESSION_COOKIE,
+  type AuthenticatedUser,
 } from "../../auth/session.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import {
@@ -136,7 +137,7 @@ authRoutes.post(
     }
 
     // Optional hard gate. Off by default so a misconfigured Postmark cannot
-    // lock you out of a self-hosted server — see EMAIL_VERIFICATION_REQUIRED
+    // lock you out of a self-hosted server. See EMAIL_VERIFICATION_REQUIRED
     // in src/env.ts and the `yarn verify:user` escape hatch.
     if (env.EMAIL_VERIFICATION_REQUIRED && !user.email_verified_at) {
       return c.json(
@@ -161,7 +162,7 @@ authRoutes.post(
 // --- Email verification -----------------------------------------------------
 //
 // ORDER MATTERS. Hono matches in registration order, so /verify/resend must be
-// declared BEFORE /verify/:token — otherwise "resend" is captured as a token
+// declared BEFORE /verify/:token; otherwise "resend" is captured as a token
 // and the resend endpoint becomes unreachable.
 
 /** Re-sends the verification email to the signed-in user. */
@@ -245,20 +246,34 @@ authRoutes.post("/logout", async (c) => {
 });
 
 authRoutes.get("/me", requireAuth, async (c) => {
+  return c.json({ user: meUser(c.get("user")) });
+});
+
+const patchMeSchema = z.object({
+  defaultCurrency: z.string().length(3).toUpperCase(),
+});
+
+authRoutes.patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c) => {
   const auth = c.get("user");
-  return c.json({
-    user: {
-      id: auth.id,
-      email: auth.email,
-      firstName: auth.firstName,
-      lastName: auth.lastName,
-      isGhost: auth.isGhost,
-      defaultCurrency: auth.defaultCurrency,
-      emailVerified: auth.emailVerifiedAt !== null,
-      // Ghosts have no address, so they must never be nagged to confirm one.
-      needsEmailVerification: !auth.isGhost && auth.emailVerifiedAt === null,
-    },
-  });
+  const input = c.req.valid("json");
+
+  const currency = await db
+    .selectFrom("currencies")
+    .select("code")
+    .where("code", "=", input.defaultCurrency)
+    .executeTakeFirst();
+
+  if (!currency) {
+    return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
+  }
+
+  await db
+    .updateTable("users")
+    .set({ default_currency: input.defaultCurrency })
+    .where("id", "=", auth.id)
+    .execute();
+
+  return c.json({ user: meUser({ ...auth, defaultCurrency: input.defaultCurrency }) });
 });
 
 // --- API tokens -------------------------------------------------------------
@@ -293,6 +308,20 @@ authRoutes.delete("/tokens/:id", requireAuth, async (c) => {
   await revokeApiToken(c.req.param("id"), auth.id);
   return c.json({ ok: true });
 });
+
+function meUser(user: AuthenticatedUser) {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    isGhost: user.isGhost,
+    defaultCurrency: user.defaultCurrency,
+    emailVerified: user.emailVerifiedAt !== null,
+    // Ghosts have no address, so they must never be nagged to confirm one.
+    needsEmailVerification: !user.isGhost && user.emailVerifiedAt === null,
+  };
+}
 
 function toPublicUser(user: {
   id: number;

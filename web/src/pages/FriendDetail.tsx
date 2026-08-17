@@ -1,7 +1,7 @@
 /**
  * One friend: what stands between the two of you and everything you've split.
  *
- * Expenses here span every group plus the one-on-one ones - the question "what
+ * Expenses here span every group plus the one-on-one ones; the question "what
  * is between us" does not stop at a group boundary. New expenses added from
  * this screen are one-on-one (no group).
  *
@@ -18,6 +18,7 @@ import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
+import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +29,7 @@ export function FriendDetail() {
   const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const formatMoney = useFormatMoney();
 
   async function load() {
@@ -72,6 +74,15 @@ export function FriendDetail() {
     ...new Set([...owed.map((b) => b.currencyCode), user.defaultCurrency]),
   ];
   const top = owed[0];
+  const selected = settleCurrency
+    ? owed.find((b) => b.currencyCode === settleCurrency)
+    : top;
+  const showSettlePicker = owed.length > 1 && settleCurrency === null;
+
+  function closeSettle() {
+    setOpenDialog(null);
+    setSettleCurrency(null);
+  }
 
   return (
     <>
@@ -105,34 +116,54 @@ export function FriendDetail() {
       <Modal
         open={openDialog === "settle"}
         title={`Settle up with ${name}`}
-        onClose={() => setOpenDialog(null)}
+        onClose={closeSettle}
       >
-        <SettleUpForm
-          className="stack"
-          people={people}
-          currencies={currenciesInPlay}
-          initial={
-            top && {
-              // A positive balance means they owe you, so they are the payer.
-              fromUserId: top.amountMinor > 0 ? friend.id : user.id,
-              toUserId: top.amountMinor > 0 ? user.id : friend.id,
-              amount: formatMoney(Math.abs(top.amountMinor), top.currencyCode) ?? "",
-              currencyCode: top.currencyCode,
+        {showSettlePicker ? (
+          <div className="settle-currency-picker">
+            <p className="muted" style={{ margin: 0 }}>
+              Which balance do you want to settle? A payment only clears that currency.
+            </p>
+            {owed.map((b) => (
+              <button
+                key={b.currencyCode}
+                type="button"
+                className="secondary"
+                onClick={() => setSettleCurrency(b.currencyCode)}
+              >
+                {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
+                <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <SettleUpForm
+            className="stack"
+            people={people}
+            currencies={currenciesInPlay}
+            preferredCurrency={user.defaultCurrency}
+            initial={
+              selected && {
+                // A positive balance means they owe you, so they are the payer.
+                fromUserId: selected.amountMinor > 0 ? friend.id : user.id,
+                toUserId: selected.amountMinor > 0 ? user.id : friend.id,
+                amount: formatMoney(Math.abs(selected.amountMinor), selected.currencyCode) ?? "",
+                currencyCode: selected.currencyCode,
+              }
             }
-          }
-          onSubmit={async (payment) => {
-            await api.createFriendPayment(friendId, {
-              // The friend endpoint takes a direction rather than a pair, since
-              // a one-on-one payment can only run between the two of you.
-              direction: payment.fromUserId === user.id ? "you_paid" : "they_paid",
-              amountMinor: payment.amountMinor,
-              currencyCode: payment.currencyCode,
-              date: payment.date,
-            });
-            setOpenDialog(null);
-            await load();
-          }}
-        />
+            onSubmit={async (payment) => {
+              await api.createFriendPayment(friendId, {
+                // The friend endpoint takes a direction rather than a pair, since
+                // a one-on-one payment can only run between the two of you.
+                direction: payment.fromUserId === user.id ? "you_paid" : "they_paid",
+                amountMinor: payment.amountMinor,
+                currencyCode: payment.currencyCode,
+                date: payment.date,
+              });
+              closeSettle();
+              await load();
+            }}
+          />
+        )}
       </Modal>
 
       <div className="card">
@@ -153,6 +184,9 @@ export function FriendDetail() {
             ))}
           </div>
         )}
+        {friend.balances.length > 1 && (
+          <EstimatedTotal balances={friend.balances} preferredCurrency={user.defaultCurrency} />
+        )}
 
         {friend.breakdown.length > 1 && (
           <ul className="breakdown" style={{ marginTop: "0.6rem" }}>
@@ -168,6 +202,7 @@ export function FriendDetail() {
             ))}
           </ul>
         )}
+        <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
       </div>
 
       <h2>Shared expenses</h2>

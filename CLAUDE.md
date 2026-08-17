@@ -83,6 +83,12 @@ returns an **array**. There is no exchange-rate table and there must not be one 
 netting USD against EUR requires an opinion about which day's rate applies, and
 that does not belong in a ledger.
 
+The web UI may show a labeled ≈ estimate from live Frankfurter rates
+(`web/src/exchangeRates.ts`). That is display-only: rates are fetched in the
+browser, held in memory, and never persisted. If the fetch fails, the estimate
+is omitted. Nothing in `expense_users`, `expense_repayments`, or any balance
+query may use a rate.
+
 ### 3. All expense writes go through `src/domain/expenses.ts`
 
 Nothing else may write `expenses`, `expense_users`, or `expense_repayments`.
