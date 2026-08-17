@@ -8,12 +8,11 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { db, transaction } from "../../db/index.ts";
-import { env } from "../../env.ts";
-import { generateToken } from "../../auth/password.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
 import { createExpense, updateExpense, deleteExpense, createPayment } from "../../domain/expenses.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
+import { revokeMemberLinks } from "../../domain/access-links.ts";
 import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
@@ -66,8 +65,10 @@ groupRoutes.post(
   async (c) => {
     const auth = c.get("user");
     const input = c.req.valid("json");
-    const inviteToken = generateToken(24);
 
+    // No guest link is minted here. Creating a group is not deciding to share
+    // it; the owner mints a link from the group screen when they mean to.
+    // See docs/GUEST.md and POST /api/v1/links.
     const group = await transaction(async (trx) => {
       const created = await trx
         .insertInto("groups")
@@ -77,7 +78,6 @@ groupRoutes.post(
           group_type: input.groupType,
           default_currency: input.defaultCurrency,
           simplify_by_default: input.simplifyByDefault ? 1 : 0,
-          invite_token: inviteToken,
           created_by: auth.id,
         })
         .returning(["id", "name", "group_type", "default_currency"])
@@ -91,10 +91,7 @@ groupRoutes.post(
       return created;
     });
 
-    return c.json(
-      { group, inviteUrl: `${env.APP_ORIGIN}/join/${inviteToken}` },
-      201,
-    );
+    return c.json({ group }, 201);
   },
 );
 
@@ -103,16 +100,14 @@ groupRoutes.get("/:id", async (c) => {
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
 
-  if (!(await assertMember(groupId, auth.id))) {
+  const membership = await assertMember(groupId, auth.id);
+  if (!membership) {
     return c.json({ error: "Not a member of this group" }, 403);
   }
 
   const group = await db
     .selectFrom("groups")
-    .select([
-      "id", "name", "group_type", "default_currency",
-      "simplify_by_default", "invite_token",
-    ])
+    .select(["id", "name", "group_type", "default_currency", "simplify_by_default"])
     .where("id", "=", groupId)
     .where("deleted_at", "is", null)
     .executeTakeFirst();
@@ -132,15 +127,7 @@ groupRoutes.get("/:id", async (c) => {
 
   const balances = await getGroupBalances(db, groupId);
 
-  return c.json({
-    group: {
-      ...group,
-      invite_token: undefined,
-      inviteUrl: group.invite_token ? `${env.APP_ORIGIN}/join/${group.invite_token}` : null,
-    },
-    members,
-    balances,
-  });
+  return c.json({ group, members, balances, role: membership.role });
 });
 
 /** Suggested settle-up transfers, per currency. Presentational only. */
@@ -251,6 +238,164 @@ groupRoutes.post(
     }
   },
 );
+
+/**
+ * Adds someone to a group.
+ *
+ * This exists because opening a link no longer creates a member. Guests pick
+ * among names an account holder put there, so the account holder needs a way
+ * to put them there. Two shapes, one endpoint:
+ *
+ *   { userId }               someone who already exists (a friend, or another
+ *                            member of a group you share)
+ *   { firstName, lastName? } a new PLACEHOLDER person, created here as a ghost
+ *
+ * Re-adding someone who left flips `left_at` back rather than inserting, so
+ * their history in the group stays attached and no balance moves.
+ */
+groupRoutes.post(
+  "/:id/members",
+  zValidator(
+    "json",
+    z.union([
+      z.object({ userId: ulidSchema }),
+      z.object({
+        firstName: z.string().min(1).max(100),
+        lastName: z.string().max(100).optional(),
+      }),
+    ]),
+  ),
+  async (c) => {
+    const auth = c.get("user");
+    const groupId = c.req.param("id");
+    if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
+
+    if (!(await assertMember(groupId, auth.id))) {
+      return c.json({ error: "Not a member of this group" }, 403);
+    }
+
+    const input = c.req.valid("json");
+
+    const userId =
+      "userId" in input
+        ? input.userId
+        : await transaction(async (trx) => {
+            const created = await trx
+              .insertInto("users")
+              .values({
+                id: ulid(),
+                first_name: input.firstName,
+                last_name: input.lastName ?? null,
+                default_currency: (
+                  await trx
+                    .selectFrom("groups")
+                    .select("default_currency")
+                    .where("id", "=", groupId)
+                    .executeTakeFirstOrThrow()
+                ).default_currency,
+                is_ghost: 1,
+              })
+              .returning("id")
+              .executeTakeFirstOrThrow();
+            return created.id;
+          });
+
+    if ("userId" in input) {
+      // You may only pull in someone you can already see. Otherwise this is a
+      // way to attach a stranger's account to your ledger by guessing a ULID.
+      const visible = new Set(await listRelatedUserIds(db, auth.id));
+      if (userId !== auth.id && !visible.has(userId)) {
+        return c.json({ error: "You can only add people you already share history with." }, 400);
+      }
+
+      const target = await db
+        .selectFrom("users")
+        .select("id")
+        .where("id", "=", userId)
+        .where("deleted_at", "is", null)
+        .executeTakeFirst();
+      if (!target) return c.json({ error: "That person does not exist" }, 404);
+    }
+
+    const existing = await db
+      .selectFrom("group_members")
+      .select(["user_id", "left_at"])
+      .where("group_id", "=", groupId)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+
+    if (existing) {
+      if (existing.left_at === null) return c.json({ error: "Already a member" }, 409);
+      await db
+        .updateTable("group_members")
+        .set({ left_at: null })
+        .where("group_id", "=", groupId)
+        .where("user_id", "=", userId)
+        .execute();
+    } else {
+      await db
+        .insertInto("group_members")
+        .values({ group_id: groupId, user_id: userId, role: "member", joined_via: "added" })
+        .execute();
+    }
+
+    const member = await db
+      .selectFrom("users")
+      .select(["id", "first_name", "last_name", "is_ghost"])
+      .where("id", "=", userId)
+      .executeTakeFirstOrThrow();
+
+    return c.json({ member: { ...member, role: "member", joined_via: "added" } }, 201);
+  },
+);
+
+/**
+ * Removes someone from a group.
+ *
+ * A soft removal (`left_at`), never a delete: the expenses they are on are
+ * still real and still owed. Their per-member guest link dies with the
+ * membership, because a revocation that leaves a working door open is not one.
+ * The group's general link is deliberately left alone; switching that off is a
+ * separate decision. See docs/GUEST.md.
+ */
+groupRoutes.delete("/:id/members/:userId", async (c) => {
+  const auth = c.get("user");
+  const groupId = c.req.param("id");
+  const userId = c.req.param("userId");
+  if (!isUlid(groupId) || !isUlid(userId)) return c.json({ error: "Invalid id" }, 400);
+
+  const membership = await assertMember(groupId, auth.id);
+  if (!membership) return c.json({ error: "Not a member of this group" }, 403);
+  if (membership.role !== "owner" && userId !== auth.id) {
+    return c.json({ error: "Only the group owner can remove other people" }, 403);
+  }
+
+  const owners = await db
+    .selectFrom("group_members")
+    .select("user_id")
+    .where("group_id", "=", groupId)
+    .where("role", "=", "owner")
+    .where("left_at", "is", null)
+    .execute();
+
+  if (owners.length === 1 && owners[0]!.user_id === userId) {
+    return c.json({ error: "A group needs an owner. Make someone else the owner first." }, 400);
+  }
+
+  await transaction(async (trx) => {
+    await trx
+      .updateTable("group_members")
+      .set({ left_at: new Date().toISOString() })
+      .where("group_id", "=", groupId)
+      .where("user_id", "=", userId)
+      .where("left_at", "is", null)
+      .execute();
+
+    await revokeMemberLinks(trx, groupId, userId);
+  });
+
+  return c.json({ ok: true });
+});
 
 groupRoutes.post(
   "/:id/payments",

@@ -60,7 +60,7 @@ zero are omitted. Clients index into `balance[0]` and treat an empty array as
 "settled up".
 
 "Friends" is derived from shared groups and shared expenses rather than the
-`friendships` table, so joining a group by invite link immediately makes those
+`friendships` table, so being added to a group immediately makes those
 people visible with no extra step.
 
 ### `GET /get_friend/:id`

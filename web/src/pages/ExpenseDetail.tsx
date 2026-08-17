@@ -4,12 +4,13 @@
  * confirmation and no way to fix a typo instead of redoing the whole thing.
  */
 import { useEffect, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, fullName, type ExpenseDetail as ExpenseDetailData, type Friend } from "../api.ts";
 import { Amount } from "../money.tsx";
 import { makeLookup } from "../ExpenseList.tsx";
 import { EditExpenseDialog } from "../EditExpenseDialog.tsx";
 import { Modal } from "../Modal.tsx";
+import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { useAuth, useSidebarRefresh } from "../App.tsx";
 
 export function ExpenseDetail() {
@@ -64,19 +65,25 @@ export function ExpenseDetail() {
   const nameOf = makeLookup(friends, user.id);
   const title = expense.is_payment === 1 ? "Settle up" : expense.description;
 
+  // The group used to be repeated in the meta line below; the trail carries it
+  // now, and one link per destination is enough.
+  const trail = expense.group_id
+    ? [
+        { label: "Groups", to: "/groups" },
+        { label: expense.group_name ?? "Group", to: `/groups/${expense.group_id}` },
+        { label: title },
+      ]
+    : [{ label: "All expenses", to: "/expenses" }, { label: title }];
+
   return (
     <>
+      <Breadcrumbs trail={trail} />
+
       <div className="page-head">
         <div>
           <h1>{title}</h1>
           <p className="muted" style={{ margin: 0 }}>
             {expense.date.slice(0, 10)}
-            {expense.group_id && (
-              <>
-                {" · "}
-                <Link to={`/groups/${expense.group_id}`}>{expense.group_name}</Link>
-              </>
-            )}
             {expense.category_name && ` · ${expense.category_name}`}
           </p>
         </div>

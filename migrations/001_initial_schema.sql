@@ -61,14 +61,15 @@ CREATE TABLE currencies (
 -- Two kinds of user share this table:
 --
 --   Real users  (is_ghost = 0): have email + password_hash, can log in normally.
---   Ghost users (is_ghost = 1): created by opening a group invite link. No email,
---                               no password. Identity is possession of a session
---                               token, with recovery_code_hash as the only way
---                               back in from another device.
+--   Ghost users (is_ghost = 1): PLACEHOLDER PEOPLE, created by whoever added
+--                               them. No email, no password, and no credential
+--                               of their own. A guest reaches a ghost's data by
+--                               holding an access_links secret that says it may
+--                               act as them. See docs/GUEST.md.
 --
--- A ghost can later be upgraded in place by setting email + password_hash and
--- flipping is_ghost to 0. Upgrading in place (rather than creating a new row and
--- merging) is deliberate: expense history stays attached and balances never move.
+-- A ghost is never upgraded in place. The one path is: create a real account,
+-- then claim the ghost, which MERGES it (src/domain/merge.ts) and retires the
+-- row below.
 CREATE TABLE users (
   id                 TEXT    PRIMARY KEY,      -- ULID; see src/domain/ulid.ts
   -- JSON object. splitwise_id (import matching), notes, and other unindexed
@@ -86,7 +87,13 @@ CREATE TABLE users (
   default_currency   TEXT NOT NULL DEFAULT 'USD' REFERENCES currencies(code),
 
   is_ghost           INTEGER NOT NULL DEFAULT 0,
-  recovery_code_hash TEXT,                     -- ghosts only; same format as password_hash
+
+  -- Set when this row was consumed by a claim (src/domain/merge.ts). Every FK
+  -- that pointed here has been rewritten onto the survivor; this column exists
+  -- so a pointer we MISSED shows up as a stub rather than as a living person
+  -- with a mysteriously empty history. Only ever a tombstone, never a
+  -- participant: the CHECK below refuses one that is not also soft-deleted.
+  merged_into_user_id TEXT REFERENCES users(id),
 
   created_at         TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
@@ -99,7 +106,10 @@ CREATE TABLE users (
   -- A real (non-ghost) account must be able to authenticate.
   CHECK (is_ghost = 1 OR (email IS NOT NULL AND password_hash IS NOT NULL)),
   -- A ghost must not carry credentials it cannot use.
-  CHECK (is_ghost = 0 OR password_hash IS NULL)
+  CHECK (is_ghost = 0 OR password_hash IS NULL),
+  -- A merged row is retired, not alive.
+  CHECK (merged_into_user_id IS NULL OR deleted_at IS NOT NULL),
+  CHECK (merged_into_user_id IS NULL OR merged_into_user_id <> id)
 ) STRICT;
 
 CREATE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
@@ -186,9 +196,11 @@ CREATE INDEX idx_email_tokens_expires_at ON email_tokens(expires_at);
 -- ---------------------------------------------------------------------------
 -- groups
 -- ---------------------------------------------------------------------------
--- invite_token is the shareable secret from the product spec: anyone holding it
--- can join the group and self-create a ghost account. It is rotatable, and
--- rotating it does not affect anyone who already joined.
+-- There is no invite_token here any more. Sharing a group is a row in
+-- access_links (kind = 'group'), which can be revoked, expired, and sits
+-- alongside per-member links rather than being the only door. Opening a link
+-- also no longer creates a member: the owner adds people, guests pick among
+-- the names the owner created. See docs/GUEST.md.
 CREATE TABLE groups (
   id                TEXT    PRIMARY KEY,       -- ULID
   metadata          TEXT    NOT NULL DEFAULT '{}',
@@ -200,9 +212,6 @@ CREATE TABLE groups (
 
   -- Whether to collapse the debt graph when displaying balances.
   simplify_by_default INTEGER NOT NULL DEFAULT 0,
-
-  invite_token      TEXT    UNIQUE,            -- NULL disables joining entirely
-  invite_rotated_at TEXT,
 
   created_by        TEXT    REFERENCES users(id),
   created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -216,7 +225,6 @@ CREATE TABLE groups (
   CHECK (json_type(metadata) = 'object')
 ) STRICT;
 
-CREATE INDEX idx_groups_invite_token ON groups(invite_token) WHERE invite_token IS NOT NULL;
 CREATE UNIQUE INDEX idx_groups_splitwise_id
   ON groups(json_extract(metadata, '$.splitwise_id'))
   WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
@@ -228,17 +236,82 @@ CREATE TABLE group_members (
   group_id   TEXT    NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role       TEXT    NOT NULL DEFAULT 'member',
-  -- How this person got in. 'invite_link' means they self-created a ghost.
+  -- How this person got in. There is no self-service value: opening a guest
+  -- link does not create a member, so every row here was put there by someone
+  -- with an account. See docs/GUEST.md.
   joined_via TEXT    NOT NULL DEFAULT 'added',
   joined_at  TEXT    NOT NULL DEFAULT (datetime('now')),
   left_at    TEXT,
 
   PRIMARY KEY (group_id, user_id),
   CHECK (role IN ('owner', 'member')),
-  CHECK (joined_via IN ('added', 'invite_link', 'import', 'creator'))
+  CHECK (joined_via IN ('added', 'import', 'creator'))
 ) STRICT;
 
 CREATE INDEX idx_group_members_user_id ON group_members(user_id);
+
+-- ---------------------------------------------------------------------------
+-- access_links: the guest credential
+-- ---------------------------------------------------------------------------
+-- THE URL IS THE CREDENTIAL. A guest has no account, no cookie and no session
+-- row; they hold a secret that this table describes the scope of, and it is
+-- re-checked on every single request. That is what makes revocation immediate.
+-- See docs/GUEST.md for the whole model.
+--
+-- Three kinds, one table:
+--
+--   group         bound to a group, acts as whichever ghost member the holder
+--                 picks (and can re-pick). Sees that group only.
+--   group_member  bound to a group AND one ghost. No picker. That group only.
+--   friend        bound to one ghost (created_by is the owner who minted it).
+--                 Sees the owner<->ghost non-group expenses, plus every group
+--                 that ghost belongs to, acting as them.
+--
+-- As everywhere else, only the SHA-256 of the secret is stored; the plaintext
+-- is returned once at mint time and kept by the client. Losing it means
+-- rotating (revoke + mint), not recovering it.
+--
+-- A link may only ever act as a GHOST. Once someone claims that person the row
+-- becomes is_ghost = 0 (in practice merged and soft-deleted), and every link
+-- pointing at them stops resolving on the next request. That check lives in
+-- src/domain/access-links.ts, not here, because it spans tables.
+CREATE TABLE access_links (
+  id           TEXT    PRIMARY KEY,            -- ULID
+  token_hash   TEXT    NOT NULL UNIQUE,        -- sha256 of the secret
+  kind         TEXT    NOT NULL,               -- 'group' | 'group_member' | 'friend'
+  group_id     TEXT    REFERENCES groups(id),
+  user_id      TEXT    REFERENCES users(id),   -- ghost the link acts as; NULL on kind='group'
+  created_by   TEXT    NOT NULL REFERENCES users(id),
+  expires_at   TEXT,                           -- NULL = until revoked
+  revoked_at   TEXT,
+  created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT,
+
+  CHECK (kind IN ('group', 'group_member', 'friend')),
+  CHECK (LENGTH(id) = 26),
+  -- group and group_member need a group; friend does not. group_member and
+  -- friend name the person they act as; the general group link does not.
+  CHECK (
+    (kind = 'friend'       AND group_id IS NULL     AND user_id IS NOT NULL)
+    OR (kind = 'group'        AND group_id IS NOT NULL AND user_id IS NULL)
+    OR (kind = 'group_member' AND group_id IS NOT NULL AND user_id IS NOT NULL)
+  )
+) STRICT;
+
+-- One LIVE link per slot, so "the group's link" is a single thing the owner can
+-- copy, rotate or revoke. Rotation is revoke-then-mint, and a revoked row stays
+-- for the audit trail, which is why these are partial on revoked_at IS NULL.
+-- Expiry is deliberately NOT part of the predicate: `datetime('now')` is not
+-- deterministic and SQLite refuses it in an index.
+CREATE UNIQUE INDEX idx_access_links_live_group
+  ON access_links(group_id) WHERE kind = 'group' AND revoked_at IS NULL;
+CREATE UNIQUE INDEX idx_access_links_live_member
+  ON access_links(group_id, user_id) WHERE kind = 'group_member' AND revoked_at IS NULL;
+CREATE UNIQUE INDEX idx_access_links_live_friend
+  ON access_links(created_by, user_id) WHERE kind = 'friend' AND revoked_at IS NULL;
+
+CREATE INDEX idx_access_links_group_id ON access_links(group_id);
+CREATE INDEX idx_access_links_user_id ON access_links(user_id);
 
 -- ---------------------------------------------------------------------------
 -- friendships

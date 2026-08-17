@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#0e1214" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f9f8" media="(prefers-color-scheme: light)" />
+    <!--
+      The guest shell. No cookie, no Dexie, no sync, and no offline: identity
+      here is a revocable link, and a cached ledger is not revocable. There is
+      deliberately no manifest, so this is not installable either.
+    -->
+    <title>SplitSmart</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/entry-guest.tsx"></script>
+  </body>
+</html>

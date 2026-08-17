@@ -34,7 +34,6 @@
  * and is never persisted. See src/splitwise/client.ts.
  */
 import { db, transaction } from "../db/index.ts";
-import { generateRecoveryCode, normaliseRecoveryCode, hashPassword } from "../auth/password.ts";
 import { parseAmount } from "./money.ts";
 import { createExpense } from "./expenses.ts";
 import { addFriendship, listRelatedUserIds } from "./friends.ts";
@@ -63,11 +62,6 @@ export interface PersonResult {
   email: string | null;
   /** How this person was resolved: the UI shows the email matches explicitly. */
   matchedBy: "splitwise_id" | "email" | "self" | "created";
-  /**
-   * Only for freshly created placeholders, and only once: it is the sole way
-   * that person can ever claim the account. Same contract as POST /friends.
-   */
-  recoveryCode?: string;
 }
 
 export interface SkippedRow {
@@ -166,9 +160,10 @@ export class PersonResolver {
       }
     }
 
-    // Nobody local: create a placeholder, exactly as POST /api/v1/friends does.
-    // The recovery code is generated here or never; only its hash is kept.
-    const recoveryCode = generateRecoveryCode();
+    // Nobody local: create a placeholder person, exactly as POST /friends does
+    // minus the invite. No guest link is minted here: importing your Splitwise
+    // history is not deciding to share it with the people in it. Mint one from
+    // the friend or group screen when you mean to. See docs/GUEST.md.
     const { id, createdAt } = originalInstant(person.created_at);
     const created = await transaction(async (trx) => {
       return trx
@@ -184,13 +179,12 @@ export class PersonResolver {
           email: person.email ?? null,
           default_currency: this.defaultCurrency,
           is_ghost: 1,
-          recovery_code_hash: await hashPassword(normaliseRecoveryCode(recoveryCode)),
         })
         .returning("id")
         .executeTakeFirstOrThrow();
     });
 
-    return { ...this.describe(person, created.id, "created"), recoveryCode };
+    return this.describe(person, created.id, "created");
   }
 
   private describe(
@@ -505,8 +499,8 @@ export async function importGroups(
               group_type: mapGroupType(swGroup.group_type),
               default_currency: owner.default_currency,
               simplify_by_default: swGroup.simplify_by_default ? 1 : 0,
-              // No invite_token: an imported group is not something you have
-              // decided to share yet. Rotate one in from the group screen.
+              // No guest link either: an imported group is not something you
+              // have decided to share yet. Mint one from the group screen.
               created_by: userId,
             })
             .returning("id")

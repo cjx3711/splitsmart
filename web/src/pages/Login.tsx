@@ -4,16 +4,27 @@ import { api } from "../api.ts";
 import { Logo } from "../Logo.tsx";
 import { useAuth } from "../App.tsx";
 
-/** Login, registration, and ghost recovery: three modes, one screen. */
+/**
+ * Log in or create an account. Two modes, one screen.
+ *
+ * There used to be a third, "recover", where a ghost typed a code to get back
+ * into a placeholder account. That is gone: a guest's credential is the invite
+ * URL itself, which the owner can revoke, and turning a placeholder into a real
+ * account is a claim rather than a login. See docs/GUEST.md.
+ *
+ * `?next=` is honoured because the claim flow depends on it: the guest banner
+ * sends people here to register and they have to come back to the same URL,
+ * still carrying the link secret, or the claim cannot be authorised.
+ */
 export function Login() {
   const [searchParams] = useSearchParams();
-  const [mode, setMode] = useState<"login" | "register" | "recover">(
+  const [mode, setMode] = useState<"login" | "register">(
     searchParams.has("register") ? "register" : "login",
   );
+  const next = searchParams.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
-  const [recoveryCode, setRecoveryCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,18 +37,14 @@ export function Login() {
     setBusy(true);
 
     try {
-      if (mode === "login") {
-        const { user } = await api.login(email, password);
-        setUser(user);
-      } else if (mode === "register") {
-        const { user } = await api.register({ email, password, firstName });
-        setUser(user);
-      } else {
-        await api.recover(recoveryCode);
-        const { user } = await api.me();
-        setUser(user);
-      }
-      navigate("/");
+      const { user } =
+        mode === "login"
+          ? await api.login(email, password)
+          : await api.register({ email, password, firstName });
+      setUser(user);
+      // Only in-app paths, never an absolute URL: `next` comes from the query
+      // string, so an unchecked value here would be an open redirect.
+      navigate(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -48,86 +55,57 @@ export function Login() {
   return (
     <div className="auth stack">
       <Logo size={30} />
-      <h1>
-        {mode === "login" ? "Log in" : mode === "register" ? "Create account" : "Recover access"}
-      </h1>
+      <h1>{mode === "login" ? "Log in" : "Create account"}</h1>
 
       <form onSubmit={handleSubmit} className="stack">
         {error && <p className="error">{error}</p>}
 
-        {mode === "recover" ? (
+        {mode === "register" && (
           <div>
-            <label htmlFor="recovery">Recovery code</label>
+            <label htmlFor="firstName">Name</label>
             <input
-              id="recovery"
-              value={recoveryCode}
-              onChange={(e) => setRecoveryCode(e.target.value)}
-              placeholder="K7M2-9QXR-4TWP"
+              id="firstName"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               required
             />
-            <p className="field-hint">
-              The code you were shown when you joined a group, or the one in a friend invite.
-            </p>
           </div>
-        ) : (
-          <>
-            {mode === "register" && (
-              <div>
-                <label htmlFor="firstName">Name</label>
-                <input
-                  id="firstName"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  required
-                />
-              </div>
-            )}
-            <div>
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-                required
-              />
-              {mode === "register" && <p className="field-hint">At least 8 characters.</p>}
-            </div>
-          </>
         )}
+        <div>
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+          {mode === "register" && <p className="field-hint">At least 8 characters.</p>}
+        </div>
 
         <button type="submit" disabled={busy}>
-          {busy ? "Working…" : mode === "login" ? "Log in" : mode === "register" ? "Create account" : "Recover"}
+          {busy ? "Working…" : mode === "login" ? "Log in" : "Create account"}
         </button>
       </form>
 
       <div className="stack" style={{ marginTop: "0.5rem", alignItems: "flex-start" }}>
-        {mode !== "register" && (
-          <button className="link" onClick={() => setMode("register")}>
-            Create an account
-          </button>
-        )}
-        {mode !== "login" && (
-          <button className="link" onClick={() => setMode("login")}>
-            Log in instead
-          </button>
-        )}
-        {mode !== "recover" && (
-          <button className="link" onClick={() => setMode("recover")}>
-            Use a recovery code
-          </button>
-        )}
+        <button className="link" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+          {mode === "login" ? "Create an account" : "Log in instead"}
+        </button>
+        <p className="field-hint" style={{ margin: 0 }}>
+          Sent a guest link? Open that link instead; it needs no account.
+        </p>
       </div>
     </div>
   );

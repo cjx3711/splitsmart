@@ -117,7 +117,7 @@ function assertReasonable(password: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Opaque tokens (sessions, API tokens, invite links, recovery codes)
+// Opaque tokens (sessions, API tokens, guest access links, email tokens)
 // ---------------------------------------------------------------------------
 
 /**
@@ -139,19 +139,11 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("base64url");
 }
 
-/**
- * Generates a human-transcribable recovery code for ghost accounts, e.g.
- * "K7M2-9QXR-4TWP". Avoids characters that get misread when typed by hand.
+/*
+ * There is deliberately no recovery-code generator here any more.
+ *
+ * Ghosts used to carry a hand-transcribable second credential nobody asked for.
+ * A guest's credential is now the invite URL itself (src/domain/access-links.ts),
+ * which the owner can expire or revoke and which needs no typing. See
+ * docs/GUEST.md, "Why this replaces recovery codes".
  */
-export function generateRecoveryCode(): string {
-  const alphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"; // no 0/O/1/I/L
-  const bytes = randomBytes(12);
-  const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);
-  return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8, 12)]
-    .map((g) => g.join(""))
-    .join("-");
-}
-
-export function normaliseRecoveryCode(input: string): string {
-  return input.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-}

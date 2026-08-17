@@ -321,8 +321,14 @@ describe("friends", () => {
     const carol = body.people.find((p: any) => p.email === "carol@example.com");
     assert.equal(carol.matchedBy, "created");
     assert.ok(isUlid(carol.localUserId));
-    // Same contract as POST /friends: shown once, or never again.
-    assert.match(carol.recoveryCode, /\S/);
+    // No guest link is minted by an import. Bringing your history across is
+    // not deciding to share it with the people in it. See docs/GUEST.md.
+    const links = await db
+      .selectFrom("access_links")
+      .select("id")
+      .where("user_id", "=", carol.localUserId)
+      .execute();
+    assert.deepEqual(links, []);
 
     const carolRow = await db
       .selectFrom("users")
@@ -388,7 +394,6 @@ describe("groups", () => {
     assert.equal(splitwiseIdOf(group.metadata), 3001);
     assert.equal(group.group_type, "home");
     assert.equal(group.simplify_by_default, 1);
-    assert.equal(group.invite_token, null, "an imported group is not shared until you share it");
 
     const members = await db
       .selectFrom("group_members")

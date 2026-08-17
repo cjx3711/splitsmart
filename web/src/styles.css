@@ -338,6 +338,80 @@ h3 {
   font-size: 0.875rem;
 }
 
+/* --- breadcrumbs ----------------------------------------------------------
+ *
+ * Sits above .page-head on any screen that has a parent. One row, and it
+ * scrolls sideways rather than wrapping: a long group name pushing the page
+ * title down the screen is worse than a trail you have to nudge.
+ */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.crumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.crumbs ol {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.crumbs li + li::before {
+  content: "/";
+  margin-right: 0.4rem;
+  color: var(--border-strong);
+}
+
+.crumbs a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* The back arrow needs a real tap target; the text trail alone is too thin. */
+.crumbs-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-left: -0.25rem;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.crumbs-back:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* The current page is already the <h1> underneath; dim it so the trail reads
+   as context rather than competing with the title. */
+.crumbs [aria-current="page"] {
+  color: var(--text);
+}
+
 .page-head {
   display: flex;
   align-items: center;
@@ -1942,4 +2016,105 @@ code {
   .topbar-public {
     display: none;
   }
+}
+
+/* --- guest shell and access links ----------------------------------------
+ *
+ * Shared between the guest app (/guest) and the owner's link panel in the
+ * logged-in app, because they are two views of the same object: a revocable
+ * URL that stands in for an account. See docs/GUEST.md.
+ */
+
+/* Says "you are not logged in" without shouting it on every screen. */
+.guest-chip {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+}
+
+.guest-banner {
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/*
+ * A pickable name. Buttons default to full-width accent in this stylesheet,
+ * which is right for a submit and very wrong for a row in a list, so this
+ * resets it back to looking like the .list-item it sits inside.
+ */
+button.guest-pick {
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  text-align: left;
+  font-weight: inherit;
+  font-size: inherit;
+  padding: 0.75rem 1rem;
+}
+
+button.guest-pick:hover:not(:disabled) {
+  background: var(--surface-2);
+  filter: none;
+}
+
+button.guest-pick.selected {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* One row per link slot, whether or not a link exists for it yet. */
+.link-slot {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.link-slot:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.link-slot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.link-slot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Shown exactly once, so it has to be selectable and fully visible. */
+.link-url {
+  display: block;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  user-select: all;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
 }

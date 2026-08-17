@@ -100,7 +100,9 @@ export async function issueVerificationToken(userId: string): Promise<IssueOutco
 
   const message = verificationEmail({
     firstName: user.first_name,
-    verifyUrl: `${env.APP_ORIGIN}/verify/${token}`,
+    // Under /app: the verification screen is part of the logged-in shell.
+    // See docs/GUEST.md, "Two shells".
+    verifyUrl: `${env.APP_ORIGIN}/app/verify/${token}`,
     expiresInHours: TOKEN_TTL_HOURS,
   });
 

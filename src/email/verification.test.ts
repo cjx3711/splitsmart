@@ -279,46 +279,32 @@ describe("resend", () => {
 });
 
 describe("ghosts", () => {
-  test("have nothing to verify", async () => {
-    const groupId = ulid();
+  /**
+   * A ghost is a PLACEHOLDER PERSON, not an account. They have no session, no
+   * password, and often an address someone else typed in for them. That address
+   * must never turn into a nag, and must never become a verified login without
+   * a claim. See docs/GUEST.md.
+   */
+  test("issueVerificationToken reports no_email, even for a ghost carrying one", async () => {
+    const withoutEmail = ulid();
     await db
-      .insertInto("groups")
+      .insertInto("users")
+      .values({ id: withoutEmail, first_name: "Ghosty", is_ghost: 1 })
+      .execute();
+
+    const withEmail = ulid();
+    await db
+      .insertInto("users")
       .values({
-        id: groupId,
-        name: "Ghost Group",
-        default_currency: "USD",
-        invite_token: "ghost-test-token",
+        id: withEmail,
+        first_name: "Invited",
+        email: "invited-ghost@example.com",
+        is_ghost: 1,
       })
       .execute();
 
-    const joinRes = await app.request("/api/v1/invite/ghost-test-token/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName: "Ghosty" }),
-    });
-    assert.equal(joinRes.status, 201);
-    const cookie = joinRes.headers.get("set-cookie")?.split(";")[0] ?? "";
-
-    const me = await app.request("/api/v1/auth/me", { headers: { Cookie: cookie } });
-    const body = (await me.json()) as { user: { needsEmailVerification: boolean } };
-    // A guest with no address must never be nagged to confirm one.
-    assert.equal(body.user.needsEmailVerification, false);
-
-    const resend = await app.request("/api/v1/auth/verify/resend", {
-      method: "POST",
-      headers: { Cookie: cookie },
-    });
-    assert.equal(resend.status, 400);
-  });
-
-  test("issueVerificationToken reports no_email for a ghost", async () => {
-    const ghost = await db
-      .selectFrom("users")
-      .select("id")
-      .where("is_ghost", "=", 1)
-      .executeTakeFirstOrThrow();
-
-    assert.deepEqual(await issueVerificationToken(ghost.id), { status: "no_email" });
+    assert.deepEqual(await issueVerificationToken(withoutEmail), { status: "no_email" });
+    assert.deepEqual(await issueVerificationToken(withEmail), { status: "no_email" });
   });
 });
 

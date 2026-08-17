@@ -41,7 +41,7 @@ interface Outcome {
   expensesImported: number;
   expensesAlreadyPresent: number;
   skipped: ImportSkip[];
-  /** Placeholders created this run, with their one-time recovery codes. */
+  /** Placeholders created this run. They get no guest link; see the note below. */
   newPeople: ImportPerson[];
 }
 
@@ -99,7 +99,7 @@ export function Import() {
         expensesImported: 0,
         expensesAlreadyPresent: 0,
         skipped: [],
-        newPeople: [...friends.people, ...groups.people].filter((p) => p.recoveryCode),
+        newPeople: [...friends.people, ...groups.people].filter((p) => p.matchedBy === "created"),
       };
 
       // Paged rather than one long request: progress is real, and a failure
@@ -373,18 +373,18 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
 
       {outcome.newPeople.length > 0 && (
         <div className="card stack">
-          <strong>Invite codes for the people just created ({outcome.newPeople.length})</strong>
+          <strong>People created ({outcome.newPeople.length})</strong>
           <p className="muted" style={{ margin: 0 }}>
-            These are shown once and cannot be retrieved again; only their hashes are stored. Send
-            someone their link and they can claim their account with all their history intact.
+            These are placeholders, with no way in yet. Importing your history is
+            not the same as deciding to share it, so no guest links were made.
+            Open someone's friend page and create one when you want them to see
+            what you have split.
           </p>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {outcome.newPeople.map((person) => (
               <li key={person.splitwiseId} style={{ marginBottom: "0.4rem" }}>
                 {person.name}
                 {person.email && <span className="muted"> · {person.email}</span>}
-                <br />
-                <code>{`${window.location.origin}/accept/${person.recoveryCode}`}</code>
               </li>
             ))}
           </ul>

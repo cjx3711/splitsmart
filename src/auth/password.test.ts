@@ -6,8 +6,6 @@ import {
   needsRehash,
   generateToken,
   hashToken,
-  generateRecoveryCode,
-  normaliseRecoveryCode,
   PasswordError,
 } from "./password.ts";
 
@@ -79,17 +77,4 @@ describe("tokens", () => {
     assert.notEqual(hashToken(token), token);
   });
 
-  test("recovery codes avoid ambiguous characters", () => {
-    for (let i = 0; i < 50; i++) {
-      const code = generateRecoveryCode();
-      assert.match(code, /^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
-      assert.equal(code.includes("O"), false);
-      assert.equal(code.includes("I"), false);
-    }
-  });
-
-  test("recovery code normalisation is forgiving", () => {
-    assert.equal(normaliseRecoveryCode(" k7m2-9qxr-4twp "), "K7M29QXR4TWP");
-    assert.equal(normaliseRecoveryCode("K7M2 9QXR 4TWP"), "K7M29QXR4TWP");
-  });
 });

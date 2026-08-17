@@ -1,0 +1,18 @@
+{
+  "name": "SplitSmart",
+  "short_name": "SplitSmart",
+  "description": "A self-hosted shared ledger for splitting expenses.",
+  "start_url": "/app",
+  "scope": "/app/",
+  "display": "standalone",
+  "background_color": "#0e1214",
+  "theme_color": "#0e1214",
+  "icons": [
+    {
+      "src": "/splitsmart.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

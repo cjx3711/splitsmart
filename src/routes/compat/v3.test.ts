@@ -84,7 +84,7 @@ before(async () => {
     .insertInto("group_members")
     .values([
       { group_id: groupId, user_id: aliceId, role: "owner", joined_via: "creator" },
-      { group_id: groupId, user_id: bobId, role: "member", joined_via: "invite_link" },
+      { group_id: groupId, user_id: bobId, role: "member", joined_via: "added" },
     ])
     .execute();
 

@@ -10,9 +10,10 @@ splitting, and the API surface under your own control.
 
 Two differences from Splitwise, both deliberate:
 
-- **Group invite links.** Each group has a secret link. Anyone who opens it can
-  join and create a guest account; no email, no password. One real account is
-  enough for a whole group.
+- **Guest links.** Share a group, or one person's view of it, as a URL. Whoever
+  opens it uses the app with no email and no password, and you can switch the
+  link off whenever you like. One real account is enough for a whole group.
+  See [docs/GUEST.md](docs/GUEST.md).
 - **Self-hosted.** Single Node process, single SQLite file, one container.
 
 ## Quick start
@@ -42,7 +43,7 @@ API on `http://localhost:5545`, frontend on `http://localhost:5173`.
 To explore the UI with sample friends, groups, and expenses instead of an empty
 account:
 
-1. Register an account at `/login?register` (or use any email you prefer).
+1. Register an account at `/app/login?register` (or use any email you prefer).
 2. Seed demo data for that account:
 
 ```bash
@@ -50,9 +51,10 @@ yarn seed:demo                  # defaults to test@example.com
 yarn seed:demo -- you@example.com
 ```
 
-This creates ghost users, two groups (a Tokyo trip in JPY and a shared apartment
-in USD), six expenses, and one settlement payment. It is idempotent: if the
-account already has expenses, the script skips.
+This creates placeholder people, two groups (a Tokyo trip in JPY and a shared
+apartment in USD), six expenses, one settlement payment, and two guest links it
+prints once. It is idempotent: if the account already has expenses, the script
+skips.
 
 After `yarn db:reset`, register again and re-run `yarn seed:demo`.
 
@@ -101,16 +103,19 @@ yarn build           # production build
   financial data correct. Read this before changing anything.
 - [docs/PLAN.md](docs/PLAN.md): roadmap toward full API parity
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md): schema reasoning
+- [docs/GUEST.md](docs/GUEST.md): guest links, the two shells, and claiming
+- [docs/OFFLINE.md](docs/OFFLINE.md): the offline-first plan for `/app`
 - [docs/SPLITWISE_COMPAT.md](docs/SPLITWISE_COMPAT.md): endpoint reference
 
 ## Status
 
-Working: accounts, groups, invite links and guest accounts, equal-split expenses,
-per-currency balances, settle-up suggestions, API tokens, and the six
+Working: accounts, groups, friends, all six split types with an editor, one-on-one
+expenses, per-currency balances, settle-up suggestions, guest links and claiming,
+the Splitwise importer, email verification, API tokens, and the six
 Splitwise-compatible endpoints.
 
-Not yet: expense editing UI, non-equal split UI, one-on-one expenses, the
-Splitwise importer, email. See [docs/PLAN.md](docs/PLAN.md).
+Not yet: offline writes and sync for `/app` (see [docs/OFFLINE.md](docs/OFFLINE.md)),
+group invites by email, password reset. See [docs/PLAN.md](docs/PLAN.md).
 
 ## License
 

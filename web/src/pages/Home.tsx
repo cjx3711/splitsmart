@@ -101,16 +101,16 @@ export function Home() {
             single trip, someone can just send you a link.
           </p>
           <div className="mkt-cta">
-            <Link to="/login?register" className="mkt-btn">
+            <a href="/app/login?register" className="mkt-btn">
               Create an account
-            </Link>
-            <Link to="/login" className="mkt-btn mkt-btn-ghost">
+            </a>
+            <a href="/app/login" className="mkt-btn mkt-btn-ghost">
               Log in
-            </Link>
+            </a>
           </div>
           <p className="mkt-fine">
-            Or open a group invite link and pick a name. That&apos;s the whole
-            signup.
+            Or open a link someone sends you and pick your name. No signup at
+            all.
           </p>
         </div>
 
@@ -160,9 +160,10 @@ export function Home() {
           <article className="mkt-tile">
             <h2>No account for a one-off trip</h2>
             <p>
-              Send people a group link. They join with a display name, no email
-              and no password. Everyone gets a recovery code in case they need
-              the same ledger on a second phone.
+              Send someone a guest link and they are in: no email, no password,
+              nothing to install. The link is the credential, so you can expire
+              it or switch it off whenever you like. If they later want an
+              account, it folds their history straight into it.
             </p>
           </article>
           <article className="mkt-tile">
@@ -262,7 +263,7 @@ export function Home() {
           The longer version of why this exists is on the{" "}
           <Link to="/about">about page</Link>, and the endpoints are in the{" "}
           <Link to="/docs">API docs</Link>. If you just want to split a bill,{" "}
-          <Link to="/login?register">make an account</Link> or wait for someone
+          <a href="/app/login?register">make an account</a> or wait for someone
           to send you a group link.
         </p>
       </section>

@@ -36,7 +36,8 @@ export interface UsersTable {
   avatar_url: string | null;
   default_currency: Generated<string>;
   is_ghost: Generated<number>;
-  recovery_code_hash: string | null;
+  /** Tombstone left by a claim. Non-null implies deleted_at. See src/domain/merge.ts. */
+  merged_into_user_id: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
   deleted_at: string | null;
@@ -63,6 +64,21 @@ export interface ApiTokensTable {
   revoked_at: string | null;
 }
 
+export interface AccessLinksTable {
+  id: string;
+  token_hash: string;
+  /** 'group' | 'group_member' | 'friend'. See src/domain/access-links.ts. */
+  kind: string;
+  group_id: string | null;
+  /** The ghost this link acts as. NULL only for kind = 'group'. */
+  user_id: string | null;
+  created_by: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: Generated<string>;
+  last_used_at: string | null;
+}
+
 export interface GroupsTable {
   id: string;
   /** JSON object. See src/domain/metadata.ts. */
@@ -72,8 +88,6 @@ export interface GroupsTable {
   default_currency: Generated<string>;
   avatar_url: string | null;
   simplify_by_default: Generated<number>;
-  invite_token: string | null;
-  invite_rotated_at: string | null;
   created_by: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;
@@ -182,6 +196,7 @@ export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
   api_tokens: ApiTokensTable;
+  access_links: AccessLinksTable;
   groups: GroupsTable;
   group_members: GroupMembersTable;
   friendships: FriendshipsTable;
@@ -203,6 +218,8 @@ export type NewGroup = Insertable<GroupsTable>;
 
 export type Expense = Selectable<ExpensesTable>;
 export type NewExpense = Insertable<ExpensesTable>;
+
+export type AccessLink = Selectable<AccessLinksTable>;
 
 export type ExpenseUser = Selectable<ExpenseUsersTable>;
 export type Category = Selectable<CategoriesTable>;

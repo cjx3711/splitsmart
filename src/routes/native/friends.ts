@@ -8,15 +8,17 @@
  *
  * ADDING A FRIEND CREATES A GHOST. There is no pending-invitation table and no
  * placeholder record: the person you add is a real row in `users` from the
- * start, so an expense can name them immediately. If they later accept, the
- * ghost is upgraded in place by POST /invite/claim and no balance moves.
+ * start, so an expense can name them immediately. If they later take the
+ * account over, that is a CLAIM: they register, then merge the ghost into their
+ * new account (src/routes/native/claim.ts). No balance moves either way.
+ *
+ * The invite is a guest link (`/guest/l/<secret>`), not a recovery code. It is
+ * revocable, it expires if the owner says so, and it needs no transcription.
  */
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { db, transaction } from "../../db/index.ts";
-import { env } from "../../env.ts";
-import { generateRecoveryCode, normaliseRecoveryCode, hashPassword } from "../../auth/password.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import {
   getPairwiseBalances,
@@ -31,9 +33,11 @@ import {
   listRelatedUserIds,
 } from "../../domain/friends.ts";
 import { createExpense, createPayment } from "../../domain/expenses.ts";
+import { mintAccessLink } from "../../domain/access-links.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
+import { env } from "../../env.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 
 export const friendRoutes = new Hono<AppEnv>();
@@ -155,7 +159,8 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     const invite = friendInviteEmail({
       firstName: existing.first_name,
       inviterName: auth.firstName,
-      acceptUrl: env.APP_ORIGIN,
+      // They already have an account, so the invite is just the front door.
+      acceptUrl: `${env.APP_ORIGIN}/app`,
       isNewAccount: false,
     });
     const delivery = existing.email ? await sendEmail({ to: existing.email, ...invite }) : null;
@@ -179,13 +184,10 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     );
   }
 
-  // Every new friend gets a recovery code, whether or not we can email it. It
-  // is the only route back into a ghost account, and generating it lazily later
-  // is impossible; the hash is all we keep.
-  const recoveryCode = generateRecoveryCode();
-
-  const friend = await transaction(async (trx) => {
-    return trx
+  // A placeholder person plus the guest link that reaches them, minted
+  // together so the address we invite them at always has somewhere to go.
+  const { friend, inviteUrl } = await transaction(async (trx) => {
+    const created = await trx
       .insertInto("users")
       .values({
         id: ulid(),
@@ -197,10 +199,17 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
         email: input.email ?? null,
         default_currency: auth.defaultCurrency,
         is_ghost: 1,
-        recovery_code_hash: await hashPassword(normaliseRecoveryCode(recoveryCode)),
       })
       .returning(["id", "email", "first_name", "last_name", "is_ghost"])
       .executeTakeFirstOrThrow();
+
+    const link = await mintAccessLink(trx, {
+      kind: "friend",
+      userId: created.id,
+      createdBy: auth.id,
+    });
+
+    return { friend: created, inviteUrl: link.url };
   });
 
   await addFriendship(db, auth.id, friend.id);
@@ -210,7 +219,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     const invite = friendInviteEmail({
       firstName: friend.first_name,
       inviterName: auth.firstName,
-      acceptUrl: `${env.APP_ORIGIN}/accept/${recoveryCode}`,
+      acceptUrl: inviteUrl,
       isNewAccount: true,
     });
     const delivery = await sendEmail({ to: input.email, ...invite });
@@ -222,9 +231,11 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
       friend: { ...friend, is_explicit: 1, balances: [], breakdown: [] },
       existingAccount: false,
       emailDelivered,
-      // Shown once. With no email configured this is the only way to hand the
-      // account over, so the UI must surface it rather than discard it.
-      recoveryCode,
+      // Returned once, and only ever the hash is stored. With no mail provider
+      // configured this is the only way to hand the link over, so the UI has to
+      // surface it rather than discard it. Losing it means rotating, not
+      // recovering: POST /api/v1/links.
+      inviteUrl,
     },
     201,
   );

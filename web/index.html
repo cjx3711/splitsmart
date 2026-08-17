@@ -6,10 +6,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#0e1214" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f6f9f8" media="(prefers-color-scheme: light)" />
+    <!--
+      The public shell: landing, about, API docs. Deliberately NOT the PWA and
+      deliberately not the app: no session lookup, no service worker, nothing
+      to install. The app lives at /app and the guest shell at /guest.
+    -->
     <title>SplitSmart</title>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/entry-marketing.tsx"></script>
   </body>
 </html>

@@ -7,11 +7,12 @@
  *   yarn seed:demo
  *   yarn seed:demo -- alice@example.com
  */
-import { generateToken, hashPassword } from "../src/auth/password.ts";
+import { hashPassword } from "../src/auth/password.ts";
 import { createExpense, createPayment } from "../src/domain/expenses.ts";
 import { addFriendship } from "../src/domain/friends.ts";
+import { mintAccessLink } from "../src/domain/access-links.ts";
 import { ulid } from "../src/domain/ulid.ts";
-import { db } from "../src/db/index.ts";
+import { db, transaction } from "../src/db/index.ts";
 import { env } from "../src/env.ts";
 
 const DEFAULT_EMAIL = "test@example.com";
@@ -115,7 +116,6 @@ async function main(): Promise<void> {
         group_type: "trip",
         default_currency: "JPY",
         simplify_by_default: 0,
-        invite_token: generateToken(24),
         created_by: user.id,
       },
       {
@@ -124,7 +124,6 @@ async function main(): Promise<void> {
         group_type: "home",
         default_currency: "USD",
         simplify_by_default: 1,
-        invite_token: generateToken(24),
         created_by: user.id,
       },
     ])
@@ -134,11 +133,11 @@ async function main(): Promise<void> {
     .insertInto("group_members")
     .values([
       { group_id: tripGroupId, user_id: user.id, role: "owner", joined_via: "creator" },
-      { group_id: tripGroupId, user_id: jamieId, role: "member", joined_via: "invite_link" },
-      { group_id: tripGroupId, user_id: samId, role: "member", joined_via: "invite_link" },
-      { group_id: tripGroupId, user_id: alexId, role: "member", joined_via: "invite_link" },
+      { group_id: tripGroupId, user_id: jamieId, role: "member", joined_via: "added" },
+      { group_id: tripGroupId, user_id: samId, role: "member", joined_via: "added" },
+      { group_id: tripGroupId, user_id: alexId, role: "member", joined_via: "added" },
       { group_id: apartmentGroupId, user_id: user.id, role: "owner", joined_via: "creator" },
-      { group_id: apartmentGroupId, user_id: jamieId, role: "member", joined_via: "invite_link" },
+      { group_id: apartmentGroupId, user_id: jamieId, role: "member", joined_via: "added" },
     ])
     .execute();
 
@@ -253,11 +252,23 @@ async function main(): Promise<void> {
     createdBy: user.id,
   });
 
+  // Two guest links, so the /guest shell is reachable straight after seeding.
+  // Printed rather than stored: only the hash is kept, exactly as in the app.
+  const groupLink = await transaction((trx) =>
+    mintAccessLink(trx, { kind: "group", groupId: tripGroupId, createdBy: user.id }),
+  );
+  const friendLink = await transaction((trx) =>
+    mintAccessLink(trx, { kind: "friend", userId: alexId, createdBy: user.id }),
+  );
+
   console.log(`Seeded demo data for ${email} (${user.first_name}):`);
   console.log(`  Login:    ${email} / ${DEFAULT_PASSWORD}`);
-  console.log("  Friends:  Sam Rivera (real, explicit), Jamie Lee (real, via groups), Alex Kim (guest)");
+  console.log("  Friends:  Sam Rivera (real, explicit), Jamie Lee (real, via groups), Alex Kim (placeholder)");
   console.log("  Groups:   Weekend in Tokyo (4 people), Apartment 4B (2 people)");
   console.log("  Expenses: 6 expenses + 1 payment across USD and JPY");
+  console.log("  Guest links (shown once; only their hashes are stored):");
+  console.log(`    group  ${groupLink.url}`);
+  console.log(`    friend ${friendLink.url}`);
 }
 
 main().catch((err) => {

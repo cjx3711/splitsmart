@@ -82,9 +82,11 @@ export function About() {
           database has no credentials to anyone&apos;s Splitwise account in it.
         </li>
         <li>
-          Anyone with a group invite link can join that group and read every
-          expense in it. Rotating the link stops new joins, but it doesn&apos;t
-          remove people who already got in.
+          Anyone holding a guest link can read and edit the expenses it covers,
+          as whichever placeholder person it acts as. That is the point of it,
+          so share one the way you would share the group itself. Turning a link
+          off takes effect on the very next tap, because the secret is checked
+          on every request.
         </li>
       </ul>
     </article>

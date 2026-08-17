@@ -15,7 +15,7 @@ writes back when the connection returns — with an honest unsynced count and
 last-synced time in the UI.
 
 **Link access is not part of this.** A person who is in the app because they
-opened a group invite link (per-member or the shared group link) has no local
+opened a guest link (`docs/GUEST.md`, any of the three kinds) has no local
 ledger, no outbox, and no offline UI. No network means it does not work. The
 link secret in `localStorage` is only so the next *online* visit can present
 the same credential; it is not a cache of financial data. Do not open a Dexie
@@ -59,14 +59,15 @@ must show a clear "needs connection" state rather than queueing.
 |---|---|
 | Read every group, friend, expense, balance | **Adding a friend** |
 | Create an expense (people you already know) | **Creating a group** |
-| Edit an expense | Group invite links / rotation / expiry |
+| Edit an expense | Guest links: mint / rotate / revoke |
 | Delete an expense (soft) | Splitwise import |
-| Record a payment / settle up | Email verification, API tokens, account claim |
-| Settle-up suggestions (derived locally) | Login, register |
-| | **Anything a link-access visitor does** |
+| Record a payment / settle up | Email verification, API tokens, claiming |
+| Settle-up suggestions (derived locally) | **Adding a group member** |
+| | Login, register |
+| | **Anything a guest-link visitor does** |
 
 **Why friends and groups are online-only.** `POST /api/v1/friends` creates a
-placeholder user server-side. `POST /api/v1/groups` mints invite link secrets.
+placeholder user server-side, and so does `POST /api/v1/groups/:id/members`.
 Queueing either means the client inventing user or group identities that later
 have to be reconciled — and for friends, reconciled *by email*, which is the
 one heuristic `src/domain/import.ts` deliberately gates behind a named preview
@@ -501,8 +502,9 @@ switching accounts cannot mix two ledgers. Link-access visitors never open
 this database (see "Link access is online-only").
 
 Local groups need `default_currency` and `simplify_by_default` (settle-up uses
-them), not just `id, name`. Do not store `invite_token` in Dexie; the live
-payload already swaps it for `inviteUrl`, and invite rotation is online-only.
+them), not just `id, name`. Nothing from `access_links` goes in Dexie: the API
+never returns a secret after minting, and minting, rotating and revoking are
+all online-only.
 
 ### The outbox
 
@@ -632,7 +634,7 @@ App-specific points:
 - **Precache the shell only. Never cache `/api` responses in the service
   worker.** The local database is the offline read path; a second, dumber cache
   in front of the API is how you end up showing a stale balance that nothing in
-  the app can explain or invalidate. It is also how a revoked invite link would
+  the app can explain or invalidate. It is also how a revoked guest link would
   keep showing the group. Do not glob `json` — that is how API responses sneak
   in.
 - **Scope the logged-in SW to `/app/`.** Guest lives at `/guest/` with its own

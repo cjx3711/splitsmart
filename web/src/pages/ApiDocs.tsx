@@ -65,8 +65,8 @@ export function ApiDocs() {
       <Endpoint method="POST" path="/api/v1/auth/login" auth="public">
         <Code>{`{ "email": "you@example.com", "password": "…" }`}</Code>
         <p>
-          <code>200</code> with <code>{`{ user }`}</code>. Ghosts cannot log in
-          this way; they use a recovery code.
+          <code>200</code> with <code>{`{ user }`}</code>. Placeholder people
+          (ghosts) cannot log in at all; a guest link acts as them instead.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/auth/logout" auth="public">
@@ -145,14 +145,27 @@ export function ApiDocs() {
               <code>{type}</code>
             </span>
           ))}
-          . <code>201</code> with <code>{`{ group, inviteUrl }`}</code>.
+          . <code>201</code> with <code>{`{ group }`}</code>. Creating a group
+          does not share it; mint a guest link when you mean to.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/groups/:id">
         <p>
-          <code>{`{ group, members, balances }`}</code>.{" "}
-          <code>group.inviteUrl</code> is the join link; the raw token is not
-          sent.
+          <code>{`{ group, members, balances, role }`}</code>. <code>role</code>{" "}
+          is the caller&apos;s own; only an owner may mint or revoke links.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/groups/:id/members">
+        <Code>{`{ "userId": "01ARZ…" }  or  { "firstName": "Jordan" }`}</Code>
+        <p>
+          Adds an existing person, or creates a new placeholder. Opening a link
+          does not create members; someone with an account puts them there.
+        </p>
+      </Endpoint>
+      <Endpoint method="DELETE" path="/api/v1/groups/:id/members/:userId">
+        <p>
+          Soft removal (<code>left_at</code>), never a delete: what they are on
+          is still owed. Their per-member guest link is revoked with it.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/groups/:id/settle">
@@ -277,31 +290,95 @@ export function ApiDocs() {
         <p>Soft-delete. <code>{`{ ok: true }`}</code></p>
       </Endpoint>
 
-      <h3>Invites and guests</h3>
+      <h3>Guest links</h3>
       <p>
-        A group invite link creates a <em>ghost</em>: no email, no password,
-        identity is the session plus a one-time recovery code. Anyone with the
-        link can join and read that group&apos;s expenses.
+        A guest link IS the credential. It is sent as{" "}
+        <code>Authorization: Bearer link_&lt;secret&gt;</code>, it is re-checked
+        on every request (so revoking is immediate), and it only ever reaches{" "}
+        <code>/api/v1/guest/*</code>. The routes above and the Splitwise compat
+        API reject it outright. Three kinds: <code>group</code> (pick any
+        placeholder member, re-pickably), <code>group_member</code> (one person,
+        no picker), and <code>friend</code> (one person, their groups plus your
+        1:1 expenses with them).
       </p>
-      <Endpoint method="GET" path="/api/v1/invite/:token/preview" auth="public">
+      <p>
+        Only the SHA-256 of the secret is stored, so the URL comes back exactly
+        once, from the mint call. There is no way to read it again; mint the
+        same slot to rotate, which kills the old secret in the same transaction.
+      </p>
+      <Endpoint method="GET" path="/api/v1/links?groupId=…">
         <p>
-          Group name and member names. No money. So a scanner can tell it has
-          the right link without seeing balances.
+          Live links, without their secrets: <code>{`{ links }`}</code>. Also
+          accepts <code>friendId</code>.
         </p>
       </Endpoint>
-      <Endpoint method="POST" path="/api/v1/invite/:token/join" auth="public">
-        <Code>{`{ "displayName": "Alex" }`}</Code>
-        <p>Creates a ghost (or adds the current user) and sets a session.</p>
+      <Endpoint method="POST" path="/api/v1/links">
+        <Code>{`{ "kind": "group" | "group_member" | "friend",
+  "groupId": "01ARZ…", "userId": "01ARZ…", "expiresAt": null }`}</Code>
+        <p>
+          <code>201</code> with <code>{`{ id, url, shownOnce: true }`}</code>.
+          Replaces whatever live link held the same slot.
+        </p>
       </Endpoint>
-      <Endpoint method="POST" path="/api/v1/invite/recover" auth="public">
-        <Code>{`{ "recoveryCode": "K7M2-9QXR-4TWP" }`}</Code>
+      <Endpoint method="DELETE" path="/api/v1/links/:id">
+        <p>Revoke. Takes effect on the guest&apos;s next request.</p>
       </Endpoint>
-      <Endpoint method="POST" path="/api/v1/invite/claim">
-        <Code>{`{ "email": "you@example.com", "password": "at-least-8" }`}</Code>
-        <p>Upgrade a ghost to a real account in place. Same user id, same debts.</p>
+
+      <h3>The guest API</h3>
+      <p>
+        Bearer <code>link_…</code> only. A general group link also sends{" "}
+        <code>X-SplitSmart-Acting-As</code>, because there is no server-side
+        guest state to remember the pick in. <code>401</code> means the link is
+        finished; <code>409</code> means nobody has been picked yet.
+      </p>
+      <Endpoint method="GET" path="/api/v1/guest/session" auth="guest link">
+        <p>
+          What the link is, who it can act as, and where to land. Answers before
+          a name is picked, so the picker has something to show.
+        </p>
       </Endpoint>
-      <Endpoint method="POST" path="/api/v1/invite/groups/:groupId/rotate">
-        <p>Mint a new invite token. Existing members stay; the old URL stops working.</p>
+      <Endpoint method="GET" path="/api/v1/guest/expenses" auth="guest link">
+        <p>Every expense in scope, and nothing outside it.</p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/guest/groups/:id" auth="guest link">
+        <p>
+          <code>{`{ group, members, balances, expenses }`}</code>, for a group
+          the link covers. Any other id is a <code>404</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/guest/friend" auth="guest link">
+        <p>The 1:1 surface of a friend link. Absent on a group link.</p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/guest/expenses" auth="guest link">
+        <p>
+          Same body as <code>/api/v1/expenses</code>. Also{" "}
+          <code>PATCH</code>, <code>DELETE</code>, and{" "}
+          <code>/api/v1/guest/payments</code>. Nothing else: no route here
+          creates a group, a person, or a link.
+        </p>
+      </Endpoint>
+
+      <h3>Claiming a placeholder</h3>
+      <p>
+        Create the account first, then claim. Both a session AND the link token
+        are required: the token is what makes those placeholders claimable, so a
+        logged-in caller without one cannot absorb a stranger.
+      </p>
+      <Endpoint method="POST" path="/api/v1/claim/candidates">
+        <Code>{`{ "linkToken": "link_…" }`}</Code>
+        <p>
+          <code>{`{ status: "already_member" | "claimable" | "none", candidates }`}</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/claim/preview">
+        <Code>{`{ "linkToken": "link_…", "userId": "01ARZ…" }`}</Code>
+        <p>
+          Counts for the confirm dialog. Overlapping expenses have their shares{" "}
+          <em>combined</em>, never re-split, so no money moves.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/claim">
+        <p>Runs the merge, in one transaction. Links acting as them die.</p>
       </Endpoint>
 
       <h3>Everything else</h3>

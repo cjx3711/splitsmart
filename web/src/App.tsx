@@ -1,3 +1,10 @@
+/**
+ * The logged-in shell, everything under the /app basename.
+ *
+ * The marketing pages moved out to their own document (see MarketingApp.tsx),
+ * so every route here is for someone who has, or is about to have, a session.
+ * Paths below are relative to /app: `/groups` renders at /app/groups.
+ */
 import {
   useEffect,
   useState,
@@ -22,17 +29,13 @@ import { FriendDetail } from "./pages/FriendDetail.tsx";
 import { AllExpenses } from "./pages/AllExpenses.tsx";
 import { ExpenseDetail } from "./pages/ExpenseDetail.tsx";
 import { Activity } from "./pages/Activity.tsx";
-import { Join } from "./pages/Join.tsx";
-import { Accept } from "./pages/Accept.tsx";
+import { Claim } from "./pages/Claim.tsx";
 import { Settings } from "./pages/Settings.tsx";
 import { Import } from "./pages/Import.tsx";
 import { Verify } from "./pages/Verify.tsx";
 import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 import { Footer } from "./Footer.tsx";
-import { About } from "./pages/About.tsx";
-import { Home } from "./pages/Home.tsx";
-import { ApiDocs } from "./pages/ApiDocs.tsx";
 
 interface AuthContextValue {
   user: ApiUser | null;
@@ -95,16 +98,11 @@ export function App() {
   );
 }
 
-function isStandalonePath(pathname: string) {
-  return pathname === "/about" || pathname === "/docs";
-}
-
 function Shell() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const standalone = isStandalonePath(location.pathname);
-  const appChrome = Boolean(user) && !standalone;
+  const appChrome = Boolean(user);
 
   // Close the mobile drawer whenever the route changes, so tapping a group
   // doesn't leave the menu covering the screen you just asked for.
@@ -112,14 +110,16 @@ function Shell() {
 
   const routes = (
     <Routes>
-      {/* Public: an invite link must work before you have an account. */}
-      <Route path="/join/:token" element={<Join />} />
-      {/* Public: emailed friend invites carry a recovery code. */}
-      <Route path="/accept/:code" element={<Accept />} />
       {/* Public: the link is often opened in a different browser. */}
       <Route path="/verify/:token" element={<Verify />} />
       <Route path="/login" element={<Login />} />
-      <Route path="/" element={<HomeOrDashboard />} />
+      {/*
+        Reached from the guest shell, holding a link secret, once you have an
+        account. Not protected: arriving here logged out is the normal case,
+        and the page sends you to register and comes back.
+      */}
+      <Route path="/claim" element={<Claim />} />
+      <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/groups" element={<Protected><Groups /></Protected>} />
       <Route path="/groups/new" element={<Protected><NewGroup /></Protected>} />
       <Route path="/groups/:id" element={<Protected><GroupDetail /></Protected>} />
@@ -131,15 +131,9 @@ function Shell() {
       <Route path="/activity" element={<Protected><Activity /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/import" element={<Protected><Import /></Protected>} />
-      {/* Public standalone pages: no login, no app sidebar. */}
-      <Route path="/about" element={<About />} />
-      <Route path="/docs" element={<ApiDocs />} />
       <Route path="*" element={<p className="muted">Not found.</p>} />
     </Routes>
   );
-
-  const marketing =
-    standalone || (location.pathname === "/" && !user && !loading);
 
   return (
     <>
@@ -155,7 +149,7 @@ function Shell() {
           <main className="main">{routes}</main>
         </div>
       ) : (
-        <main className={marketing ? "mkt-main" : "main"} style={marketing ? undefined : { maxWidth: "none" }}>
+        <main className="main" style={{ maxWidth: "none" }}>
           {routes}
         </main>
       )}
@@ -164,17 +158,16 @@ function Shell() {
   );
 }
 
-function HomeOrDashboard() {
-  const { user, loading } = useAuth();
-  if (loading) return <p className="muted">Loading…</p>;
-  if (!user) return <Home />;
-  return <Dashboard />;
-}
-
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <p className="muted">Loading…</p>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    // Carry where they were going, so logging in lands them there rather than
+    // on the dashboard. Guest claim links depend on this.
+    const next = `${location.pathname}${location.search}`;
+    return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
+  }
   return <>{children}</>;
 }
 
@@ -195,7 +188,7 @@ function TopBar({
   async function handleLogout() {
     await api.logout().catch(() => {});
     setUser(null);
-    navigate("/");
+    navigate("/login");
   }
 
   return (
@@ -219,8 +212,9 @@ function TopBar({
       <div className="topbar-right">
         {!appChrome && (
           <nav className="topbar-public">
-            <Link to="/about">About</Link>
-            <Link to="/docs">API</Link>
+            {/* Another document; a route would 404 inside this shell. */}
+            <a href="/about">About</a>
+            <a href="/docs">API</a>
           </nav>
         )}
         {appChrome && (
@@ -246,7 +240,6 @@ function TopBar({
           <>
             <Link to="/settings" className="muted" style={{ textDecoration: "none" }}>
               {user.firstName}
-              {user.isGhost ? " (guest)" : ""}
             </Link>
             <button className="link" onClick={handleLogout}>
               Log out

@@ -8,6 +8,12 @@
       "port": 5444
     },
     {
+      "name": "api",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["dev:api"],
+      "port": 5445
+    },
+    {
       "name": "dev",
       "runtimeExecutable": "yarn",
       "runtimeArgs": ["dev"],

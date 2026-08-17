@@ -19,6 +19,8 @@ import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { LinkPanel } from "../LinkPanel.tsx";
+import { Breadcrumbs } from "../Breadcrumbs.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
@@ -86,6 +88,8 @@ export function FriendDetail() {
 
   return (
     <>
+      <Breadcrumbs trail={[{ label: "Friends", to: "/friends" }, { label: name }]} />
+
       <div className="page-head">
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <Avatar id={friend.id} name={name} size={44} />
@@ -204,6 +208,31 @@ export function FriendDetail() {
         )}
         <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
       </div>
+
+      {/*
+        Only a placeholder gets a link. Someone with their own account logs in;
+        a link that acted as them would be an impersonation channel, and the
+        server refuses to mint one.
+      */}
+      {friend.is_ghost === 1 && (
+        <>
+          <h2>Guest link</h2>
+          <LinkPanel
+            query={{ friendId: friend.id }}
+            canManage
+            slots={[
+              {
+                id: `friend-${friend.id}`,
+                kind: "friend",
+                userId: friend.id,
+                label: `${name}'s link`,
+                note: `Lets ${name} see what the two of you have split, plus any group they are in, with no account. Turn it off whenever you like.`,
+              },
+            ]}
+            intro="This is what an emailed invite carries. It is shown once, so copy it before you leave the page."
+          />
+        </>
+      )}
 
       <h2>Shared expenses</h2>
       <ExpenseList

@@ -173,6 +173,10 @@ src/
 web/                 React frontend (Vite)
   src/
     money.tsx        Currency-aware formatting. THE ONLY WAY TO RENDER MONEY
+    reopenExpense.ts Stored expense -> the form the user typed. Shared by both
+                     edit dialogs so they cannot drift
+    LinkPanel.tsx    Mint/rotate/revoke a guest link. Shows the URL once
+    guest/           The guest shell. No Dexie, no sync, no logged-in router
     Logo.tsx         The mark (also copied literally into public/favicon.svg)
     Sidebar.tsx      Owns the group/friend lists shown on every screen
     ExpenseForm.tsx      The one add-expense form (group, friend, or neither)
@@ -211,7 +215,9 @@ Two independent paths, deliberately separate:
 - **Sessions**: httpOnly cookie, 30-day expiry, for the web UI.
 - **API tokens**: bearer header, long-lived, revocable, for external clients.
 
-`requireAuth` accepts either, so one route tree serves both.
+`requireAuth` accepts either, so one route tree serves both. It accepts
+**neither** a guest access link; those are `Bearer link_...` and are handled
+only by `/api/v1/guest/*`. See "Ghost accounts and guest links" below.
 
 Only hashes are stored for both. Passwords use scrypt with self-describing
 hashes (`scrypt$N$r$p$salt$hash`) so raising the cost or migrating to argon2 is a
@@ -219,31 +225,48 @@ non-event; `needsRehash()` drives transparent upgrade on login. Session and API
 tokens use plain SHA-256, which is correct because they are already full-entropy
 random; scrypt there would add 200ms to every request for no security gain.
 
-## Ghost accounts
+## Ghost accounts and guest links
 
-Two kinds of user share the `users` table:
+Read `docs/GUEST.md` before touching any of this. Two kinds of user share the
+`users` table:
 
 - **Real** (`is_ghost = 0`): email + password, can log in normally.
-- **Ghost** (`is_ghost = 1`): created by opening a group invite link. No email,
-  no password. Identity is possession of a session cookie, with a one-time
-  recovery code as the only way back in from another device.
+- **Ghost** (`is_ghost = 1`): a PLACEHOLDER PERSON, created by someone with an
+  account (`POST /api/v1/friends`, `POST /api/v1/groups/:id/members`, or the
+  importer). No email, no password, and no credential of their own.
 
-A ghost is upgraded to a real account **in place** (`POST /api/v1/invite/claim`)
-by setting email + password and flipping the flag. Never create a new user and
-merge; keeping the row means every expense, share and repayment stays attached
-and no balance moves.
+**Opening a link does not create a user.** A guest reaches a ghost's data by
+holding an `access_links` secret that says it may act as them, sent as
+`Authorization: Bearer link_<secret>` on every request and re-resolved every
+time. That is what makes revocation immediate, and it is why the guest shell is
+never allowed to work offline: a link can be withdrawn, a cached ledger cannot.
+
+`requireAuth` **rejects** `link_` tokens rather than ignoring them, so a guest
+secret can never reach `/api/v1` or the compat API. The guest tree is
+`/api/v1/guest/*` and nothing else; there is deliberately no route there that
+mints a link, adds a person, or creates a group.
+
+**A ghost is never upgraded in place.** The one path is: create a real account,
+then CLAIM the ghost, which merges it (`src/domain/merge.ts`) and retires the
+row with `merged_into_user_id` + `deleted_at`. Claim needs a cookie session AND
+the link token: the token is the only thing making that placeholder claimable,
+and without it a logged-in caller could absorb a stranger by guessing a ULID.
+
+The merge rule that matters: when both people are on the same expense their
+shares are **added together**, never re-split. Re-running `computeSplit` with
+one fewer participant would move cents belonging to third parties. The stored
+split becomes `exact` with `split_input = owed` and `split_meta = NULL`, which
+is the honest description of "these are the numbers"; no money moves.
 
 **A ghost may carry an email.** `POST /api/v1/friends` creates one with the
 address you invited them at, so the invite has somewhere to go. This is safe
 because login rejects ghosts outright and `issueVerificationToken` returns
 `no_email` for them; an unverified address on a ghost can never become a
-working login. It is also why `/invite/claim` excludes the caller's own row when
-checking whether an address is taken: without that, the invitee's own pending
-address blocks them from claiming their own account. There is a test for it.
+working login. The merge nulls it, freeing the address for the survivor.
 
-Known trade-offs, accepted deliberately: anyone holding an invite link can join
-**and read every expense in that group**; rotating the token stops future joins
-but does not remove existing members.
+Known trade-off, accepted deliberately: anyone holding a link can read **and
+edit** everything in its scope. Revoking is instant, but it does not un-share
+what they already saw.
 
 ## Split types
 
@@ -343,17 +366,17 @@ Removing a friendship touches nothing financial. `DELETE /api/v1/friends/:id`
 returns `stillVisible` so the UI can explain why someone is still listed rather
 than looking broken.
 
-**Friend invites do not use `email_tokens`.** The emailed link carries the
-ghost's recovery code and lands on `/accept/:code`, which is just
-`POST /invite/recover`. That was chosen over adding a `friend_invite` purpose
-because SQLite cannot ALTER a CHECK constraint without rebuilding the table, and
-because the recovery code still works when Postmark is unconfigured; the API
-returns it so the inviter can pass it on by hand.
+**Friend invites do not use `email_tokens`.** The emailed link is a guest
+access link (`/guest/l/<secret>`), minted in the same transaction as the
+placeholder so the address we invite them at always has somewhere to go. That
+avoids adding a `friend_invite` purpose to a CHECK constraint SQLite cannot
+ALTER, and it keeps working when Postmark is unconfigured: `POST /friends`
+returns `inviteUrl` once so the inviter can pass it on by hand.
 
 ## Email
 
 `src/email/`: Postmark transport, templates, and the verification flow.
-Migration 002 adds `email_tokens`.
+Verification links point at `/app/verify/:token`, inside the logged-in shell.
 
 **`sendEmail()` never throws and never blocks boot.** With Postmark
 unconfigured it logs the message (link included) to the console. That is the
@@ -433,7 +456,7 @@ Four things this must keep doing:
 
 Two smaller deliberate choices: imported expenses pass `recordActivity: false`
 to `createExpense` (one summary feed entry per run, not one per expense), and an
-imported group gets **no** `invite_token`; importing a group is not deciding to
+imported group gets **no** guest link; importing a group is not deciding to
 share it.
 
 ## No file uploads

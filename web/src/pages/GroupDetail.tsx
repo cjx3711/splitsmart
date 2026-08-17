@@ -8,6 +8,9 @@ import {
   type ExpenseSummary,
   type CurrencyAmount,
 } from "../api.ts";
+import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
+import { Breadcrumbs } from "../Breadcrumbs.tsx";
+import { AddMemberForm } from "../AddMemberForm.tsx";
 import { Amount, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
@@ -22,7 +25,8 @@ export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [group, setGroup] = useState<(Group & { inviteUrl: string | null }) | null>(null);
+  const [group, setGroup] = useState<Group | null>(null);
+  const [role, setRole] = useState<string>("member");
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [balances, setBalances] = useState<Array<{ userId: string; balances: CurrencyAmount[] }>>([]);
   const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
@@ -33,7 +37,6 @@ export function GroupDetail() {
     }>
   >([]);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const formatMoney = useFormatMoney();
@@ -47,6 +50,7 @@ export function GroupDetail() {
         api.getSettleSuggestions(id),
       ]);
       setGroup(detail.group);
+      setRole(detail.role);
       setMembers(detail.members);
       setBalances(detail.balances);
       setExpenses(expenseList.expenses);
@@ -98,8 +102,35 @@ export function GroupDetail() {
     setSettleCurrency(null);
   }
 
+  const isOwner = role === "owner";
+
+  // One general link, plus one per PLACEHOLDER member. Someone with their own
+  // account is not impersonable by a shared secret, so they get a note instead
+  // of a link the server would refuse to mint.
+  const linkSlots: LinkSlot[] = [
+    {
+      id: "general",
+      kind: "group",
+      groupId: group.id,
+      label: "Anyone with the link",
+      note: "They pick which name they are, and can change it later.",
+    },
+    ...members
+      .filter((m) => m.is_ghost === 1)
+      .map((m) => ({
+        id: `member-${m.id}`,
+        kind: "group_member" as const,
+        groupId: group.id,
+        userId: m.id,
+        label: `${fullName(m)} only`,
+        note: "Opens straight as them, with no picker.",
+      })),
+  ];
+
   return (
     <>
+      <Breadcrumbs trail={[{ label: "Groups", to: "/groups" }, { label: group.name }]} />
+
       <div className="page-head">
         <div>
           <h1>{group.name}</h1>
@@ -267,35 +298,44 @@ export function GroupDetail() {
               <div className="list-item-title">{m.id === user.id ? "You" : fullName(m)}</div>
               <div className="muted">
                 {m.role}
-                {m.is_ghost === 1 && " · guest"}
+                {m.is_ghost === 1 ? " · guest" : " · has an account"}
               </div>
             </div>
+            {isOwner && m.id !== user.id && (
+              <button
+                className="link"
+                onClick={async () => {
+                  await api.removeGroupMember(group.id, m.id);
+                  await load();
+                }}
+              >
+                Remove
+              </button>
+            )}
           </div>
         ))}
       </div>
 
-      {group.inviteUrl && (
-        <>
-          <h2>Invite link</h2>
-          <div className="card stack">
-            <p className="muted" style={{ margin: 0 }}>
-              Anyone with this link can join the group and read every expense in it. Sharing it is
-              the only way in; there is no per-person invite for groups.
-            </p>
-            <code>{group.inviteUrl}</code>
-            <div>
-              <button
-                className="secondary inline"
-                onClick={() => {
-                  void navigator.clipboard.writeText(group.inviteUrl!).then(() => setCopied(true));
-                }}
-              >
-                {copied ? "Copied" : "Copy link"}
-              </button>
-            </div>
-          </div>
-        </>
+      {isOwner && (
+        <AddMemberForm
+          groupId={group.id}
+          existingIds={members.map((m) => m.id)}
+          onAdded={load}
+        />
       )}
+
+      <h2>Guest links</h2>
+      <LinkPanel
+        query={{ groupId: group.id }}
+        canManage={isOwner}
+        slots={linkSlots}
+        intro={
+          isOwner
+            ? "A guest link needs no account. Anyone holding one can see and edit this group's expenses, so share it the way you would share the group itself. You can turn one off at any time; it stops working on the next tap."
+            : "Only the group owner can create or turn off guest links."
+        }
+      />
+
     </>
   );
 }

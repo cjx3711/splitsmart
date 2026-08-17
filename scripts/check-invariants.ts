@@ -137,6 +137,55 @@ const CHECKS: Check[] = [
     sql: `SELECT id, first_name FROM users WHERE is_ghost = 1 AND password_hash IS NOT NULL`,
   },
   {
+    name: "merged_users_are_retired",
+    description:
+      "A user consumed by a claim must be soft-deleted, not left walking around",
+    sql: `
+      SELECT id, first_name FROM users
+      WHERE merged_into_user_id IS NOT NULL AND deleted_at IS NULL
+    `,
+  },
+  {
+    name: "nothing_points_at_a_merged_user",
+    description:
+      "A merge rewrites every FK onto the survivor; a leftover pointer is money attached to a stub",
+    sql: `
+      WITH stub AS (SELECT id FROM users WHERE merged_into_user_id IS NOT NULL)
+      SELECT 'expense_users' AS source, eu.user_id AS user_id
+      FROM expense_users eu JOIN stub ON stub.id = eu.user_id
+      UNION ALL
+      SELECT 'expense_repayments', r.from_user_id
+      FROM expense_repayments r JOIN stub ON stub.id = r.from_user_id
+      UNION ALL
+      SELECT 'expense_repayments', r.to_user_id
+      FROM expense_repayments r JOIN stub ON stub.id = r.to_user_id
+      UNION ALL
+      SELECT 'group_members', gm.user_id
+      FROM group_members gm JOIN stub ON stub.id = gm.user_id
+      UNION ALL
+      SELECT 'friendships', f.user_a_id
+      FROM friendships f JOIN stub ON stub.id = f.user_a_id
+      UNION ALL
+      SELECT 'friendships', f.user_b_id
+      FROM friendships f JOIN stub ON stub.id = f.user_b_id
+      UNION ALL
+      SELECT 'comments', c.user_id
+      FROM comments c JOIN stub ON stub.id = c.user_id
+    `,
+  },
+  {
+    name: "live_links_act_as_live_ghosts",
+    description:
+      "An access link may only act as a person who is still an unclaimed ghost",
+    sql: `
+      SELECT al.id, al.kind, al.user_id
+      FROM access_links al
+      JOIN users u ON u.id = al.user_id
+      WHERE al.revoked_at IS NULL
+        AND (u.is_ghost = 0 OR u.deleted_at IS NOT NULL)
+    `,
+  },
+  {
     name: "known_currencies_only",
     description: "Every expense currency must exist in the currencies table",
     sql: `

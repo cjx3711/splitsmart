@@ -86,7 +86,7 @@ before(async () => {
     .insertInto("group_members")
     .values([
       { group_id: groupId, user_id: aliceId, role: "owner", joined_via: "creator" },
-      { group_id: groupId, user_id: bobId, role: "member", joined_via: "invite_link" },
+      { group_id: groupId, user_id: bobId, role: "member", joined_via: "added" },
     ])
     .execute();
 
@@ -180,12 +180,13 @@ describe("adding a friend", () => {
 
     const body = (await res.json()) as {
       friend: { id: string; is_ghost: number; email: string | null };
-      recoveryCode?: string;
+      inviteUrl?: string;
     };
     assert.equal(body.friend.is_ghost, 1);
     assert.equal(body.friend.email, null);
-    // Shown once. Without it a name-only friend could never be handed over.
-    assert.ok(body.recoveryCode);
+    // Returned once. Only the hash is stored, so without surfacing it here a
+    // name-only friend could never be handed the link at all.
+    assert.match(body.inviteUrl ?? "", /\/guest\/l\/.+/);
 
     const expense = await authed(`/api/v1/friends/${body.friend.id}/expenses`, {
       method: "POST",
@@ -227,13 +228,14 @@ describe("adding a friend", () => {
     const body = (await res.json()) as {
       friend: { id: string; first_name: string };
       existingAccount: boolean;
-      recoveryCode?: string;
+      inviteUrl?: string;
     };
     assert.equal(body.existingAccount, true);
     assert.equal(body.friend.id, daveId);
     assert.equal(body.friend.first_name, "Dave");
-    // No new account, so there is no code to hand out.
-    assert.equal(body.recoveryCode, undefined);
+    // They log in as themselves; a guest link would be a way to impersonate a
+    // real account, which access-links.ts refuses to mint.
+    assert.equal(body.inviteUrl, undefined);
   });
 
   test("refuses your own address", async () => {
@@ -244,42 +246,36 @@ describe("adding a friend", () => {
     assert.equal(res.status, 400);
   });
 
-  test("a ghost invited at an address can still claim that same address", async () => {
+  test("the invite link reaches the placeholder, and only the placeholder", async () => {
     const added = await authed("/api/v1/friends", {
       method: "POST",
       body: JSON.stringify({ firstName: "Erin", email: "erin@example.com" }),
     });
-    const { friend, recoveryCode } = (await added.json()) as {
+    const { friend, inviteUrl } = (await added.json()) as {
       friend: { id: string };
-      recoveryCode: string;
+      inviteUrl: string;
     };
 
-    // Sign in as the ghost using the code from the invite email.
-    const recovered = await app.request("/api/v1/invite/recover", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recoveryCode }),
-    });
-    assert.equal(recovered.status, 200);
-    const cookie = recovered.headers.get("set-cookie")!.split(";")[0]!;
+    const secret = inviteUrl.split("/guest/l/")[1]!;
 
-    // The ghost already holds erin@example.com. Claiming it must not collide
-    // with itself; this is the whole reason /invite/claim excludes self.
-    const claimed = await app.request("/api/v1/invite/claim", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie },
-      body: JSON.stringify({ email: "erin@example.com", password: "longenoughpassword" }),
+    const session = await app.request("/api/v1/guest/session", {
+      headers: { Authorization: `Bearer link_${secret}` },
     });
-    assert.equal(claimed.status, 200);
+    assert.equal(session.status, 200);
+    const body = (await session.json()) as {
+      kind: string;
+      actingAs: { id: string } | null;
+      counterpart: { id: string } | null;
+    };
+    assert.equal(body.kind, "friend");
+    assert.equal(body.actingAs?.id, friend.id, "a friend link needs no picker");
+    assert.equal(body.counterpart?.id, aliceId, "the far side is whoever minted it");
 
-    const row = await db
-      .selectFrom("users")
-      .select(["id", "is_ghost", "email"])
-      .where("id", "=", friend.id)
-      .executeTakeFirstOrThrow();
-    // Upgraded IN PLACE: same row, so nothing they owe has moved.
-    assert.equal(row.is_ghost, 0);
-    assert.equal(row.email, "erin@example.com");
+    // The very same secret is not a user credential. See src/auth/middleware.ts.
+    const asUser = await app.request("/api/v1/friends", {
+      headers: { Authorization: `Bearer link_${secret}` },
+    });
+    assert.equal(asUser.status, 401);
   });
 });
 

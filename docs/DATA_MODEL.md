@@ -85,16 +85,24 @@ One table, two kinds:
 | | Real | Ghost |
 |---|---|---|
 | `is_ghost` | 0 | 1 |
-| `email` | required | NULL |
+| `email` | required | optional, unverifiable |
 | `password_hash` | required | NULL (enforced) |
-| Identity | email + password | session cookie + recovery code |
+| Identity | email + password | none of their own; a guest link acts as them |
 
 CHECK constraints enforce both directions: a real account must be able to
 authenticate, and a ghost must not carry credentials it cannot use.
 
-Upgrading a ghost happens **in place**: same row, set email + password, flip the
-flag. Creating a new user and merging would mean rewriting every expense share
-and repayment, and any mistake there moves money.
+A ghost is a **placeholder person** somebody with an account created. They have
+no credential; a guest reaches their data by holding an `access_links` secret
+that says it may act as them. See `docs/GUEST.md`.
+
+A ghost is never upgraded in place. The one path is CLAIM: create a real
+account, then merge the ghost into it (`src/domain/merge.ts`), which rewrites
+every FK onto the survivor and retires the ghost row with `merged_into_user_id`
++ `deleted_at`. The merge exists so the app can handle the case an in-place
+upgrade never could: someone who already had an account. It never moves a
+balance; where both people are on one expense the two shares are added, not
+re-split.
 
 ## Soft deletes
 

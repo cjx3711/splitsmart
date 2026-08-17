@@ -36,6 +36,7 @@ export function ExpenseList({
   currentUserId,
   nameOf,
   showGroup = false,
+  personLinks = true,
   empty = "Nothing yet.",
 }: {
   expenses: ExpenseSummary[];
@@ -43,6 +44,12 @@ export function ExpenseList({
   nameOf: PersonLookup;
   /** Label each row with the group it belongs to. */
   showGroup?: boolean;
+  /**
+   * Link each payer's name to their friend page. Off in the guest shell, which
+   * has no per-person screen: a link to /friends/:id there would be a dead end,
+   * and a guest has no friends list to land on in the first place.
+   */
+  personLinks?: boolean;
   empty?: string;
 }) {
   const navigate = useNavigate();
@@ -93,7 +100,7 @@ export function ExpenseList({
                     {payers.map((p, i) => (
                       <Fragment key={p.user_id}>
                         {i > 0 && ", "}
-                        {p.user_id === currentUserId ? (
+                        {p.user_id === currentUserId || !personLinks ? (
                           nameOf(p.user_id)
                         ) : (
                           <Link to={`/friends/${p.user_id}`} onClick={(e) => e.stopPropagation()}>

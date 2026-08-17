@@ -12,7 +12,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(5545),
   DATABASE_PATH: z.string().default("./data/splitsmart.db"),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be >= 32 chars"),
-  APP_ORIGIN: z.string().url().default("http://localhost:5545"),
+  APP_ORIGIN: z.string().url().default("http://localhost:5444"),
 
   /**
    * Base URL of the Splitwise API the importer reads from.

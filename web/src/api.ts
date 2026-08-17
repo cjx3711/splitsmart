@@ -133,6 +133,49 @@ export interface Currency {
   name: string;
 }
 
+// --- guest links ------------------------------------------------------------
+
+/**
+ * A live guest link, as the owner sees it.
+ *
+ * There is deliberately no `url` field. Only the SHA-256 of the secret is
+ * stored, so the plaintext exists exactly once, in the response to minting it.
+ * The owner's screen says so; rotating is how you get another.
+ */
+export interface AccessLink {
+  id: string;
+  kind: "group" | "group_member" | "friend";
+  groupId: string | null;
+  userId: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  /** Expiry has passed. The row is still live, the link is not. */
+  expired: boolean;
+  person: { id: string; firstName: string | null; lastName: string | null } | null;
+}
+
+export interface ClaimCandidates {
+  /**
+   * `already_member` means they are in this group as themselves, so there is
+   * nothing to claim and no picker: see src/routes/native/claim.ts.
+   */
+  status: "already_member" | "claimable" | "none";
+  kind?: "group" | "group_member" | "friend";
+  group: { id: string; name: string } | null;
+  candidates: Array<{ id: string; firstName: string; lastName: string | null }>;
+}
+
+export interface ClaimPreview {
+  person: { id: string; firstName: string; lastName: string | null };
+  /** Capped at ten by the server; the count below is the whole truth. */
+  overlapping: Array<{ id: string; description: string; date: string }>;
+  overlappingCount: number;
+  transferredCount: number;
+  sharedGroupCount: number;
+  linkCount: number;
+}
+
 // --- Splitwise import -------------------------------------------------------
 
 /** How a Splitwise contact was resolved to a local account. */
@@ -142,8 +185,6 @@ export interface ImportPerson {
   name: string;
   email: string | null;
   matchedBy: "splitwise_id" | "email" | "self" | "created";
-  /** Shown once for newly created placeholders; the only way in for them. */
-  recoveryCode?: string;
 }
 
 export interface ImportFootprint {
@@ -287,17 +328,31 @@ export const api = {
     request<{ groups: Group[]; totalBalance: CurrencyAmount[] }>("/groups"),
 
   createGroup: (input: { name: string; groupType?: string; defaultCurrency?: string }) =>
-    request<{ group: Group; inviteUrl: string }>("/groups", {
+    request<{ group: Group }>("/groups", {
       method: "POST",
       body: JSON.stringify(input),
     }),
 
   getGroup: (id: string) =>
     request<{
-      group: Group & { inviteUrl: string | null };
+      group: Group;
       members: GroupMember[];
       balances: Array<{ userId: string; balances: CurrencyAmount[] }>;
+      /** The caller's own role. Only an owner may mint or revoke links. */
+      role: string;
     }>(`/groups/${id}`),
+
+  addGroupMember: (
+    groupId: string,
+    input: { userId: string } | { firstName: string; lastName?: string },
+  ) =>
+    request<{ member: GroupMember }>(`/groups/${groupId}/members`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  removeGroupMember: (groupId: string, userId: string) =>
+    request<{ ok: boolean }>(`/groups/${groupId}/members/${userId}`, { method: "DELETE" }),
 
   getGroupExpenses: (id: string) =>
     request<{ expenses: ExpenseSummary[] }>(`/groups/${id}/expenses`),
@@ -361,8 +416,11 @@ export const api = {
       /** True when the address already belonged to a SplitSmart account. */
       existingAccount: boolean;
       emailDelivered: boolean;
-      /** Returned once for a newly created person. Never retrievable again. */
-      recoveryCode?: string;
+      /**
+       * Returned ONCE for a newly created placeholder. Only its hash is
+       * stored, so a client that discards this has to rotate, not recover.
+       */
+      inviteUrl?: string;
     }>("/friends", { method: "POST", body: JSON.stringify(input) }),
 
   removeFriend: (id: string) =>
@@ -434,29 +492,54 @@ export const api = {
   /** Currencies the caller has actually used, most-used first. */
   frequentCurrencies: () => request<{ codes: string[] }>("/expenses/currencies/frequent"),
 
-  previewInvite: (token: string) =>
-    request<{ group: { name: string; type: string; memberCount: number; memberNames: string[] } }>(
-      `/invite/${token}/preview`,
+  // --- guest links ----------------------------------------------------------
+  //
+  // Minting returns the URL exactly once; listing never does, because only the
+  // SHA-256 is stored. Lost it? Mint again, which rotates in place.
+
+  listLinks: (query: { groupId: string } | { friendId: string }) =>
+    request<{ links: AccessLink[] }>(
+      `/links?${"groupId" in query ? `groupId=${query.groupId}` : `friendId=${query.friendId}`}`,
     ),
 
-  joinInvite: (token: string, displayName: string) =>
+  mintLink: (input: {
+    kind: "group" | "group_member" | "friend";
+    groupId?: string | null;
+    userId?: string | null;
+    expiresAt?: string | null;
+  }) =>
+    request<{ id: string; url: string; shownOnce: boolean }>("/links", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  revokeLink: (id: string) => request<{ ok: boolean }>(`/links/${id}`, { method: "DELETE" }),
+
+  // --- claim ----------------------------------------------------------------
+  //
+  // Cookie session AND the link token. The token is what makes those
+  // placeholders claimable; without it this would be a way to attach yourself
+  // to a stranger's ledger. See src/routes/native/claim.ts.
+
+  claimCandidates: (linkToken: string) =>
+    request<ClaimCandidates>("/claim/candidates", {
+      method: "POST",
+      body: JSON.stringify({ linkToken }),
+    }),
+
+  claimPreview: (linkToken: string, userId: string) =>
+    request<ClaimPreview>("/claim/preview", {
+      method: "POST",
+      body: JSON.stringify({ linkToken, userId }),
+    }),
+
+  claim: (linkToken: string, userId: string) =>
     request<{
-      user: { id: string; firstName: string; isGhost: boolean };
-      group: { id: string; name: string };
-      recoveryCode: string;
-    }>(`/invite/${token}/join`, { method: "POST", body: JSON.stringify({ displayName }) }),
-
-  recover: (recoveryCode: string) =>
-    request<{ user: { id: string; firstName: string } }>("/invite/recover", {
-      method: "POST",
-      body: JSON.stringify({ recoveryCode }),
-    }),
-
-  claim: (email: string, password: string) =>
-    request<{ ok: boolean; verificationEmailSent: boolean }>("/invite/claim", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+      ok: boolean;
+      expensesCombined: number;
+      expensesTransferred: number;
+      groupsMerged: number;
+    }>("/claim", { method: "POST", body: JSON.stringify({ linkToken, userId }) }),
 };
 
 // --- money formatting -------------------------------------------------------

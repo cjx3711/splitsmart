@@ -7,6 +7,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, fullName } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
+import { Breadcrumbs } from "../Breadcrumbs.tsx";
 
 export function NewFriend() {
   const refreshSidebar = useSidebarRefresh();
@@ -17,7 +18,7 @@ export function NewFriend() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<
-    { id: string; name: string; existing: boolean; delivered: boolean; recoveryCode?: string } | null
+    { id: string; name: string; existing: boolean; delivered: boolean; inviteUrl?: string } | null
   >(null);
 
   async function handleSubmit(event: FormEvent) {
@@ -37,7 +38,7 @@ export function NewFriend() {
         name: fullName(response.friend),
         existing: response.existingAccount,
         delivered: response.emailDelivered,
-        recoveryCode: response.recoveryCode,
+        inviteUrl: response.inviteUrl,
       });
       setFirstName("");
       setLastName("");
@@ -52,6 +53,8 @@ export function NewFriend() {
 
   return (
     <>
+      <Breadcrumbs trail={[{ label: "Friends", to: "/friends" }, { label: "Add a friend" }]} />
+
       <div className="page-head">
         <h1>Add a friend</h1>
       </div>
@@ -67,14 +70,18 @@ export function NewFriend() {
                 : "is on your friends list."}
             </span>
             {result.delivered && <span>The invite is on its way to their inbox.</span>}
-            {result.recoveryCode && (
+            {result.inviteUrl && (
               <>
                 <span>
                   {result.delivered
-                    ? "Their sign-in code, in case the email goes astray:"
-                    : "No invite was emailed. Give them this sign-in code (shown only once):"}
+                    ? "Their guest link, in case the email goes astray:"
+                    : "No invite was emailed. Send them this link yourself:"}
                 </span>
-                <code>{result.recoveryCode}</code>
+                <code>{result.inviteUrl}</code>
+                <span className="field-hint">
+                  Shown once. Only a hash of it is stored, so if you lose it,
+                  make a new one from their page; the old one stops working.
+                </span>
               </>
             )}
             <span>
@@ -116,9 +123,9 @@ export function NewFriend() {
             placeholder="grace@example.com"
           />
           <p className="field-hint">
-            Adding an email sends them an invite to join. If this server has no mail provider
-            configured, the invite is written to the server log instead and you'll get a code to
-            pass on yourself.
+            Adding an email sends them a guest link. If this server has no mail provider
+            configured, the invite is written to the server log instead and the link is shown
+            here for you to pass on yourself.
           </p>
         </div>
 

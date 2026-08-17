@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { GROUP_TYPE_LABELS, GROUP_TYPES, type GroupType } from "../groupTypes.tsx";
+import { Breadcrumbs } from "../Breadcrumbs.tsx";
 
 export function NewGroup() {
   const navigate = useNavigate();
@@ -30,6 +31,8 @@ export function NewGroup() {
 
   return (
     <>
+      <Breadcrumbs trail={[{ label: "Groups", to: "/groups" }, { label: "New group" }]} />
+
       <div className="page-head">
         <h1>New group</h1>
       </div>

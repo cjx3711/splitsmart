@@ -74,9 +74,9 @@ interface FriendInviteEmail {
   /** Who added them. */
   inviterName: string;
   /**
-   * Where the invite lands. For a brand-new ghost this carries their recovery
-   * code and signs them straight in; for someone who already has an account it
-   * is just the app's front door.
+   * Where the invite lands. For a new placeholder this is their GUEST LINK
+   * (`/guest/l/<secret>`): no account, no password, and the owner can revoke
+   * it. For someone who already has an account it is just the front door.
    */
   acceptUrl: string;
   /** False when the recipient already had a SplitSmart account. */
@@ -91,10 +91,10 @@ export function friendInviteEmail(input: FriendInviteEmail): {
   const { firstName, inviterName, acceptUrl, isNewAccount } = input;
 
   const lead = isNewAccount
-    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to pick up your account; no password needed to start.`
+    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to see what the two of you have split. No account, no password.`
     : `${inviterName} added you as a friend on SplitSmart. You can see what you owe each other next time you log in.`;
 
-  const action = isNewAccount ? "Accept the invite" : "Open SplitSmart";
+  const action = isNewAccount ? "Open your expenses" : "Open SplitSmart";
 
   return {
     subject: `${inviterName} added you on SplitSmart`,
@@ -107,7 +107,9 @@ ${acceptUrl}
 ${
   isNewAccount
     ? `
-Keep this link. It is the only way back into your account until you set a password.
+Keep this link. It is how you get back in, on this device or any other, and
+${inviterName} can turn it off at any time. When you want an account of your
+own, create one and the link will offer to make this history yours.
 `
     : ""
 }
@@ -130,7 +132,8 @@ If you weren't expecting this, you can ignore this email.
       ${
         isNewAccount
           ? `<p style="margin:0 0 8px;font-size:14px;color:#6b7280;">
-        Keep this link. It is the only way back into your account until you set a password.
+        Keep this link. It is how you get back in, on this device or any other,
+        and ${escapeHtml(inviterName)} can turn it off at any time.
       </p>`
           : ""
       }

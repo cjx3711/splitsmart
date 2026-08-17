@@ -30,7 +30,7 @@ longer be free.
 - ✅ Derived pairwise repayments (`deriveRepayments`)
 - ✅ Balance queries: pairwise, group, total, simplify-debts
 - ✅ Auth: scrypt passwords, cookie sessions, bearer API tokens
-- ✅ Ghost accounts via group invite links, with recovery codes
+- ✅ Placeholder people (ghosts) and guest access links (`docs/GUEST.md`)
 - ✅ Compat API: the 6 endpoints `splitwise-to-toshl` uses, with tests
 - ✅ Minimal React frontend
 - ✅ `yarn db:check` integrity audit
@@ -67,9 +67,9 @@ Ordered by how much they matter for day-to-day use.
       friends.ts`. Explicit friendships live in `friendships`; derived ones come
       from shared groups and expenses. `listRelatedUserIds` is the single
       definition, shared with the compat layer's `get_friends`.
-- ✅ **Add a friend by email**: creates a ghost carrying that address and
-      emails an invite whose link is the ghost's recovery code. Works with
-      Postmark unconfigured: the code comes back in the response instead.
+- ✅ **Add a friend by email**: creates a placeholder carrying that address and
+      emails a guest link (`/guest/l/<secret>`). Works with Postmark
+      unconfigured: the URL comes back in the response instead, once.
 - ⬜ Comments (table exists, no routes)
 - ✅ Activity feed: `GET /api/v1/activity`, scoped to groups you're in plus
       expenses you're on
@@ -126,10 +126,10 @@ the verification flow is completable locally with no mail provider.
       `'reset_password'`, so this needs routes and a template, not a migration
 - ⬜ Change-email flow (re-verify the new address before it takes effect)
 - ✅ **Invite by email**: friend invites (`POST /api/v1/friends` with an
-      `email`). Deliberately does NOT use `email_tokens`: the link carries the
-      ghost's recovery code, so the same flow works when Postmark is
-      unconfigured and no migration was needed to add a purpose.
-- ⬜ Group invite by email (today groups still share one link for everyone)
+      `email`). Deliberately does NOT use `email_tokens`: the link is a guest
+      access link, so the same flow works when Postmark is unconfigured and no
+      migration was needed to add a purpose.
+- ⬜ Group invite by email (today the owner copies the link and sends it)
 - ⬜ Optional expense notifications
 - ⬜ Postmark webhook for bounces and spam complaints
 
@@ -198,21 +198,28 @@ stay Splitwise's integers. Original Splitwise ids live in `metadata.splitwise_id
 - ✅ `src/domain/ulid.ts`, native and compat routes parse path ids as ULIDs
 - ✅ Import matches on `metadata.splitwise_id`; PK is always a fresh ULID
 
-## Phase 9: Guest links ⬜ **before offline PWA**
+## Phase 9: Guest links ✅
 
-Full plan in `docs/GUEST.md`. Replaces recovery codes. Ghosts are placeholders
-the owner created; invite URLs are the credential (secret in `localStorage`,
-sent on every request, optional expiry). Claim is always: create an account
-first, then merge the ghost into that account.
+Full design in `docs/GUEST.md`. Recovery codes are gone. Ghosts are
+placeholders somebody with an account created; the invite URL is the credential
+(secret in `localStorage`, sent on every request, optional expiry, revocable).
+Claim is always: create an account first, then merge the ghost into it.
 
-- ⬜ `access_links` (`group` / `group_member` / `friend`); drop recovery codes
-      and `groups.invite_token`
-- ⬜ `mergeExpenseParticipants` + user merge (overlapping shares combine, with
-      a confirm; convert that expense to `exact`)
-- ⬜ `/guest/*` shell (network-only SW) and `/app/*` for the logged-in app
-- ⬜ `/api/v1/guest/*` scoped to the link; no cookie exchange
-- ⬜ Owner mint/revoke UI; email invites carry `/guest/l/:token`
-- ⬜ Claim preview + confirm; `is_ghost = 0` cannot be acted as via a link
+- ✅ `access_links` (`group` / `group_member` / `friend`), one live link per
+      slot; `users.recovery_code_hash` and `groups.invite_token` dropped;
+      `users.merged_into_user_id` added
+- ✅ `mergeExpenseParticipants` + `mergeUsers` in `src/domain/merge.ts`.
+      Overlapping shares combine rather than re-split, and the expense becomes
+      `exact` with `split_meta` cleared, so no cent moves
+- ✅ `/guest/*` shell (network-only SW) and `/app/*` for the logged-in app;
+      marketing left at `/`. Vite MPA, three entries, shared components
+- ✅ `/api/v1/guest/*` scoped to the link, enforced per handler; no cookie
+      exchange, and `requireAuth` rejects `link_` tokens everywhere else
+- ✅ Owner mint/revoke UI (`LinkPanel.tsx`); email invites carry
+      `/guest/l/:token`; the URL is returned exactly once
+- ✅ Group membership management, since opening a link no longer creates anyone
+- ✅ Claim preview + confirm; `is_ghost = 0` cannot be acted as via a link
+- ✅ Old `/join/:token` and `/accept/:code` 301 into `/guest/l/...`
 
 ## Phase 10: Offline-first + PWA ⬜
 
@@ -221,20 +228,23 @@ Full plan in `docs/OFFLINE.md`. Assumes phases 8 and 9. Dexie mirror of the
 domain writers, installable PWA shell scoped to `/app/`, unsynced count and
 last-synced time in the UI.
 
-Invite-link visitors under `/guest` are **not** offline-capable. No Dexie, no
-sync endpoints, no cached ledger: no network means it does not work. A link is
-a revocable capability; a local copy would outlive the owner expiring it.
+Guest-link visitors under `/guest` are **not** offline-capable, and the shell
+already enforces it: its service worker is network-only and clears any cache it
+finds, and losing the network shows a needs-connection screen. A link is a
+revocable capability; a local copy would outlive the owner expiring it.
 
 - ⬜ Foundations: `expenses.version`, `sync_log`, local balances via `deriveRepayments`
-- ⬜ PWA shell: `vite-plugin-pwa`, manifest, icons, cached profile + currencies
+- 🚧 PWA shell: manifest and an app-shell service worker scoped to `/app/`
+      already exist (phase 9 needed the scope). Still to do: icons, cached
+      profile + currencies
 - ⬜ Local read mirror: the app becomes fully usable offline, read-only (write-through while online)
 - ⬜ Incremental pull: `/api/v1/sync/pull`, snapshot on join, seq cursor
 - ⬜ Offline writes: outbox reducer, `/api/v1/sync/push`, conflict + quarantine UI
 - ⬜ Status UI: unsynced count, last synced, per-expense sync badges
 
-Adding a friend and creating a group stay **online-only** on purpose: both mint
-server-side identities (a placeholder user, an invite-link secret), and a
-queued identity reconciled by email is how two people become one. Expense ids
+Adding a friend, adding a group member, and creating a group stay
+**online-only** on purpose: they mint server-side identities, and a queued
+identity reconciled by email is how two people become one. Expense ids
 are client-minted ULIDs; that is the whole reason phase 8 exists.
 
 ---
