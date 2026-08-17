@@ -69,7 +69,7 @@ const MISSING: { feature: string; them: string; us: string }[] = [
   {
     feature: "7+ languages",
     them: "Yes",
-    us: "English.",
+    us: "English. Your browser can translate the page.",
   },
   {
     feature: "Avatars and group cover photos",
@@ -95,10 +95,12 @@ export function Home() {
           <p className="mkt-kicker">Open source · Self-hosted · Free</p>
           <h1>Keep track of who paid for dinner.</h1>
           <p className="mkt-lede">
-            SplitSmart is a Splitwise replacement you can run yourself. Groups,
-            friends, one-off bills, 100+ currencies, and it still works on a
-            plane with no signal. You don&apos;t need an account to settle a
-            single trip, someone can just send you a link.
+            SplitSmart is a Splitwise replacement you can run yourself, or use
+            here if you&apos;re willing to trust a random person on the internet
+            with who paid for dinner. Groups, friends, one-off bills, 100+
+            currencies, and it still works on a plane with no signal. You
+            don&apos;t need an account to settle a single trip. Someone can
+            just send you a link.
           </p>
           <div className="mkt-cta">
             <a href="/app/login?register" className="mkt-btn">
@@ -149,7 +151,7 @@ export function Home() {
 
       <section className="mkt-band" aria-label="Highlights">
         <div className="mkt-tiles">
-          <article className="mkt-tile mkt-tile-accent">
+          <article className="mkt-tile mkt-tile-accent mkt-tile-a">
             <h2>Works with no signal</h2>
             <p>
               Install it on your phone and add the dinner while you&apos;re
@@ -157,7 +159,7 @@ export function Home() {
               and syncs once you&apos;re back online.
             </p>
           </article>
-          <article className="mkt-tile">
+          <article className="mkt-tile mkt-tile-b">
             <h2>No account for a one-off trip</h2>
             <p>
               Send someone a guest link and they are in: no email, no password,
@@ -166,19 +168,7 @@ export function Home() {
               account, it folds their history straight into it.
             </p>
           </article>
-          <article className="mkt-tile">
-            <h2>The API isn&apos;t paywalled</h2>
-            <p>
-              Bearer tokens for the native API, and it also speaks the basic
-              Splitwise API shapes, so whatever you already pointed at Splitwise
-              has a good chance of just working. The endpoints are in the{" "}
-              <Link to="/docs" className="mkt-inline">
-                API docs
-              </Link>
-              .
-            </p>
-          </article>
-          <article className="mkt-tile mkt-tile-deep">
+          <article className="mkt-tile mkt-tile-deep mkt-tile-c">
             <h2>Open source and free</h2>
             <p>
               The code is on{" "}
@@ -195,6 +185,18 @@ export function Home() {
                 about page
               </Link>{" "}
               before you trust it with anything you can&apos;t afford to lose.
+            </p>
+          </article>
+          <article className="mkt-tile mkt-tile-d">
+            <h2>The API isn&apos;t paywalled</h2>
+            <p>
+              Bearer tokens for the native API, and it also speaks the basic
+              Splitwise API shapes, so whatever you already pointed at Splitwise
+              has a good chance of just working. The endpoints are in the{" "}
+              <Link to="/docs" className="mkt-inline">
+                API docs
+              </Link>
+              .
             </p>
           </article>
         </div>

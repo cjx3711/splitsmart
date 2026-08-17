@@ -1442,26 +1442,27 @@ code {
   width: auto;
   padding: 0.65rem 1.1rem;
   border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--logo-deep);
+  color: #fff;
   font-weight: 650;
   text-decoration: none;
   line-height: 1.2;
+  border: 1px solid transparent;
 }
 
 .mkt-btn:hover {
-  filter: brightness(1.06);
+  filter: brightness(1.08);
 }
 
 .mkt-btn-ghost {
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border-strong);
+  background: var(--logo-deep);
+  color: #fff;
+  border-color: color-mix(in srgb, #fff 22%, var(--logo-deep));
 }
 
 .mkt-btn-ghost:hover {
-  filter: none;
-  background: var(--surface-2);
+  filter: brightness(1.08);
+  background: var(--logo-deep);
 }
 
 .mkt-btn-sm {
@@ -1495,7 +1496,7 @@ code {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--logo-bright);
 }
 
 .mkt-hero h1 {
@@ -1611,10 +1612,28 @@ code {
   overflow: hidden;
 }
 
+/* DOM order is clockwise from top-left so a single-column stack alternates. */
+.mkt-tile-a {
+  grid-area: 1 / 1;
+}
+
+.mkt-tile-b {
+  grid-area: 1 / 2;
+}
+
+.mkt-tile-c {
+  grid-area: 2 / 2;
+}
+
+.mkt-tile-d {
+  grid-area: 2 / 1;
+}
+
 .mkt-tile {
-  background: var(--surface);
+  background: #131a18;
   padding: 1.6rem 1.5rem 1.7rem;
   min-width: 0;
+  color: #fff;
 }
 
 .mkt-tile h2 {
@@ -1625,28 +1644,25 @@ code {
 
 .mkt-tile p {
   margin: 0;
-  color: var(--muted);
+  color: color-mix(in srgb, #fff 78%, transparent);
   font-size: 0.95rem;
 }
 
-.mkt-tile-accent {
-  background: var(--accent);
-  color: var(--accent-ink);
+.mkt-tile .mkt-inline {
+  color: #fff;
+}
+
+.mkt-tile-accent,
+.mkt-tile-deep {
+  background: var(--logo-deep);
+  color: #fff;
 }
 
 .mkt-tile-accent p,
-.mkt-tile-accent .mkt-inline {
-  color: color-mix(in srgb, var(--accent-ink) 78%, transparent);
-}
-
-.mkt-tile-deep {
-  background: var(--logo-deep);
-  color: #f3fffb;
-}
-
+.mkt-tile-accent .mkt-inline,
 .mkt-tile-deep p,
 .mkt-tile-deep .mkt-inline {
-  color: color-mix(in srgb, #f3fffb 78%, transparent);
+  color: color-mix(in srgb, #fff 78%, transparent);
 }
 
 .mkt-list-wrap {
@@ -2010,7 +2026,8 @@ code {
 
 @media (max-width: 620px) {
   .mkt-tiles {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
   }
 
   .topbar-public {
