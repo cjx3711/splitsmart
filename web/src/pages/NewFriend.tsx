@@ -40,7 +40,7 @@ export function NewFriend() {
         name: displayName(response.friend),
         existing: response.existingAccount,
         delivered: response.emailDelivered,
-        inviteUrl: response.inviteUrl,
+        inviteUrl: "inviteUrl" in response ? response.inviteUrl : undefined,
       });
       setName("");
       setEmail("");

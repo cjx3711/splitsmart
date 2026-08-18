@@ -27,7 +27,7 @@ function matches(c: Currency, query: string): boolean {
   if (!q) return true;
   return (
     c.code.toLowerCase().includes(q) ||
-    c.name.toLowerCase().includes(q) ||
+    c.name?.toLowerCase().includes(q) ||
     (c.symbol?.toLowerCase().includes(q) ?? false)
   );
 }

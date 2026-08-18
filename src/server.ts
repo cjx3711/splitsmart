@@ -16,19 +16,11 @@ import { env } from "./env.ts";
 import type { AppEnv } from "./auth/middleware.ts";
 import { purgeExpiredSessions } from "./auth/session.ts";
 import { purgeExpiredEmailTokens } from "./email/verification.ts";
-import { authRoutes } from "./routes/native/auth.ts";
-import { claimRoutes } from "./routes/native/claim.ts";
-import { linkRoutes } from "./routes/native/links.ts";
 import { guestRoutes } from "./routes/native/guest.ts";
-import { groupRoutes, expenseRoutes, categoryRoutes } from "./routes/native/groups.ts";
-import { friendRoutes } from "./routes/native/friends.ts";
-import { activityRoutes } from "./routes/native/activity.ts";
-import { importRoutes } from "./routes/native/import.ts";
-import { commentRoutes, expenseCommentRoutes } from "./routes/native/comments.ts";
-import { exportRoutes } from "./routes/native/export.ts";
-import { syncRoutes } from "./routes/native/sync.ts";
+import { nativeApi } from "./routes/native/v1.ts";
 import { startRecurringScheduler } from "./domain/scheduler.ts";
 import { compatV3 } from "./routes/compat/v3.ts";
+import { compatOpenApiDocument } from "./routes/compat/openapi.ts";
 
 const app = new Hono<AppEnv>();
 
@@ -46,39 +38,21 @@ app.get("/join/:token", (c) => c.redirect(`/guest/l/${c.req.param("token")}`, 30
 app.get("/accept/:code", (c) => c.redirect(`/guest/l/${c.req.param("code")}`, 301));
 
 // --- Native API -------------------------------------------------------------
-app.route("/api/v1/auth", authRoutes);
-app.route("/api/v1/claim", claimRoutes);
-app.route("/api/v1/links", linkRoutes);
-app.route("/api/v1/groups", groupRoutes);
-app.route("/api/v1/friends", friendRoutes);
-app.route("/api/v1/expenses", expenseRoutes);
-// A second router on the same prefix, so the comment code stays in one file
-// rather than being split across the expense routes it hangs off.
-app.route("/api/v1/expenses", expenseCommentRoutes);
-app.route("/api/v1/comments", commentRoutes);
-app.route("/api/v1/activity", activityRoutes);
-app.route("/api/v1/categories", categoryRoutes);
-app.route("/api/v1/import", importRoutes);
-// Replication for offline-capable clients (docs/OFFLINE.md). Logged-in accounts
-// only: requireAuth refuses a guest `link_` secret, and there is deliberately no
-// guest equivalent of this tree.
-app.route("/api/v1/sync", syncRoutes);
-// `/api/v1/expenses.csv` is a sibling of `/api/v1/expenses`, not a child, so it
-// cannot live inside a router mounted on that path.
-app.route("/api/v1", exportRoutes);
-
-// --- Guest API ---------------------------------------------------------------
-// Its own tree, deliberately. Authentication here is a guest access link and
-// NOTHING else; every handler re-checks what that link may see. The routes
-// above reject a `link_` bearer outright (src/auth/middleware.ts), so there is
-// no path by which a guest secret becomes a full-user credential.
+// Guest first: a later `/api/v1` mount would otherwise swallow `/api/v1/guest/*`
+// and 404 inside nativeApi, which has no guest tree. nativeApi itself has no
+// wildcard requireAuth; that stays on each child, so guest auth cannot leak in.
 app.route("/api/v1/guest", guestRoutes);
+app.route("/api/v1", nativeApi);
 
 // --- Splitwise-compatible API ----------------------------------------------
 // Mounted at /api/sw/v3.0, distinct from Splitwise's own base URL
 // (https://secure.splitwise.com/api/v3.0) so it's clear this is a compat
 // shim, not the real thing. External clients (like splitwise-to-toshl) are
 // pointed at this base URL explicitly, so there is no dual mount.
+//
+// The OpenAPI document is public (it is the frozen wire, not anyone's ledger)
+// and lives outside the compat router's requireAuth wildcard.
+app.get("/api/sw/v3.0/openapi.json", (c) => c.json(compatOpenApiDocument()));
 app.route("/api/sw/v3.0", compatV3);
 
 app.onError((err, c) => {

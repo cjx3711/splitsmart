@@ -25,9 +25,9 @@ export function EmailVerificationBanner() {
       const result = await api.resendVerification();
       setStatus("sent");
       setMessage(
-        result.alreadyVerified
+        "alreadyVerified" in result && result.alreadyVerified
           ? "Already verified. Refresh the page."
-          : result.delivered
+          : "delivered" in result && result.delivered
             ? "Sent. Check your inbox."
             : // Mail isn't configured on this server; the link went to the
               // server log instead. Say so rather than implying an inbox.

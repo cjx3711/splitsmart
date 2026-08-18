@@ -32,14 +32,51 @@ import {
 import { useSidebarRefresh } from "../App.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { HelpTip } from "../HelpTip.tsx";
+import { WipeLedgerButton } from "../WipeLedger.tsx";
 
 type Step = "key" | "review" | "running" | "done";
 
+type PhaseStatus = "pending" | "active" | "done";
+
+interface PhaseProgress {
+  status: PhaseStatus;
+  current?: number;
+  total?: number;
+  totalCapped?: boolean;
+}
+
 interface Progress {
-  label: string;
-  /** Expenses seen so far; the total is a floor, so this can pass it. */
-  expensesSeen: number;
+  friendsCount: number;
+  groupsCount: number;
   expensesTotal: number;
+  expensesCapped: boolean;
+  friends: PhaseProgress;
+  groups: PhaseProgress;
+  expenses: PhaseProgress;
+  comments: PhaseProgress;
+}
+
+function initialProgress(preview: ImportPreview): Progress {
+  return {
+    friendsCount: preview.counts.friends,
+    groupsCount: preview.counts.groups,
+    expensesTotal: preview.counts.expenses,
+    expensesCapped: preview.counts.expensesCapped,
+    friends: { status: "active" },
+    groups: { status: "pending" },
+    expenses: {
+      status: "pending",
+      current: 0,
+      total: preview.counts.expenses,
+      totalCapped: preview.counts.expensesCapped,
+    },
+    comments: {
+      status: "pending",
+      current: 0,
+      total: preview.counts.expenses,
+      totalCapped: true,
+    },
+  };
 }
 
 interface Outcome {
@@ -91,18 +128,42 @@ export function Import() {
   }
 
   async function handleRun() {
+    if (!preview) return;
     const key = apiKey.trim();
-    const total = preview?.counts.expenses ?? 0;
+    const total = preview.counts.expenses;
 
     setStep("running");
     setError(null);
-    setProgress({ label: "Importing people…", expensesSeen: 0, expensesTotal: total });
+    setProgress(initialProgress(preview));
 
     try {
       const friends = await api.importFriends(key);
 
-      setProgress({ label: "Importing groups…", expensesSeen: 0, expensesTotal: total });
+      setProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              friends: { status: "done" },
+              groups: { status: "active" },
+            }
+          : prev,
+      );
       const groups = await api.importGroups(key);
+
+      setProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              groups: { status: "done" },
+              expenses: {
+                status: "active",
+                current: 0,
+                total,
+                totalCapped: preview.counts.expensesCapped,
+              },
+            }
+          : prev,
+      );
 
       const result: Outcome = {
         peopleCreated: friends.created + groups.created,
@@ -130,30 +191,83 @@ export function Import() {
         result.commentsImported += page.commentsImported;
         result.skipped.push(...page.skipped);
 
-        setProgress({
-          label: `Importing expenses… ${seen} of ~${total}`,
-          expensesSeen: seen,
-          expensesTotal: total,
-        });
+        setProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                expenses: {
+                  status: "active",
+                  current: seen,
+                  total,
+                  totalCapped: preview.counts.expensesCapped,
+                },
+              }
+            : prev,
+        );
 
         offset = page.done ? null : page.nextOffset;
       }
 
       // Step 4. A no-op when the comments arrived nested above; a walk of one
       // request per commented expense when they did not.
-      setProgress({
-        label: "Importing comments…",
-        expensesSeen: seen,
-        expensesTotal: total,
-      });
+      let commentsScanned = 0;
+      setProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              expenses: {
+                status: "done",
+                current: seen,
+                total,
+                totalCapped: preview.counts.expensesCapped,
+              },
+              comments: {
+                status: "active",
+                current: 0,
+                total,
+                totalCapped: true,
+              },
+            }
+          : prev,
+      );
 
       let commentOffset: number | null = 0;
       while (commentOffset !== null) {
         const page = await api.importComments(key, commentOffset);
+        commentsScanned += page.scanned;
         result.commentsImported += page.imported;
         result.skipped.push(...page.skipped);
+
+        setProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                comments: {
+                  status: "active",
+                  current: commentsScanned,
+                  total,
+                  totalCapped: true,
+                },
+              }
+            : prev,
+        );
+
         commentOffset = page.done ? null : page.nextOffset;
       }
+
+      setProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              comments: {
+                status: "done",
+                current: commentsScanned,
+                total,
+                totalCapped: true,
+              },
+            }
+          : prev,
+      );
 
       setOutcome(result);
       setStep("done");
@@ -166,7 +280,9 @@ export function Import() {
 
   return (
     <>
-      <h1>Import from Splitwise</h1>
+      <div className="page-head">
+        <h1>Import from Splitwise</h1>
+      </div>
 
       {!online && <NeedsConnection what="Importing from Splitwise" />}
 
@@ -179,6 +295,12 @@ export function Import() {
           status={status}
           busy={busy}
           onSubmit={handlePreview}
+          onWiped={() => {
+            void api
+              .importStatus()
+              .then(setStatus)
+              .catch(() => setStatus(null));
+          }}
         />
       )}
 
@@ -201,15 +323,17 @@ function KeyStep({
   status,
   busy,
   onSubmit,
+  onWiped,
 }: {
   apiKey: string;
   setApiKey: (value: string) => void;
   status: ImportStatus | null;
   busy: boolean;
   onSubmit: () => void;
+  onWiped: () => void;
 }) {
   return (
-    <div className="stack">
+    <div className="stack" style={{ gap: "1rem" }}>
       {status?.hasData && (
         <div className="notice stack">
           <strong>This account already has data</strong>
@@ -225,6 +349,7 @@ function KeyStep({
               duplicate them.
             </p>
           )}
+          <WipeLedgerButton onWiped={onWiped} />
         </div>
       )}
 
@@ -267,7 +392,11 @@ function KeyStep({
           </a>
           .
         </p>
-        <button type="submit" disabled={busy || apiKey.trim().length < 10}>
+        <button
+          type="submit"
+          disabled={busy || apiKey.trim().length < 10}
+          style={{ marginTop: "0.35rem" }}
+        >
           {busy ? "Checking your Splitwise account…" : "Check my Splitwise account"}
         </button>
       </form>
@@ -300,7 +429,7 @@ function ReviewStep({
         <div className="muted">{preview.splitwiseAccount.email ?? "no email"}</div>
       </div>
 
-      <div className="card row">
+      <div className="card import-counts">
         <span>{preview.counts.groups} group(s)</span>
         <span>{preview.counts.friends} friend(s)</span>
         <span>
@@ -340,13 +469,11 @@ function ReviewStep({
         empty="Nobody: everyone already has an account here."
       />
 
-      <div className="row">
-        <button className="secondary" style={{ width: "auto" }} onClick={onBack}>
+      <div className="import-actions">
+        <button className="secondary" onClick={onBack}>
           Back
         </button>
-        <button style={{ width: "auto" }} onClick={onRun}>
-          Import {preview.counts.expenses} expense(s)
-        </button>
+        <button onClick={onRun}>Import {preview.counts.expenses} expense(s)</button>
       </div>
     </div>
   );
@@ -387,18 +514,68 @@ function PeopleList({
 function RunningStep({ progress }: { progress: Progress }) {
   return (
     <div className="card stack">
-      <strong>{progress.label}</strong>
-      <progress
-        // The total is a floor when the account is large, so clamp rather than
-        // letting the bar overrun and look broken.
-        value={Math.min(progress.expensesSeen, progress.expensesTotal)}
-        max={Math.max(progress.expensesTotal, 1)}
-        style={{ width: "100%" }}
-      />
+      <div className="import-progress">
+        <ImportPhaseRow
+          label="Friends"
+          count={progress.friendsCount}
+          phase={progress.friends}
+        />
+        <ImportPhaseRow label="Groups" count={progress.groupsCount} phase={progress.groups} />
+        <ImportPhaseRow label="Expenses" phase={progress.expenses} />
+        <ImportPhaseRow label="Comments" phase={progress.comments} />
+      </div>
       <span className="muted">
         Leave this page open. Anything already imported is matched on its Splitwise id, so if this
         is interrupted you can start again without duplicating a thing.
       </span>
+    </div>
+  );
+}
+
+function ImportPhaseRow({
+  label,
+  count,
+  phase,
+}: {
+  label: string;
+  count?: number;
+  phase: PhaseProgress;
+}) {
+  const done = phase.status === "done";
+  const active = phase.status === "active";
+  const countLabel = count !== undefined ? ` (${count})` : "";
+  const progressLabel =
+    active && phase.current !== undefined && phase.total !== undefined
+      ? `${phase.current} of ${phase.totalCapped ? "~" : ""}${phase.total}`
+      : null;
+
+  let rowLabel = label;
+  if (done) rowLabel = `${label}${countLabel}`;
+  else if (active) rowLabel = progressLabel ? `Importing ${label.toLowerCase()}… ${progressLabel}` : `Importing ${label.toLowerCase()}…`;
+  else rowLabel = `${label}${countLabel}`;
+
+  return (
+    <div
+      className={`import-phase${active ? " import-phase-active" : ""}${done ? " import-phase-done" : ""}`}
+    >
+      <div className="import-phase-head">
+        <span className="import-phase-icon" aria-hidden="true">
+          {done ? "✓" : ""}
+        </span>
+        <span className="import-phase-label">{rowLabel}</span>
+      </div>
+      {done ? (
+        <progress value={1} max={1} />
+      ) : active && phase.current !== undefined && phase.total !== undefined ? (
+        <progress
+          value={Math.min(phase.current, phase.total)}
+          max={Math.max(phase.total, 1)}
+        />
+      ) : active ? (
+        <progress />
+      ) : (
+        <progress value={0} max={1} />
+      )}
     </div>
   );
 }

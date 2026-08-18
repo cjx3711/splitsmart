@@ -22,6 +22,7 @@
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call
  *   POST /api/v1/import/run       all three, server-side, for small accounts
+ *   POST /api/v1/import/wipe      hard-delete this account's ledger (reimport)
  */
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
@@ -41,23 +42,7 @@ import {
   type ExpensePageResult,
   type SkippedRow,
 } from "../../domain/import.ts";
-
-export const importRoutes = new Hono<AppEnv>();
-importRoutes.use("*", requireAuth);
-
-/**
- * Rejects guests.
- *
- * A ghost has no email and no way back into their own account; letting one
- * absorb a real Splitwise history would strand that history behind a single
- * session cookie.
- */
-importRoutes.use("*", async (c, next) => {
-  if (c.get("user").isGhost) {
-    return c.json({ error: "Guest accounts cannot import from Splitwise." }, 403);
-  }
-  await next();
-});
+import { wipeUserLedger, WipeBlockedError, WIPE_CONFIRMATION } from "../../domain/wipe.ts";
 
 const keySchema = z.object({
   // Splitwise personal keys are opaque; only the obvious junk is rejected here
@@ -96,70 +81,11 @@ async function withUpstream<T>(
   }
 }
 
-/** No key required: this is what the wizard shows before asking for one. */
-importRoutes.get("/status", async (c) => {
-  const auth = c.get("user");
-  const local = await localFootprint(auth.id);
-
-  return c.json({
-    local,
-    hasData: local.groups > 0 || local.friends > 0 || local.expenses > 0,
-    previouslyImported: local.previouslyImported > 0,
-    /**
-     * Shown verbatim in the wizard. Kept server-side so the API and the UI
-     * cannot end up promising different matching behaviour.
-     */
-    matchingRule:
-      "People from Splitwise are matched to existing SplitSmart accounts by email address. " +
-      "Anyone with no matching account is created as a placeholder person you can invite later.",
-  });
-});
-
-importRoutes.post("/preview", zValidator("json", keySchema), async (c) => {
-  const auth = c.get("user");
-  const result = await withUpstream(() =>
-    previewImport(clientFor(c.req.valid("json").apiKey), auth.id),
-  );
-  if (!result.ok) return c.json({ error: result.error }, result.status);
-  return c.json(result.value);
-});
-
-importRoutes.post("/friends", zValidator("json", keySchema), async (c) => {
-  const auth = c.get("user");
-  const result = await withUpstream(() =>
-    importFriends(clientFor(c.req.valid("json").apiKey), auth.id),
-  );
-  if (!result.ok) return c.json({ error: result.error }, result.status);
-  return c.json(result.value);
-});
-
-importRoutes.post("/groups", zValidator("json", keySchema), async (c) => {
-  const auth = c.get("user");
-  const result = await withUpstream(() =>
-    importGroups(clientFor(c.req.valid("json").apiKey), auth.id),
-  );
-  if (!result.ok) return c.json({ error: result.error }, result.status);
-  return c.json(result.value);
-});
-
 const expensePageSchema = keySchema.extend({
   offset: z.number().int().min(0).default(0),
   // Splitwise caps this server-side anyway; the ceiling here just stops a
   // client asking for a page that takes minutes to come back.
   limit: z.number().int().min(1).max(100).default(100),
-});
-
-importRoutes.post("/expenses", zValidator("json", expensePageSchema), async (c) => {
-  const auth = c.get("user");
-  const { apiKey, offset, limit } = c.req.valid("json");
-
-  const result = await withUpstream(() =>
-    importExpensePage(clientFor(apiKey), auth.id, { offset, limit }),
-  );
-  if (!result.ok) return c.json({ error: result.error }, result.status);
-
-  if (result.value.imported > 0) await recordImportActivity(auth.id, result.value.imported);
-  return c.json(result.value);
 });
 
 /**
@@ -178,18 +104,6 @@ const commentPageSchema = keySchema.extend({
   limit: z.number().int().min(1).max(50).default(25),
 });
 
-importRoutes.post("/comments", zValidator("json", commentPageSchema), async (c) => {
-  const auth = c.get("user");
-  const { apiKey, offset, limit } = c.req.valid("json");
-
-  const result = await withUpstream(() =>
-    importCommentsPage(clientFor(apiKey), auth.id, { offset, limit }),
-  );
-  if (!result.ok) return c.json({ error: result.error }, result.status);
-
-  return c.json(result.value);
-});
-
 /**
  * Everything, in order, in one request.
  *
@@ -203,7 +117,106 @@ const runSchema = keySchema.extend({
   maxPages: z.number().int().min(1).max(200).default(50),
 });
 
-importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
+/**
+ * One feed entry per import call, not per expense.
+ *
+ * `createExpense` is told to skip its own activity row during an import (see
+ * its `recordActivity` option), because a thousand imported expenses would
+ * otherwise push every real event off the feed.
+ */
+async function recordImportActivity(userId: string, count: number): Promise<void> {
+  await db
+    .insertInto("activity")
+    .values({
+      id: ulid(),
+      user_id: userId,
+      action: "import.completed",
+      payload: JSON.stringify({ source: "splitwise", expenses: count }),
+    })
+    .execute();
+}
+
+export const importRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+/**
+ * Rejects guests.
+ *
+ * A ghost has no email and no way back into their own account; letting one
+ * absorb a real Splitwise history would strand that history behind a single
+ * session cookie.
+ */
+  .use("*", async (c, next) => {
+  if (c.get("user").isGhost) {
+    return c.json({ error: "Guest accounts cannot import from Splitwise." }, 403);
+  }
+  await next();
+})
+/** No key required: this is what the wizard shows before asking for one. */
+  .get("/status", async (c) => {
+  const auth = c.get("user");
+  const local = await localFootprint(auth.id);
+
+  return c.json({
+    local,
+    hasData: local.groups > 0 || local.friends > 0 || local.expenses > 0,
+    previouslyImported: local.previouslyImported > 0,
+    /**
+     * Shown verbatim in the wizard. Kept server-side so the API and the UI
+     * cannot end up promising different matching behaviour.
+     */
+    matchingRule:
+      "People from Splitwise are matched to existing SplitSmart accounts by email address. " +
+      "Anyone with no matching account is created as a placeholder person you can invite later.",
+  });
+})
+  .post("/preview", zValidator("json", keySchema), async (c) => {
+  const auth = c.get("user");
+  const result = await withUpstream(() =>
+    previewImport(clientFor(c.req.valid("json").apiKey), auth.id),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  return c.json(result.value);
+})
+  .post("/friends", zValidator("json", keySchema), async (c) => {
+  const auth = c.get("user");
+  const result = await withUpstream(() =>
+    importFriends(clientFor(c.req.valid("json").apiKey), auth.id),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  return c.json(result.value);
+})
+  .post("/groups", zValidator("json", keySchema), async (c) => {
+  const auth = c.get("user");
+  const result = await withUpstream(() =>
+    importGroups(clientFor(c.req.valid("json").apiKey), auth.id),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  return c.json(result.value);
+})
+  .post("/expenses", zValidator("json", expensePageSchema), async (c) => {
+  const auth = c.get("user");
+  const { apiKey, offset, limit } = c.req.valid("json");
+
+  const result = await withUpstream(() =>
+    importExpensePage(clientFor(apiKey), auth.id, { offset, limit }),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+
+  if (result.value.imported > 0) await recordImportActivity(auth.id, result.value.imported);
+  return c.json(result.value);
+})
+  .post("/comments", zValidator("json", commentPageSchema), async (c) => {
+  const auth = c.get("user");
+  const { apiKey, offset, limit } = c.req.valid("json");
+
+  const result = await withUpstream(() =>
+    importCommentsPage(clientFor(apiKey), auth.id, { offset, limit }),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+
+  return c.json(result.value);
+})
+  .post("/run", zValidator("json", runSchema), async (c) => {
   const auth = c.get("user");
   const { apiKey, maxPages } = c.req.valid("json");
   const client = clientFor(apiKey);
@@ -281,23 +294,25 @@ importRoutes.post("/run", zValidator("json", runSchema), async (c) => {
     await recordImportActivity(auth.id, result.value.expenses.imported);
   }
   return c.json(result.value);
+})
+  /**
+   * Hard-delete this account's groups, expenses, friendships and placeholder
+   * people so a Splitwise import can run on an empty book. The account itself
+   * is left alone. Refuses if another live real account shares the data.
+   *
+   * Confirmation is in the body so a stray POST cannot do this; the UI also
+   * asks twice, the second time by typing the same phrase.
+   */
+  .post(
+    "/wipe",
+    zValidator("json", z.object({ confirm: z.literal(WIPE_CONFIRMATION) })),
+    async (c) => {
+  try {
+    return c.json(await wipeUserLedger(c.get("user").id));
+  } catch (err) {
+    if (err instanceof WipeBlockedError) {
+      return c.json({ error: err.message, others: err.others }, 409);
+    }
+    throw err;
+  }
 });
-
-/**
- * One feed entry per import call, not per expense.
- *
- * `createExpense` is told to skip its own activity row during an import (see
- * its `recordActivity` option), because a thousand imported expenses would
- * otherwise push every real event off the feed.
- */
-async function recordImportActivity(userId: string, count: number): Promise<void> {
-  await db
-    .insertInto("activity")
-    .values({
-      id: ulid(),
-      user_id: userId,
-      action: "import.completed",
-      payload: JSON.stringify({ source: "splitwise", expenses: count }),
-    })
-    .execute();
-}

@@ -11,6 +11,7 @@
  * translation into Kysely, and the pair is why "no results offline, twelve
  * results online" cannot happen quietly.
  */
+import { z } from "zod";
 import { sql, type Expression, type ExpressionBuilder, type ExpressionWrapper, type SqlBool } from "kysely";
 import type { Database } from "../../db/types.ts";
 import { isUlid } from "../../domain/ulid.ts";
@@ -23,6 +24,23 @@ import {
 
 export { hasFilters, NO_GROUP };
 export type { ExpenseFilters };
+
+/**
+ * Query-string fields the list endpoints accept. All optional strings, so a
+ * stale bookmark cannot 400: parseExpenseFilters still ignores anything
+ * malformed. Present so Hono RPC types the client's `query` argument.
+ */
+export const expenseListQuerySchema = z.object({
+  q: z.string().optional(),
+  group_id: z.string().optional(),
+  friend_id: z.string().optional(),
+  dated_after: z.string().optional(),
+  dated_before: z.string().optional(),
+  category_id: z.string().optional(),
+  is_payment: z.string().optional(),
+  limit: z.string().optional(),
+  offset: z.string().optional(),
+});
 
 /** Reads filters off a query string, ignoring anything malformed. */
 export function parseExpenseFilters(

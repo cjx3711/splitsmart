@@ -60,7 +60,28 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+
+  /**
+   * Comma-separated emails that may open the usage admin panel. Empty (the
+   * default) means nobody. Compared case-insensitively against users.email;
+   * ghosts have no email and can never match. Not a DB role — self-hosted
+   * operators control it from the environment.
+   */
+  ADMIN_EMAILS: z
+    .string()
+    .optional()
+    .default("")
+    .transform((v) => parseAdminEmails(v)),
 });
+
+/** Split, trim, lower-case; drop empties. Exported for unit tests. */
+export function parseAdminEmails(raw: string): ReadonlySet<string> {
+  const emails = raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.length > 0);
+  return new Set(emails);
+}
 
 function load() {
   // In test runs we don't want to require a real .env file.
@@ -84,3 +105,12 @@ export const env = load();
 export const emailEnabled = Boolean(
   env.POSTMARK_SERVER_TOKEN && env.POSTMARK_FROM_ADDRESS,
 );
+
+/** True when this authenticated user is listed in ADMIN_EMAILS. */
+export function isAdminUser(user: {
+  email: string | null;
+  isGhost: boolean;
+}): boolean {
+  if (user.isGhost || !user.email) return false;
+  return env.ADMIN_EMAILS.has(user.email.trim().toLowerCase());
+}

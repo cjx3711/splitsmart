@@ -12,6 +12,7 @@ import {
   type IdentityDraft,
 } from "../PersonIdentityForm.tsx";
 import { HelpTip } from "../HelpTip.tsx";
+import { WipeLedgerButton } from "../WipeLedger.tsx";
 
 /**
  * Account settings and API tokens.
@@ -154,6 +155,16 @@ export function Settings() {
       </h2>
       <OnlineOnly what="Importing from Splitwise">
         <Link to="/import">Start an import</Link>
+      </OnlineOnly>
+
+      <h2>Delete all data</h2>
+      <p className="muted">
+        Permanently remove this account&apos;s groups, friends, expenses and
+        guest links so you can import from Splitwise again. Your login is not
+        deleted.
+      </p>
+      <OnlineOnly what="Deleting this account's data">
+        <WipeLedgerButton />
       </OnlineOnly>
 
       <h2 className="with-help">

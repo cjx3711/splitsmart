@@ -27,8 +27,6 @@ import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-f
  * including `/api/v1/guest/*`, whose whole point is that `requireAuth` never
  * touches it. Auth goes on the route itself.
  */
-export const exportRoutes = new Hono<AppEnv>();
-
 /**
  * A download is a whole-history request, so there is no paging - but there is a
  * ceiling. 20k rows is a few megabytes of text; past that the honest answer is a
@@ -36,7 +34,16 @@ export const exportRoutes = new Hono<AppEnv>();
  */
 const MAX_CSV_ROWS = 20_000;
 
-exportRoutes.get("/expenses.csv", requireAuth, async (c) => {
+/**
+ * Shared response shape, so the guest route cannot end up serving the same bytes
+ * with different headers.
+ *
+ * `text/csv; charset=utf-8` and an explicit filename: without the disposition,
+ * browsers render it as a wall of text in a tab.
+ */
+
+export const exportRoutes = new Hono<AppEnv>()
+  .get("/expenses.csv", requireAuth, async (c) => {
   const auth = c.get("user");
   const filters = parseExpenseFilters(c.req.query());
 
@@ -56,14 +63,6 @@ exportRoutes.get("/expenses.csv", requireAuth, async (c) => {
 
   return csvResponse(c, csv, "splitsmart-expenses.csv");
 });
-
-/**
- * Shared response shape, so the guest route cannot end up serving the same bytes
- * with different headers.
- *
- * `text/csv; charset=utf-8` and an explicit filename: without the disposition,
- * browsers render it as a wall of text in a tab.
- */
 export function csvResponse(
   c: { body: (data: string, status?: 200, headers?: Record<string, string>) => Response },
   csv: string,

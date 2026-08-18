@@ -56,6 +56,8 @@ interface SyncContextValue {
   engine: SyncEngine | null;
   status: SyncStatus | null;
   syncNow: () => void;
+  /** Empty the mirror and bootstrap again. After a server-side ledger wipe. */
+  resetMirror: () => Promise<void>;
 }
 
 const SyncContext = createContext<SyncContextValue>({
@@ -67,6 +69,7 @@ const SyncContext = createContext<SyncContextValue>({
   engine: null,
   status: null,
   syncNow: () => {},
+  resetMirror: async () => {},
 });
 
 export function useSync() {
@@ -228,6 +231,9 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => stopRef.current?.(), []);
 
   const syncNow = useCallback(() => void engineRef.current?.sync(), []);
+  const resetMirror = useCallback(async () => {
+    await engineRef.current?.resetMirror();
+  }, []);
 
   return (
     <SyncContext.Provider
@@ -240,6 +246,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         engine: engineRef.current,
         status,
         syncNow,
+        resetMirror,
       }}
     >
       {children}

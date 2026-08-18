@@ -9,7 +9,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { setCookie, deleteCookie, getCookie } from "hono/cookie";
 import { db, transaction } from "../../db/index.ts";
-import { env } from "../../env.ts";
+import { env, isAdminUser } from "../../env.ts";
 import { hashPassword, verifyPassword, needsRehash } from "../../auth/password.ts";
 import {
   createSession,
@@ -33,8 +33,6 @@ import {
   identityPatchSchema,
 } from "./person-schema.ts";
 
-export const authRoutes = new Hono<AppEnv>();
-
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
@@ -55,7 +53,56 @@ function sessionCookieOptions(expires: Date) {
   };
 }
 
-authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
+const patchMeSchema = identityPatchSchema.extend({
+  defaultCurrency: z.string().length(3).toUpperCase().optional(),
+});
+
+function meUser(user: AuthenticatedUser) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    nickname: user.nickname,
+    iconLetters: user.iconLetters,
+    iconEmoji: user.iconEmoji,
+    iconHue: user.iconHue,
+    isGhost: user.isGhost,
+    defaultCurrency: user.defaultCurrency,
+    emailVerified: user.emailVerifiedAt !== null,
+    // Ghosts have no address, so they must never be nagged to confirm one.
+    needsEmailVerification: !user.isGhost && user.emailVerifiedAt === null,
+    isAdmin: isAdminUser(user),
+  };
+}
+
+function toPublicUser(user: {
+  id: string;
+  email: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
+  default_currency: string;
+  is_ghost?: number;
+  email_verified_at?: string | null;
+}) {
+  const isGhost = user.is_ghost === 1;
+  const emailVerified = user.email_verified_at != null;
+  return {
+    id: user.id,
+    email: user.email,
+    ...personCamel(user),
+    defaultCurrency: user.default_currency,
+    isGhost,
+    emailVerified,
+    needsEmailVerification: !isGhost && !emailVerified,
+    isAdmin: isAdminUser({ email: user.email, isGhost }),
+  };
+}
+
+export const authRoutes = new Hono<AppEnv>()
+  .post("/register", zValidator("json", registerSchema), async (c) => {
   const input = c.req.valid("json");
 
   const existing = await db
@@ -121,9 +168,8 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     },
     201,
   );
-});
-
-authRoutes.post(
+})
+  .post(
   "/login",
   zValidator("json", z.object({ email: z.string().email(), password: z.string() })),
   async (c) => {
@@ -187,8 +233,7 @@ authRoutes.post(
       emailVerified: user.email_verified_at !== null,
     });
   },
-);
-
+)
 // --- Email verification -----------------------------------------------------
 //
 // ORDER MATTERS. Hono matches in registration order, so /verify/resend must be
@@ -196,7 +241,7 @@ authRoutes.post(
 // and the resend endpoint becomes unreachable.
 
 /** Re-sends the verification email to the signed-in user. */
-authRoutes.post("/verify/resend", requireAuth, async (c) => {
+  .post("/verify/resend", requireAuth, async (c) => {
   const auth = c.get("user");
 
   if (auth.isGhost) {
@@ -222,15 +267,14 @@ authRoutes.post("/verify/resend", requireAuth, async (c) => {
     default:
       return c.json({ error: "This account has no email address." }, 400);
   }
-});
-
+})
 /**
  * Confirms an address from an emailed link.
  *
  * Unauthenticated on purpose: the link often gets opened in a different browser
  * from the one that registered, and holding the token is the proof.
  */
-authRoutes.post(
+  .post(
   "/verify/:token",
   zValidator("param", z.object({ token: z.string().min(16) })),
   async (c) => {
@@ -266,24 +310,17 @@ authRoutes.post(
         );
     }
   },
-);
-
-authRoutes.post("/logout", async (c) => {
+)
+  .post("/logout", async (c) => {
   const token = getCookie(c, SESSION_COOKIE);
   if (token) await destroySession(token);
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.json({ ok: true });
-});
-
-authRoutes.get("/me", requireAuth, async (c) => {
+})
+  .get("/me", requireAuth, async (c) => {
   return c.json({ user: meUser(c.get("user")) });
-});
-
-const patchMeSchema = identityPatchSchema.extend({
-  defaultCurrency: z.string().length(3).toUpperCase().optional(),
-});
-
-authRoutes.patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c) => {
+})
+  .patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c) => {
   const auth = c.get("user");
   const input = c.req.valid("json");
 
@@ -339,11 +376,9 @@ authRoutes.patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c
       iconHue: identity.icon_hue !== undefined ? identity.icon_hue : auth.iconHue,
     }),
   });
-});
-
+})
 // --- API tokens -------------------------------------------------------------
-
-authRoutes.get("/tokens", requireAuth, async (c) => {
+  .get("/tokens", requireAuth, async (c) => {
   const auth = c.get("user");
   const tokens = await db
     .selectFrom("api_tokens")
@@ -352,9 +387,8 @@ authRoutes.get("/tokens", requireAuth, async (c) => {
     .orderBy("created_at", "desc")
     .execute();
   return c.json({ tokens });
-});
-
-authRoutes.post(
+})
+  .post(
   "/tokens",
   requireAuth,
   zValidator("json", z.object({ name: z.string().min(1).max(100) })),
@@ -366,45 +400,9 @@ authRoutes.post(
     // The only time the plaintext is ever available.
     return c.json({ id, name, token }, 201);
   },
-);
-
-authRoutes.delete("/tokens/:id", requireAuth, async (c) => {
+)
+  .delete("/tokens/:id", requireAuth, async (c) => {
   const auth = c.get("user");
   await revokeApiToken(c.req.param("id"), auth.id);
   return c.json({ ok: true });
 });
-
-function meUser(user: AuthenticatedUser) {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    nickname: user.nickname,
-    iconLetters: user.iconLetters,
-    iconEmoji: user.iconEmoji,
-    iconHue: user.iconHue,
-    isGhost: user.isGhost,
-    defaultCurrency: user.defaultCurrency,
-    emailVerified: user.emailVerifiedAt !== null,
-    // Ghosts have no address, so they must never be nagged to confirm one.
-    needsEmailVerification: !user.isGhost && user.emailVerifiedAt === null,
-  };
-}
-
-function toPublicUser(user: {
-  id: string;
-  email: string | null;
-  name: string;
-  nickname: string | null;
-  icon_letters: string | null;
-  icon_emoji: string | null;
-  icon_hue: number | null;
-  default_currency: string;
-}) {
-  return {
-    id: user.id,
-    email: user.email,
-    ...personCamel(user),
-    defaultCurrency: user.default_currency,
-  };
-}

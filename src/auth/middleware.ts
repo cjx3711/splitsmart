@@ -21,6 +21,7 @@ import {
   type AuthenticatedUser,
 } from "./session.ts";
 import { isLinkToken } from "../domain/access-links.ts";
+import { isAdminUser } from "../env.ts";
 
 export interface AppEnv {
   Variables: {
@@ -80,5 +81,17 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
 export const optionalAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   const identity = await identify(c);
   if (identity.kind === "user") c.set("user", identity.user);
+  await next();
+};
+
+/**
+ * Operator-only. Must run AFTER requireAuth so `c.get("user")` is set.
+ * Non-admins get 403; guests never reach here (requireAuth already 401'd).
+ */
+export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const user = c.get("user");
+  if (!isAdminUser(user)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
   await next();
 };

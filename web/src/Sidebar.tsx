@@ -88,6 +88,12 @@ export function Sidebar({ className }: { className: string }) {
         <span className="dot" />
         <span className="nav-item-label">All expenses</span>
       </NavLink>
+      {user?.isAdmin && (
+        <NavLink to="/admin" className={navClass}>
+          <span className="dot" />
+          <span className="nav-item-label">Usage</span>
+        </NavLink>
+      )}
 
       <div className="nav-section">
         <div className="nav-filter">

@@ -1,18 +1,21 @@
 /**
  * Native API client.
  *
- * Talks to /api/v1, the clean internal model, NOT the Splitwise compat layer.
- * Money crosses this boundary as integer minor units, same as the database.
+ * Talks to /api/v1 via Hono's RPC client (`hc<NativeApi>()`), so request and
+ * response types come from the server's own routes rather than being retyped
+ * here. Money still crosses this boundary as integer minor units.
  *
- * When the RPC migration in docs/PLAN.md lands, this file is replaced by Hono's
- * `hc<AppType>()` client and these hand-written types go away.
+ * The `api` object is a thin wrapper: credentials, ApiError, and the gzipped
+ * sync push. Call sites keep `api.me()` rather than `client.auth.me.$get()`.
  *
  * The split types come from the server's own split engine rather than being
- * retyped here. src/domain/split.ts is pure (no database, no Node built-ins,
+ * retyped here. src/domain/split.ts is pure (no database, no Node built-ins),
  * so the browser can import it, and the add-expense form runs the real
  * computeSplit() to preview a split instead of reimplementing its rounding.
  * See web/src/SplitEditor.tsx.
  */
+import { hc } from "hono/client";
+import type { InferRequestType, InferResponseType } from "hono/client";
 import { displayName as personDisplayName } from "../../src/domain/person.ts";
 import type { SplitItem, SplitType } from "../../src/domain/split.ts";
 import type { RepeatInterval } from "../../src/domain/recurring.ts";
@@ -26,322 +29,47 @@ import type {
   SyncGroupMember,
   SyncUser,
 } from "../../src/domain/sync-types.ts";
+import type { NativeApi } from "../../src/routes/native/v1.ts";
 
 export type { SplitItem, SplitType, RepeatInterval };
 
-export interface ApiUser {
-  id: string;
-  email: string | null;
-  name: string;
-  nickname: string | null;
-  iconLetters: string | null;
-  iconEmoji: string | null;
-  iconHue: number | null;
-  isGhost: boolean;
-  defaultCurrency: string;
-  emailVerified?: boolean;
-  /** False for ghosts, who have no address to confirm. */
-  needsEmailVerification?: boolean;
+export const client = hc<NativeApi>("/api/v1", {
+  fetch: ((input: RequestInfo | URL, init?: RequestInit) =>
+    fetch(input, { ...init, credentials: "same-origin" })) as typeof fetch,
+});
+
+async function toApiError(res: {
+  status: number;
+  statusText: string;
+  json(): Promise<unknown>;
+}): Promise<ApiError> {
+  let message = res.statusText;
+  try {
+    const body = (await res.json()) as { error?: string };
+    if (body.error) message = body.error;
+  } catch {
+    // Non-JSON error body; fall back to the status text.
+  }
+  return new ApiError(message, res.status);
 }
 
-export interface Group {
-  id: string;
-  name: string;
-  group_type: string;
-  default_currency: string;
-  simplify_by_default?: number;
+async function rpc(resPromise: Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  json(): Promise<unknown>;
+}>): Promise<unknown> {
+  const res = await resPromise;
+  if (!res.ok) throw await toApiError(res);
+  return res.json();
 }
 
-export interface CurrencyAmount {
-  currencyCode: string;
-  amountMinor: number;
-}
-
-export interface GroupMember {
-  id: string;
-  name: string;
-  nickname: string | null;
-  icon_letters: string | null;
-  icon_emoji: string | null;
-  icon_hue: number | null;
-  is_ghost: number;
-  role: string;
-  joined_via: string;
-}
-
-/** One person's balance with you, attributed to the group it arose in. */
-export interface FriendBreakdown {
-  groupId: string | null;
-  /** NULL group means one-on-one expenses; the UI supplies the wording. */
-  groupName: string | null;
-  balances: CurrencyAmount[];
-}
-
-export interface Friend {
-  id: string;
-  email: string | null;
-  name: string;
-  nickname: string | null;
-  icon_letters: string | null;
-  icon_emoji: string | null;
-  icon_hue: number | null;
-  is_ghost: number;
-  /** Only explicit friendships can be removed. */
-  is_explicit: boolean | number;
-  balances: CurrencyAmount[];
-  breakdown: FriendBreakdown[];
-}
-
-export interface ExpenseSummary {
-  id: string;
-  description: string;
-  cost_minor: number;
-  currency_code: string;
-  date: string;
-  is_payment: number;
-  split_type: string;
-  category_name: string | null;
-  group_id?: string | null;
-  group_name?: string | null;
-  /** Live comments on this expense, user and system alike. */
-  comment_count?: number;
-  /** Set on a recurring TEMPLATE. Null on occurrences and one-offs. */
-  repeat_interval?: string | null;
-  /** Set on an occurrence: the template it came from. */
-  repeat_of?: string | null;
-  /**
-   * Present when the row is a tombstone. Ordinary lists omit deleted bills;
-   * the series page includes them so a deleted one is still reachable to undo.
-   */
-  deleted_at?: string | null;
-  shares: Array<{
-    user_id: string;
-    paid_share_minor: number;
-    owed_share_minor: number;
-  }>;
-  /**
-   * Set only when the row came from the offline mirror: 'pending' has a write
-   * queued, 'conflict' needs a person to choose, 'rejected' is in quarantine.
-   * Absent means it came straight off the network, so it is the server's own copy.
-   * See docs/OFFLINE.md and web/src/db/local.ts.
-   */
-  syncState?: "synced" | "pending" | "conflict" | "rejected";
-}
-
-export interface ExpenseDetail {
-  id: string;
-  description: string;
-  details: string | null;
-  cost_minor: number;
-  currency_code: string;
-  date: string;
-  is_payment: number;
-  split_type: SplitType;
-  split_meta: string | null;
-  category_id: number | null;
-  category_name: string | null;
-  group_id: string | null;
-  group_name: string | null;
-  /** Recurrence. A template has an interval and a next date; an occurrence has neither. */
-  repeat_interval?: RepeatInterval | null;
-  next_repeat?: string | null;
-  repeat_of?: string | null;
-  /** Interval a stopped series will resume with. Null while live or on a one-off. */
-  repeat_paused?: RepeatInterval | null;
-  /** Bills this template has generated so far. Zero unless this IS a template. */
-  series_count?: number;
-  /**
-   * The optimistic-concurrency counter. An edit sends it back as `baseVersion` so
-   * a stale write is a conflict rather than an overwrite (docs/OFFLINE.md).
-   */
-  version?: number;
-  shares: Array<{
-    user_id: string;
-    paid_share_minor: number;
-    owed_share_minor: number;
-    split_input: number | null;
-  }>;
-}
-
-/** A comment on an expense. `system` rows are generated, not typed. */
-export interface Comment {
-  id: string;
-  expenseId: string;
-  kind: "user" | "system";
-  content: string;
-  createdAt: string;
-  author: {
-    id: string;
-    name: string;
-    nickname: string | null;
-    iconLetters: string | null;
-    iconEmoji: string | null;
-    iconHue: number | null;
-  };
-}
-
-export interface ActivityEntry {
-  id: string;
-  action: string;
-  createdAt: string;
-  actor: {
-    id: string;
-    name: string;
-    nickname: string | null;
-    iconLetters: string | null;
-    iconEmoji: string | null;
-    iconHue: number | null;
-  } | null;
-  group: { id: string; name: string } | null;
-  expense: {
-    id: string;
-    description: string;
-    costMinor: number;
-    currencyCode: string;
-    deleted: boolean;
-  } | null;
-}
-
-export interface Currency {
-  code: string;
-  decimal_places: number;
-  symbol: string | null;
-  name: string;
-}
-
-// --- guest links ------------------------------------------------------------
-
-/**
- * A live guest link, as the owner sees it.
- */
-export interface AccessLink {
-  id: string;
-  kind: "group" | "group_member" | "friend";
-  groupId: string | null;
-  userId: string | null;
-  createdAt: string;
-  expiresAt: string | null;
-  lastUsedAt: string | null;
-  /** Expiry has passed. The row is still live, the link is not. */
-  expired: boolean;
-  /** Copyable guest URL. Null only for links minted before token_secret existed. */
-  url: string | null;
-  person: {
-    id: string;
-    name: string | null;
-    nickname: string | null;
-    iconLetters: string | null;
-    iconEmoji: string | null;
-    iconHue: number | null;
-  } | null;
-}
-
-export interface ClaimCandidates {
-  /**
-   * `already_member` means they are in this group as themselves, so there is
-   * nothing to claim and no picker: see src/routes/native/claim.ts.
-   */
-  status: "already_member" | "claimable" | "none";
-  kind?: "group" | "group_member" | "friend";
-  group: { id: string; name: string } | null;
-  candidates: Array<{
-    id: string;
-    name: string;
-    nickname: string | null;
-    iconLetters: string | null;
-    iconEmoji: string | null;
-    iconHue: number | null;
-  }>;
-}
-
-export interface ClaimPreview {
-  person: {
-    id: string;
-    name: string;
-    nickname: string | null;
-    iconLetters: string | null;
-    iconEmoji: string | null;
-    iconHue: number | null;
-  };
-  /** Capped at ten by the server; the count below is the whole truth. */
-  overlapping: Array<{ id: string; description: string; date: string }>;
-  overlappingCount: number;
-  transferredCount: number;
-  sharedGroupCount: number;
-  linkCount: number;
-}
-
-// --- Splitwise import -------------------------------------------------------
-
-/** How a Splitwise contact was resolved to a local account. */
-export interface ImportPerson {
-  splitwiseId: number;
-  localUserId: string | null;
-  name: string;
-  email: string | null;
-  matchedBy: "splitwise_id" | "email" | "invite_email" | "self" | "created";
-}
-
-export interface ImportFootprint {
-  groups: number;
-  friends: number;
-  expenses: number;
-  previouslyImported: number;
-}
-
-export interface ImportStatus {
-  local: ImportFootprint;
-  hasData: boolean;
-  previouslyImported: boolean;
-  /** Server-owned wording, so the API and the wizard cannot disagree. */
-  matchingRule: string;
-}
-
-export interface ImportPreview {
-  splitwiseAccount: { id: number; name: string; email: string | null };
-  counts: {
-    groups: number;
-    friends: number;
-    expenses: number;
-    expensesCapped: boolean;
-    /** A floor: counted from the first page of expenses only. */
-    comments: number;
-  };
-  people: ImportPerson[];
-  groups: Array<{ splitwiseId: number; name: string; members: number; alreadyImported: boolean }>;
-  local: ImportFootprint;
-  warnings: string[];
-}
-
-export interface ImportSkip {
-  splitwiseId: number;
-  description: string;
-  reason: string;
-}
-
-export interface ImportExpensePage {
-  offset: number;
-  fetched: number;
-  imported: number;
-  alreadyPresent: number;
-  /** Already here, changed upstream, and overwritten because nothing had edited it. */
-  refreshed: number;
-  /** Comments that came nested on these expenses. */
-  commentsImported: number;
-  skipped: ImportSkip[];
-  nextOffset: number | null;
-  done: boolean;
-}
-
-export interface ImportCommentsPage {
-  offset: number;
-  scanned: number;
-  fetched: number;
-  imported: number;
-  alreadyPresent: number;
-  skipped: ImportSkip[];
-  nextOffset: number | null;
-  done: boolean;
+function call<C extends (...args: never[]) => Promise<unknown>, S extends 200 | 201 = 200>(
+  _fn: C,
+  res: ReturnType<C>,
+  _status?: S,
+): Promise<InferResponseType<C, S>> {
+  return rpc(res as never) as Promise<InferResponseType<C, S>>;
 }
 
 export class ApiError extends Error {
@@ -353,50 +81,99 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
-    // Session cookie is httpOnly, so it must be sent explicitly.
-    credentials: "same-origin",
-  });
+type MeUser = InferResponseType<typeof client.auth.me.$get, 200>["user"];
+/** `/me` always has the verification flags; the Dexie cache of the profile does not. */
+export type ApiUser = Omit<MeUser, "emailVerified" | "needsEmailVerification" | "isAdmin"> &
+  Partial<Pick<MeUser, "emailVerified" | "needsEmailVerification" | "isAdmin">>;
 
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      const body = (await res.json()) as { error?: string };
-      if (body.error) message = body.error;
-    } catch {
-      // Non-JSON error body; fall back to the status text.
-    }
-    throw new ApiError(message, res.status);
-  }
+type GroupsList = InferResponseType<typeof client.groups.$get, 200>;
+export type Group = GroupsList["groups"][number];
+export type CurrencyAmount = GroupsList["totalBalance"][number];
 
-  return res.json() as Promise<T>;
-}
+type GroupDetail = InferResponseType<typeof client.groups[":id"]["$get"], 200>;
+export type GroupMember = GroupDetail["members"][number];
 
+type FriendsList = InferResponseType<typeof client.friends.$get, 200>;
+export type Friend = FriendsList["friends"][number];
+export type FriendBreakdown = Friend["breakdown"][number];
+
+type ExpenseList = InferResponseType<typeof client.expenses.$get, 200>;
+type ExpenseSummaryRow = ExpenseList["expenses"][number];
 /**
- * POST /sync/push, gzipping the body above a kilobyte.
+ * A list row. `syncState` is added only when the row came from the offline
+ * mirror; network responses do not have it. See docs/OFFLINE.md.
  *
- * A restaurant bill's itemized payload is small; a catch-up of fifty edits is
- * not. The server gunzips when it sees `Content-Encoding: gzip` (node:zlib).
- * Pull responses are gzipped by the HTTP layer instead - we do not compress
- * them here.
+ * `split_type` / `repeat_interval` are strings in SQLite; the editor treats
+ * them as the domain unions. `deleted_at` is only present on series lists.
  */
-const GZIP_THRESHOLD = 1024;
+export type ExpenseSummary = Omit<ExpenseSummaryRow, "split_type" | "repeat_interval" | "shares"> & {
+  split_type: string;
+  repeat_interval?: RepeatInterval | string | null;
+  shares: Array<{
+    user_id: string;
+    paid_share_minor: number;
+    owed_share_minor: number;
+    split_input?: number | null;
+    expense_id?: string;
+  }>;
+  deleted_at?: string | null;
+  syncState?: "synced" | "pending" | "conflict" | "rejected";
+};
 
-async function pushRequest<T>(path: string, payload: unknown): Promise<T> {
-  const json = JSON.stringify(payload);
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  let body: BodyInit = json;
+type ExpenseGet = InferResponseType<typeof client.expenses[":id"]["$get"], 200>;
+export type ExpenseDetail = Omit<
+  ExpenseGet["expense"],
+  "split_type" | "repeat_interval" | "repeat_paused"
+> & {
+  split_type: SplitType;
+  repeat_interval?: RepeatInterval | null;
+  repeat_paused?: RepeatInterval | null;
+};
 
-  if (json.length >= GZIP_THRESHOLD && typeof CompressionStream !== "undefined") {
-    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
-    body = await new Response(stream).arrayBuffer();
-    headers["Content-Encoding"] = "gzip";
-  }
+type CommentsList = InferResponseType<
+  typeof client.expenses[":id"]["comments"]["$get"],
+  200
+>;
+export type Comment = CommentsList["comments"][number];
 
-  return request<T>(path, { method: "POST", body, headers });
+type ActivityList = InferResponseType<typeof client.activity.$get, 200>;
+export type ActivityEntry = ActivityList["activity"][number];
+
+type CurrenciesList = InferResponseType<typeof client.categories.currencies.$get, 200>;
+export type Currency = CurrenciesList["currencies"][number];
+
+type LinksList = InferResponseType<typeof client.links.$get, 200>;
+export type AccessLink = LinksList["links"][number];
+
+export type ClaimCandidates = InferResponseType<typeof client.claim.candidates.$post, 200>;
+export type ClaimPreview = InferResponseType<typeof client.claim.preview.$post, 200>;
+
+export type ImportStatus = InferResponseType<typeof client.import.status.$get, 200>;
+export type ImportPreview = InferResponseType<typeof client.import.preview.$post, 200>;
+export type ImportPerson = ImportPreview["people"][number];
+export type ImportFootprint = ImportStatus["local"];
+export type ImportExpensePage = InferResponseType<typeof client.import.expenses.$post, 200>;
+export type ImportCommentsPage = InferResponseType<typeof client.import.comments.$post, 200>;
+export type ImportSkip = ImportExpensePage["skipped"][number];
+
+type AdminList = InferResponseType<typeof client.admin.users.$get, 200>;
+export type AdminUserUsage = AdminList["users"][number];
+export type UsageCounts = AdminUserUsage["counts"];
+export type UsageDay = AdminUserUsage["series"][number];
+
+export type ExpenseInput = InferRequestType<typeof client.expenses.$post>["json"];
+
+export type BootstrapResponse = InferResponseType<typeof client.sync.bootstrap.$get, 200>;
+export type SnapshotResponse = InferResponseType<typeof client.sync.snapshot.$get, 200>;
+export type PullResponse = InferResponseType<typeof client.sync.pull.$get, 200>;
+export type PullChange = Omit<PullResponse["changes"][number], "data"> & { data: unknown };
+export type PushResultWire = InferResponseType<typeof client.sync.push.$post, 200>["results"][number];
+
+export interface PushOpWire {
+  kind: string;
+  id: string;
+  baseVersion?: number;
+  payload?: unknown;
 }
 
 /**
@@ -419,180 +196,160 @@ export interface ExpenseQuery {
 }
 
 export function expenseQueryString(filters: ExpenseQuery = {}): string {
-  const params = new URLSearchParams();
-  if (filters.q?.trim()) params.set("q", filters.q.trim());
-  if (filters.groupId) params.set("group_id", filters.groupId);
-  if (filters.friendId) params.set("friend_id", filters.friendId);
-  if (filters.datedAfter) params.set("dated_after", filters.datedAfter);
-  if (filters.datedBefore) params.set("dated_before", filters.datedBefore);
-  if (filters.categoryId !== undefined) params.set("category_id", String(filters.categoryId));
-  if (filters.isPayment !== undefined) params.set("is_payment", String(filters.isPayment));
-  const query = params.toString();
+  const params = wireQuery(filters);
+  const query = new URLSearchParams(params).toString();
   return query ? `?${query}` : "";
 }
 
-export interface ExpenseInput {
-  description: string;
-  /** Free-text notes. There is no image upload and there will not be one. */
-  details?: string;
-  costMinor: number;
-  currencyCode: string;
-  date: string;
-  categoryId?: number | null;
-  splitType: SplitType;
-  participants: Array<{ userId: string; paidMinor: number; input?: number }>;
-  /** Itemized splits only. Rejected by the server for any other split type. */
-  items?: SplitItem[];
-  /**
-   * Itemized only, and only as a caption: the engine spreads whatever the lines
-   * do not cover in proportion to what each person ordered whether or not these
-   * are sent. The server rejects a pair that disagrees with that gap.
-   */
-  taxMinor?: number;
-  tipMinor?: number;
-  /**
-   * Recurrence. THREE STATES: absent leaves an existing schedule alone, `null`
-   * stops it, a value starts or changes it. The server derives the next fire date
-   * from the expense's own date; there is no way to name it from here.
-   */
-  repeatInterval?: RepeatInterval | null;
+function wireQuery(filters: ExpenseQuery = {}): Record<string, string> {
+  const query: Record<string, string> = {};
+  if (filters.q?.trim()) query.q = filters.q.trim();
+  if (filters.groupId) query.group_id = filters.groupId;
+  if (filters.friendId) query.friend_id = filters.friendId;
+  if (filters.datedAfter) query.dated_after = filters.datedAfter;
+  if (filters.datedBefore) query.dated_before = filters.datedBefore;
+  if (filters.categoryId !== undefined) query.category_id = String(filters.categoryId);
+  if (filters.isPayment !== undefined) query.is_payment = String(filters.isPayment);
+  return query;
+}
+
+/**
+ * POST /sync/push, gzipping the body above a kilobyte.
+ *
+ * A restaurant bill's itemized payload is small; a catch-up of fifty edits is
+ * not. The server gunzips when it sees `Content-Encoding: gzip` (node:zlib).
+ * Pull responses are gzipped by the HTTP layer instead - we do not compress
+ * them here.
+ */
+const GZIP_THRESHOLD = 1024;
+
+async function pushRequest(
+  payload: unknown,
+): Promise<InferResponseType<typeof client.sync.push.$post, 200>> {
+  const json = JSON.stringify(payload);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  let body: BodyInit = json;
+
+  if (json.length >= GZIP_THRESHOLD && typeof CompressionStream !== "undefined") {
+    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream("gzip"));
+    body = await new Response(stream).arrayBuffer();
+    headers["Content-Encoding"] = "gzip";
+  }
+
+  const res = await fetch("/api/v1/sync/push", {
+    method: "POST",
+    body,
+    headers,
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await toApiError(res);
+  return res.json() as Promise<InferResponseType<typeof client.sync.push.$post, 200>>;
 }
 
 export const api = {
-  register: (input: {
-    email: string;
-    password: string;
-    name: string;
-    nickname?: string | null;
-    defaultCurrency?: string;
-  }) => request<{ user: ApiUser }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
+  register: (input: InferRequestType<typeof client.auth.register.$post>["json"]) =>
+    call(client.auth.register.$post, client.auth.register.$post({ json: input }), 201),
 
   login: (email: string, password: string) =>
-    request<{ user: ApiUser }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+    call(client.auth.login.$post, client.auth.login.$post({ json: { email, password } })),
 
-  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  logout: () => call(client.auth.logout.$post, client.auth.logout.$post()),
 
   /** Unauthenticated; the link is often opened in a different browser. */
   verifyEmail: (token: string) =>
-    request<{ ok: boolean; status: string }>(`/auth/verify/${token}`, { method: "POST" }),
+    call(client.auth.verify[":token"].$post, client.auth.verify[":token"].$post({ param: { token } })),
 
   resendVerification: () =>
-    request<{ ok: boolean; delivered?: boolean; alreadyVerified?: boolean }>(
-      "/auth/verify/resend",
-      { method: "POST" },
-    ),
+    call(client.auth.verify.resend.$post, client.auth.verify.resend.$post()),
 
-  me: () => request<{ user: ApiUser }>("/auth/me"),
+  me: () => call(client.auth.me.$get, client.auth.me.$get()),
 
-  updateMe: (input: {
-    defaultCurrency?: string;
-    name?: string;
-    nickname?: string | null;
-    iconLetters?: string | null;
-    iconEmoji?: string | null;
-    iconHue?: number | null;
-  }) => request<{ user: ApiUser }>("/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
+  updateMe: (input: InferRequestType<typeof client.auth.me.$patch>["json"]) =>
+    call(client.auth.me.$patch, client.auth.me.$patch({ json: input })),
 
-  listTokens: () =>
-    request<{ tokens: Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }> }>(
-      "/auth/tokens",
-    ),
+  listTokens: () => call(client.auth.tokens.$get, client.auth.tokens.$get()),
 
   createToken: (name: string) =>
-    request<{ id: string; name: string; token: string }>("/auth/tokens", {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    }),
+    call(client.auth.tokens.$post, client.auth.tokens.$post({ json: { name } }), 201),
 
-  revokeToken: (id: string) => request<{ ok: boolean }>(`/auth/tokens/${id}`, { method: "DELETE" }),
+  revokeToken: (id: string) =>
+    call(client.auth.tokens[":id"].$delete, client.auth.tokens[":id"].$delete({ param: { id } })),
 
-  listGroups: () =>
-    request<{ groups: Group[]; totalBalance: CurrencyAmount[] }>("/groups"),
+  listGroups: () => call(client.groups.$get, client.groups.$get()),
 
-  createGroup: (input: { name: string; groupType?: string; defaultCurrency?: string }) =>
-    request<{ group: Group }>("/groups", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+  createGroup: (input: InferRequestType<typeof client.groups.$post>["json"]) =>
+    call(client.groups.$post, client.groups.$post({ json: input }), 201),
 
   getGroup: (id: string) =>
-    request<{
-      group: Group;
-      members: GroupMember[];
-      balances: Array<{ userId: string; balances: CurrencyAmount[] }>;
-      /** The caller's own role. Only an owner may mint or revoke links. */
-      role: string;
-    }>(`/groups/${id}`),
+    call(client.groups[":id"].$get, client.groups[":id"].$get({ param: { id } })),
 
   addGroupMember: (
     groupId: string,
-    input: { userId: string } | { name: string; nickname?: string },
+    input: InferRequestType<typeof client.groups[":id"]["members"]["$post"]>["json"],
   ) =>
-    request<{ member: GroupMember }>(`/groups/${groupId}/members`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+    call(
+      client.groups[":id"].members.$post,
+      client.groups[":id"].members.$post({ param: { id: groupId }, json: input }),
+      201,
+    ),
 
   removeGroupMember: (groupId: string, userId: string) =>
-    request<{ ok: boolean }>(`/groups/${groupId}/members/${userId}`, { method: "DELETE" }),
+    call(
+      client.groups[":id"].members[":userId"].$delete,
+      client.groups[":id"].members[":userId"].$delete({ param: { id: groupId, userId } }),
+    ),
 
   getGroupExpenses: (id: string, filters?: ExpenseQuery) =>
-    request<{ expenses: ExpenseSummary[] }>(
-      `/groups/${id}/expenses${expenseQueryString(filters)}`,
+    call(
+      client.groups[":id"].expenses.$get,
+      client.groups[":id"].expenses.$get({ param: { id }, query: wireQuery(filters) }),
     ),
 
   getSettleSuggestions: (id: string) =>
-    request<{
-      suggestions: Array<{
-        currencyCode: string;
-        transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
-      }>;
-    }>(`/groups/${id}/settle`),
+    call(client.groups[":id"].settle.$get, client.groups[":id"].settle.$get({ param: { id } })),
 
-  createExpense: (groupId: string, input: ExpenseInput) =>
-    request<{ id: string }>(`/groups/${groupId}/expenses`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+  createExpense: (
+    groupId: string,
+    input: InferRequestType<typeof client.groups[":id"]["expenses"]["$post"]>["json"],
+  ) =>
+    call(
+      client.groups[":id"].expenses.$post,
+      client.groups[":id"].expenses.$post({ param: { id: groupId }, json: input }),
+      201,
+    ),
 
   createGroupPayment: (
     groupId: string,
-    input: {
-      fromUserId: string;
-      toUserId: string;
-      amountMinor: number;
-      currencyCode: string;
-      date?: string;
-    },
+    input: InferRequestType<typeof client.groups[":id"]["payments"]["$post"]>["json"],
   ) =>
-    request<{ id: string }>(`/groups/${groupId}/payments`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+    call(
+      client.groups[":id"].payments.$post,
+      client.groups[":id"].payments.$post({ param: { id: groupId }, json: input }),
+      201,
+    ),
 
   /**
    * The one the add-expense dialog uses: any set of people, group or no group.
    * The group- and friend-scoped creates above stay for the narrower callers.
    */
-  createAnyExpense: (input: ExpenseInput & { groupId: string | null }) =>
-    request<{ id: string }>("/expenses", { method: "POST", body: JSON.stringify(input) }),
+  createAnyExpense: (input: ExpenseInput) =>
+    call(client.expenses.$post, client.expenses.$post({ json: input }), 201),
 
-  deleteExpense: (id: string) => request<{ ok: boolean }>(`/expenses/${id}`, { method: "DELETE" }),
+  deleteExpense: (id: string) =>
+    call(client.expenses[":id"].$delete, client.expenses[":id"].$delete({ param: { id } })),
 
   /** Undoes a delete. The tombstone was always recoverable; this is the undo. */
   restoreExpense: (id: string) =>
-    request<{ ok: boolean }>(`/expenses/${id}/restore`, { method: "POST" }),
+    call(client.expenses[":id"].restore.$post, client.expenses[":id"].restore.$post({ param: { id } })),
 
-  getExpense: (id: string) => request<{ expense: ExpenseDetail }>(`/expenses/${id}`),
+  getExpense: (id: string) =>
+    call(client.expenses[":id"].$get, client.expenses[":id"].$get({ param: { id } })),
 
-  updateExpense: (id: string, input: ExpenseInput & { groupId: string | null }) =>
-    request<{ ok: boolean }>(`/expenses/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  updateExpense: (id: string, input: ExpenseInput) =>
+    call(client.expenses[":id"].$patch, client.expenses[":id"].$patch({ param: { id }, json: input })),
 
   listExpenses: (filters?: ExpenseQuery) =>
-    request<{ expenses: ExpenseSummary[] }>(`/expenses${expenseQueryString(filters)}`),
+    call(client.expenses.$get, client.expenses.$get({ query: wireQuery(filters) })),
 
   /**
    * A URL, not a fetch: the browser downloads it, and the session cookie goes
@@ -600,267 +357,178 @@ export const api = {
    */
   expensesCsvUrl: (filters?: ExpenseQuery) => `/api/v1/expenses.csv${expenseQueryString(filters)}`,
 
-  // --- comments -------------------------------------------------------------
-  //
-  // System comments are generated server-side when a bill is edited, deleted or
-  // restored. There is no way to write one from here, and no way to delete one.
-
   listComments: (expenseId: string) =>
-    request<{ comments: Comment[] }>(`/expenses/${expenseId}/comments`),
+    call(
+      client.expenses[":id"].comments.$get,
+      client.expenses[":id"].comments.$get({ param: { id: expenseId } }),
+    ),
 
   addComment: (expenseId: string, content: string) =>
-    request<{ comment: Comment | null }>(`/expenses/${expenseId}/comments`, {
-      method: "POST",
-      body: JSON.stringify({ content }),
-    }),
+    call(
+      client.expenses[":id"].comments.$post,
+      client.expenses[":id"].comments.$post({ param: { id: expenseId }, json: { content } }),
+      201,
+    ),
 
-  deleteComment: (id: string) => request<{ ok: boolean }>(`/comments/${id}`, { method: "DELETE" }),
+  deleteComment: (id: string) =>
+    call(client.comments[":id"].$delete, client.comments[":id"].$delete({ param: { id } })),
 
-  listActivity: () => request<{ activity: ActivityEntry[] }>("/activity"),
+  listActivity: () => call(client.activity.$get, client.activity.$get()),
 
-  // --- friends --------------------------------------------------------------
+  listFriends: () => call(client.friends.$get, client.friends.$get()),
 
-  listFriends: () => request<{ friends: Friend[] }>("/friends"),
-
-  getFriend: (id: string) => request<{ friend: Friend }>(`/friends/${id}`),
+  getFriend: (id: string) =>
+    call(client.friends[":id"].$get, client.friends[":id"].$get({ param: { id } })),
 
   updateFriend: (
     id: string,
-    input: {
-      name?: string;
-      nickname?: string | null;
-      iconLetters?: string | null;
-      iconEmoji?: string | null;
-      iconHue?: number | null;
-    },
-  ) => request<{ friend: Friend }>(`/friends/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    input: InferRequestType<typeof client.friends[":id"]["$patch"]>["json"],
+  ) => call(client.friends[":id"].$patch, client.friends[":id"].$patch({ param: { id }, json: input })),
 
-  addFriend: (input: { name: string; email?: string }) =>
-    request<{
-      friend: Friend;
-      /** True when the address already belonged to a SplitSmart account. */
-      existingAccount: boolean;
-      emailDelivered: boolean;
-      /**
-       * Returned ONCE for a newly created placeholder. Only its hash is
-       * stored, so a client that discards this has to rotate, not recover.
-       */
-      inviteUrl?: string;
-    }>("/friends", { method: "POST", body: JSON.stringify(input) }),
+  addFriend: (input: InferRequestType<typeof client.friends.$post>["json"]) =>
+    call(client.friends.$post, client.friends.$post({ json: input }), 201),
 
   removeFriend: (id: string) =>
-    request<{ ok: boolean; stillVisible: boolean }>(`/friends/${id}`, { method: "DELETE" }),
+    call(client.friends[":id"].$delete, client.friends[":id"].$delete({ param: { id } })),
 
   getFriendExpenses: (id: string, filters?: ExpenseQuery) =>
-    request<{ expenses: ExpenseSummary[] }>(
-      `/friends/${id}/expenses${expenseQueryString(filters)}`,
+    call(
+      client.friends[":id"].expenses.$get,
+      client.friends[":id"].expenses.$get({ param: { id }, query: wireQuery(filters) }),
     ),
 
-  createFriendExpense: (friendId: string, input: ExpenseInput) =>
-    request<{ id: string }>(`/friends/${friendId}/expenses`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+  createFriendExpense: (
+    friendId: string,
+    input: InferRequestType<typeof client.friends[":id"]["expenses"]["$post"]>["json"],
+  ) =>
+    call(
+      client.friends[":id"].expenses.$post,
+      client.friends[":id"].expenses.$post({ param: { id: friendId }, json: input }),
+      201,
+    ),
 
   createFriendPayment: (
     friendId: string,
-    input: {
-      direction: "you_paid" | "they_paid";
-      amountMinor: number;
-      currencyCode: string;
-      date?: string;
-    },
+    input: InferRequestType<typeof client.friends[":id"]["payments"]["$post"]>["json"],
   ) =>
-    request<{ id: string }>(`/friends/${friendId}/payments`, {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+    call(
+      client.friends[":id"].payments.$post,
+      client.friends[":id"].payments.$post({ param: { id: friendId }, json: input }),
+      201,
+    ),
 
-  // --- Splitwise import -----------------------------------------------------
-  //
-  // The API key is passed on every call and never stored, server-side or here.
-  // Keep it in component state only; never localStorage.
-
-  importStatus: () => request<ImportStatus>("/import/status"),
+  importStatus: () => call(client.import.status.$get, client.import.status.$get()),
 
   importPreview: (apiKey: string) =>
-    request<ImportPreview>("/import/preview", { method: "POST", body: JSON.stringify({ apiKey }) }),
+    call(client.import.preview.$post, client.import.preview.$post({ json: { apiKey } })),
 
   importFriends: (apiKey: string) =>
-    request<{ people: ImportPerson[]; created: number; matched: number }>("/import/friends", {
-      method: "POST",
-      body: JSON.stringify({ apiKey }),
-    }),
+    call(client.import.friends.$post, client.import.friends.$post({ json: { apiKey } })),
 
   importGroups: (apiKey: string) =>
-    request<{
-      groups: Array<{ splitwiseId: number; localGroupId: string; name: string; created: boolean }>;
-      people: ImportPerson[];
-      created: number;
-      matched: number;
-    }>("/import/groups", { method: "POST", body: JSON.stringify({ apiKey }) }),
+    call(client.import.groups.$post, client.import.groups.$post({ json: { apiKey } })),
 
   /** One page. Feed `nextOffset` back in until `done`. */
   importExpenses: (apiKey: string, offset = 0) =>
-    request<ImportExpensePage>("/import/expenses", {
-      method: "POST",
-      body: JSON.stringify({ apiKey, offset }),
-    }),
+    call(client.import.expenses.$post, client.import.expenses.$post({ json: { apiKey, offset } })),
 
   /**
    * Step 4. Safe to call even when Splitwise nested the comments on the expense
    * payload: those are already in and stamped, so this walks past them.
    */
   importComments: (apiKey: string, offset = 0) =>
-    request<ImportCommentsPage>("/import/comments", {
-      method: "POST",
-      body: JSON.stringify({ apiKey, offset }),
-    }),
+    call(client.import.comments.$post, client.import.comments.$post({ json: { apiKey, offset } })),
 
-  // --- reference data -------------------------------------------------------
+  /** Hard-delete this account's ledger. Confirmation must be the exact phrase. */
+  importWipe: (confirm: "DELETE ALL DATA") =>
+    call(client.import.wipe.$post, client.import.wipe.$post({ json: { confirm } })),
 
-  listCategories: () =>
-    request<{ categories: Array<{ id: number; parent_id: number | null; name: string }> }>(
-      "/categories",
-    ),
+  listCategories: () => call(client.categories.$get, client.categories.$get()),
 
-  listCurrencies: () => request<{ currencies: Currency[] }>("/categories/currencies"),
+  listCurrencies: () => call(client.categories.currencies.$get, client.categories.currencies.$get()),
 
   /** Currencies the caller has actually used, most-used first. */
-  frequentCurrencies: () => request<{ codes: string[] }>("/expenses/currencies/frequent"),
-
-  // --- guest links ----------------------------------------------------------
-  //
-  // Minting returns the URL exactly once; listing never does, because only the
-  // SHA-256 is stored. Lost it? Mint again, which rotates in place.
+  frequentCurrencies: () =>
+    call(client.expenses.currencies.frequent.$get, client.expenses.currencies.frequent.$get()),
 
   listLinks: (query: { groupId: string } | { friendId: string }) =>
-    request<{ links: AccessLink[] }>(
-      `/links?${"groupId" in query ? `groupId=${query.groupId}` : `friendId=${query.friendId}`}`,
+    call(
+      client.links.$get,
+      client.links.$get({
+        query: "groupId" in query ? { groupId: query.groupId } : { friendId: query.friendId },
+      }),
     ),
 
-  mintLink: (input: {
-    kind: "group" | "group_member" | "friend";
-    groupId?: string | null;
-    userId?: string | null;
-    expiresAt?: string | null;
-  }) =>
-    request<{ id: string; url: string; expiresAt: string }>("/links", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+  mintLink: (input: InferRequestType<typeof client.links.$post>["json"]) =>
+    call(client.links.$post, client.links.$post({ json: input }), 201),
 
-  revokeLink: (id: string) => request<{ ok: boolean }>(`/links/${id}`, { method: "DELETE" }),
-
-  // --- claim ----------------------------------------------------------------
-  //
-  // Cookie session AND the link token. The token is what makes those
-  // placeholders claimable; without it this would be a way to attach yourself
-  // to a stranger's ledger. See src/routes/native/claim.ts.
+  revokeLink: (id: string) =>
+    call(client.links[":id"].$delete, client.links[":id"].$delete({ param: { id } })),
 
   claimCandidates: (linkToken: string) =>
-    request<ClaimCandidates>("/claim/candidates", {
-      method: "POST",
-      body: JSON.stringify({ linkToken }),
-    }),
+    call(client.claim.candidates.$post, client.claim.candidates.$post({ json: { linkToken } })),
 
   claimPreview: (linkToken: string, userId: string) =>
-    request<ClaimPreview>("/claim/preview", {
-      method: "POST",
-      body: JSON.stringify({ linkToken, userId }),
-    }),
+    call(client.claim.preview.$post, client.claim.preview.$post({ json: { linkToken, userId } })),
 
   claim: (linkToken: string, userId: string) =>
-    request<{
-      ok: boolean;
-      expensesCombined: number;
-      expensesTransferred: number;
-      groupsMerged: number;
-    }>("/claim", { method: "POST", body: JSON.stringify({ linkToken, userId }) }),
-
-  // --- sync -----------------------------------------------------------------
-  //
-  // The replication endpoints behind the offline mirror. Nothing else in this
-  // file should be called by web/src/sync/engine.ts, and nothing in the sync
-  // layer should be called by a screen: the screens read Dexie.
+    call(client.claim.$post, client.claim.$post({ json: { linkToken, userId } })),
 
   syncBootstrap: (cursor?: string | null) =>
-    request<BootstrapResponse>(`/sync/bootstrap${cursor ? `?cursor=${cursor}` : ""}`),
+    call(client.sync.bootstrap.$get, client.sync.bootstrap.$get({ query: cursor ? { cursor } : {} })),
 
   syncPull: (since: number, limit?: number) =>
-    request<PullResponse>(
-      `/sync/pull?since=${since}${limit === undefined ? "" : `&limit=${limit}`}`,
+    call(
+      client.sync.pull.$get,
+      client.sync.pull.$get({
+        query: {
+          since: String(since),
+          ...(limit === undefined ? {} : { limit: String(limit) }),
+        },
+      }),
     ),
 
   syncSnapshotGroup: (groupId: string) =>
-    request<SnapshotResponse>(`/sync/snapshot?group_id=${groupId}`),
+    call(client.sync.snapshot.$get, client.sync.snapshot.$get({ query: { group_id: groupId } })),
 
   syncSnapshotExpense: (expenseId: string) =>
-    request<SnapshotResponse>(`/sync/snapshot?expense_id=${expenseId}`),
+    call(client.sync.snapshot.$get, client.sync.snapshot.$get({ query: { expense_id: expenseId } })),
 
-  syncPush: (ops: PushOpWire[]) => pushRequest<{ results: PushResultWire[]; seq: number }>("/sync/push", { ops }),
+  syncPush: (ops: PushOpWire[]) => pushRequest({ ops }),
+
+  adminUsers: (opts?: { q?: string; asOf?: string }) =>
+    call(
+      client.admin.users.$get,
+      client.admin.users.$get({
+        query: {
+          ...(opts?.q ? { q: opts.q } : {}),
+          ...(opts?.asOf ? { as_of: opts.asOf } : {}),
+        },
+      }),
+    ),
+
+  adminUser: (id: string, opts?: { asOf?: string }) =>
+    call(
+      client.admin.users[":id"].$get,
+      client.admin.users[":id"].$get({
+        param: { id },
+        query: opts?.asOf ? { as_of: opts.asOf } : {},
+      }),
+    ),
 };
 
-// --- sync wire types --------------------------------------------------------
-
-export interface BootstrapResponse {
-  seq: number;
-  self?: SyncUser | null;
-  groups?: SyncGroup[];
-  members?: SyncGroupMember[];
-  friendships?: SyncFriendship[];
-  expenses?: SyncExpense[];
-  comments?: SyncComment[];
-  currencies?: SyncCurrency[];
-  categories?: SyncCategory[];
-  nextCursor: string | null;
-}
-
-export interface SnapshotResponse {
-  groups?: SyncGroup[];
-  members?: SyncGroupMember[];
-  expenses?: SyncExpense[];
-  comments?: SyncComment[];
-}
-
-/** One change from a pull page. `data` is whichever entity `entity` names. */
-export interface PullChange {
-  seq: number;
-  entity:
-    | "expense"
-    | "comment"
-    | "group"
-    | "group_member"
-    | "friendship"
-    | "user"
-    | "user_merge";
-  op: "upsert" | "delete" | "forget" | "merge";
-  data: unknown;
-}
-
-export interface PullResponse {
-  changes: PullChange[];
-  seq: number;
-  more: boolean;
-  remaining: number;
-  catchUp: Array<{ entity: "group" | "expense"; id: string }>;
-}
-
-export interface PushOpWire {
-  kind: string;
-  id: string;
-  baseVersion?: number;
-  payload?: unknown;
-}
-
-export interface PushResultWire {
-  id: string;
-  kind: string;
-  status: "applied" | "duplicate" | "conflict" | "rejected";
-  version?: number;
-  reason?: string;
-  server?: unknown;
-}
+// Re-exported so existing imports of these sync entity types from api.ts keep
+// compiling. The wire shapes live in src/domain/sync-types.ts.
+export type {
+  SyncCategory,
+  SyncComment,
+  SyncCurrency,
+  SyncExpense,
+  SyncFriendship,
+  SyncGroup,
+  SyncGroupMember,
+  SyncUser,
+};
 
 // --- money formatting -------------------------------------------------------
 

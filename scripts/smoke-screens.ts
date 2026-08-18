@@ -195,6 +195,19 @@ const DEFS: ScreenDef[] = [
     waitForText: "API tokens",
   },
   {
+    id: "admin",
+    auth: { kind: "user" },
+    path: "/app/admin?as_of=2026-08-18",
+    waitForText: "Lee Jin Jie",
+  },
+  {
+    id: "admin-user",
+    auth: { kind: "user" },
+    path: "/app/admin?as_of=2026-08-18",
+    click: [{ text: "View", near: "Lee Jin Jie" }],
+    waitForText: "Expenses created",
+  },
+  {
     id: "jj-dashboard",
     auth: { kind: "user", account: "jj" },
     path: "/app",

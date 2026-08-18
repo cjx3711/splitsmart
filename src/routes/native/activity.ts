@@ -13,9 +13,6 @@ import { sql } from "kysely";
 import { db } from "../../db/index.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 
-export const activityRoutes = new Hono<AppEnv>();
-activityRoutes.use("*", requireAuth);
-
 interface ActivityRow {
   id: string;
   action: string;
@@ -36,7 +33,9 @@ interface ActivityRow {
   expense_deleted: string | null;
 }
 
-activityRoutes.get("/", async (c) => {
+export const activityRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+  .get("/", async (c) => {
   const auth = c.get("user");
   const limit = Math.min(Number(c.req.query("limit") ?? 50) || 50, 200);
   const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);

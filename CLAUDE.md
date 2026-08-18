@@ -126,6 +126,12 @@ query may use a rate.
 
 Nothing else may write `expenses`, `expense_users`, or `expense_repayments`.
 
+The one exception is `src/domain/wipe.ts`, which hard-deletes an account's
+ledger so a Splitwise import can start over. A wipe cannot be a soft delete:
+the unique indexes on `metadata.splitwise_id` would still match, and the next
+import would treat everything as already present. Wipe refuses if another live
+real account shares a group or expense with the caller.
+
 The invariant, for every non-deleted expense:
 
 ```
@@ -191,25 +197,28 @@ src/
     ulid.ts          Crockford ULID. Pure. Also imported by the frontend.
     metadata.ts      JSON bag on users/groups/expenses/comments
     balances.ts      Balance queries + simplifyDebts
-    expenses.ts      The ONLY writer of expense tables
+    expenses.ts      The ONLY writer of expense tables, except wipe.ts
     comments.ts      The ONLY writer of `comments`. User + system rows
     recurring.ts     Interval arithmetic. Pure. Also imported by the frontend
     scheduler.ts     The recurring job: one occurrence per template per tick
     expense-csv.ts   CSV export. Decimal strings, per-currency decimals
     friends.ts       Explicit vs derived friendships. ONE definition of "friend"
     import.ts        Splitwise import: people -> groups -> expenses -> comments
+    wipe.ts          Hard-delete one account's ledger so reimport is possible
+    admin-stats.ts   Operator usage counts + 30-day series (ADMIN_EMAILS)
   splitwise/
     client.ts        READ-ONLY client for the real Splitwise API. Nothing else
                      may talk to secure.splitwise.com.
   auth/
     password.ts      scrypt hashing + token generation
     session.ts       Cookie sessions AND bearer API tokens
-    middleware.ts    requireAuth / optionalAuth
+    middleware.ts    requireAuth / optionalAuth / requireAdmin
   routes/
     native/          Clean API at /api/v1, used by web/
       expense-filters.ts  ONE definition of q / dates / category / friend / group
       comments.ts         Thread routes; system rows are NOT reachable from here
       export.ts           /api/v1/expenses.csv (a sibling of /expenses, not a child)
+      admin.ts            /api/v1/admin/* usage dashboard (ADMIN_EMAILS)
     compat/          Splitwise v3.0 shim. Wire format frozen.
   server.ts          Entry point
 web/                 React frontend (Vite)
@@ -584,6 +593,9 @@ POST /api/v1/import/groups     step 2
 POST /api/v1/import/expenses   step 3, one page per call, resumable
 POST /api/v1/import/comments   step 4, one page of expenses per call
 POST /api/v1/import/run        all four server-side, for small accounts
+POST /api/v1/import/wipe       hard-delete this ledger so a reimport starts empty
+                               (`{ "confirm": "DELETE ALL DATA" }`; refuses if
+                               another live account shares a group or expense)
 ```
 
 That shape exists so the whole flow is drivable by curl or by a test with no

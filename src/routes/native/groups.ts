@@ -22,14 +22,11 @@ import { listRelatedUserIds } from "../../domain/friends.ts";
 import { logChange } from "../../domain/sync-log.ts";
 import { revokeMemberLinks } from "../../domain/access-links.ts";
 import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expense-schema.ts";
-import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
+import { expenseFilterWhere, expenseListQuerySchema, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 import { MAX_NAME_LENGTH, MAX_NICKNAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { repeatPausedOf } from "../../domain/metadata.ts";
-
-export const groupRoutes = new Hono<AppEnv>();
-groupRoutes.use("*", requireAuth);
 
 /** Throws a 403-shaped result if the caller isn't in the group. */
 async function assertMember(groupId: string, userId: string) {
@@ -43,7 +40,9 @@ async function assertMember(groupId: string, userId: string) {
   return membership ?? null;
 }
 
-groupRoutes.get("/", async (c) => {
+export const groupRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+  .get("/", async (c) => {
   const auth = c.get("user");
 
   const groups = await db
@@ -60,9 +59,8 @@ groupRoutes.get("/", async (c) => {
     .execute();
 
   return c.json({ groups, totalBalance: await getTotalBalance(db, auth.id) });
-});
-
-groupRoutes.post(
+})
+  .post(
   "/",
   zValidator(
     "json",
@@ -119,9 +117,8 @@ groupRoutes.post(
 
     return c.json({ group }, 201);
   },
-);
-
-groupRoutes.get("/:id", async (c) => {
+)
+  .get("/:id", async (c) => {
   const auth = c.get("user");
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
@@ -161,10 +158,9 @@ groupRoutes.get("/:id", async (c) => {
   const balances = await getGroupBalances(db, groupId);
 
   return c.json({ group, members, balances, role: membership.role });
-});
-
+})
 /** Suggested settle-up transfers, per currency. Presentational only. */
-groupRoutes.get("/:id/settle", async (c) => {
+  .get("/:id/settle", async (c) => {
   const auth = c.get("user");
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
@@ -190,9 +186,8 @@ groupRoutes.get("/:id/settle", async (c) => {
   }));
 
   return c.json({ suggestions });
-});
-
-groupRoutes.get("/:id/expenses", async (c) => {
+})
+  .get("/:id/expenses", zValidator("query", expenseListQuerySchema), async (c) => {
   const auth = c.get("user");
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
@@ -246,9 +241,8 @@ groupRoutes.get("/:id/expenses", async (c) => {
   return c.json({
     expenses: expenses.map((e) => ({ ...e, shares: sharesByExpense.get(e.id) ?? [] })),
   });
-});
-
-groupRoutes.post(
+})
+  .post(
   "/:id/expenses",
   zValidator("json", expenseBodySchema),
   async (c) => {
@@ -278,8 +272,7 @@ groupRoutes.post(
       );
     }
   },
-);
-
+)
 /**
  * Adds someone to a group.
  *
@@ -294,7 +287,7 @@ groupRoutes.post(
  * Re-adding someone who left flips `left_at` back rather than inserting, so
  * their history in the group stays attached and no balance moves.
  */
-groupRoutes.post(
+  .post(
   "/:id/members",
   zValidator(
     "json",
@@ -425,8 +418,7 @@ groupRoutes.post(
       201,
     );
   },
-);
-
+)
 /**
  * Removes someone from a group.
  *
@@ -436,7 +428,7 @@ groupRoutes.post(
  * The group's general link is deliberately left alone; switching that off is a
  * separate decision. See docs/GUEST.md.
  */
-groupRoutes.delete("/:id/members/:userId", async (c) => {
+  .delete("/:id/members/:userId", async (c) => {
   const auth = c.get("user");
   const groupId = c.req.param("id");
   const userId = c.req.param("userId");
@@ -485,9 +477,8 @@ groupRoutes.delete("/:id/members/:userId", async (c) => {
   });
 
   return c.json({ ok: true });
-});
-
-groupRoutes.post(
+})
+  .post(
   "/:id/payments",
   zValidator(
     "json",
@@ -521,10 +512,18 @@ groupRoutes.post(
     }
   },
 );
+/** Throws a 404-shaped result unless the caller is on this expense. */
+async function assertParticipant(expenseId: string, userId: string) {
+  return db
+    .selectFrom("expense_users")
+    .select("user_id")
+    .where("expense_id", "=", expenseId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+}
 
-export const expenseRoutes = new Hono<AppEnv>();
-expenseRoutes.use("*", requireAuth);
-
+export const expenseRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
 /**
  * Every expense the caller is a participant of, group and one-on-one alike.
  *
@@ -549,7 +548,7 @@ expenseRoutes.use("*", requireAuth);
  * other people would create a balance neither of them can see and this app has
  * no screen for.
  */
-expenseRoutes.post("/", zValidator("json", genericExpenseBodySchema), async (c) => {
+  .post("/", zValidator("json", genericExpenseBodySchema), async (c) => {
   const auth = c.get("user");
   const { groupId = null, ...input } = c.req.valid("json");
 
@@ -584,9 +583,8 @@ expenseRoutes.post("/", zValidator("json", genericExpenseBodySchema), async (c) 
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Could not create expense" }, 400);
   }
-});
-
-expenseRoutes.get("/", async (c) => {
+})
+  .get("/", zValidator("query", expenseListQuerySchema), async (c) => {
   const auth = c.get("user");
   const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
   const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
@@ -634,8 +632,7 @@ expenseRoutes.get("/", async (c) => {
   return c.json({
     expenses: expenses.map((e) => ({ ...e, shares: byExpense.get(e.id) ?? [] })),
   });
-});
-
+})
 /**
  * Currencies this user has actually used, most-used first.
  *
@@ -644,7 +641,7 @@ expenseRoutes.get("/", async (c) => {
  * doesn't include. Deleted expenses are excluded so removing a one-off mistake
  * in a rare currency doesn't keep it pinned at the top forever.
  */
-expenseRoutes.get("/currencies/frequent", async (c) => {
+  .get("/currencies/frequent", async (c) => {
   const auth = c.get("user");
 
   const rows = await db
@@ -660,24 +657,13 @@ expenseRoutes.get("/currencies/frequent", async (c) => {
     .execute();
 
   return c.json({ codes: rows.map((r) => r.currency_code) });
-});
-
-/** Throws a 404-shaped result unless the caller is on this expense. */
-async function assertParticipant(expenseId: string, userId: string) {
-  return db
-    .selectFrom("expense_users")
-    .select("user_id")
-    .where("expense_id", "=", expenseId)
-    .where("user_id", "=", userId)
-    .executeTakeFirst();
-}
-
+})
 /**
  * One expense in full: every share, plus each one's `split_input` so the edit
  * form can reopen the split exactly as it was entered rather than re-deriving
  * it from the stored amounts.
  */
-expenseRoutes.get("/:id", async (c) => {
+  .get("/:id", async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -739,10 +725,9 @@ expenseRoutes.get("/:id", async (c) => {
       repeat_paused: repeatPaused,
     },
   });
-});
-
+})
 /** Replaces an expense's contents via the domain layer's updateExpense. */
-expenseRoutes.patch("/:id", zValidator("json", genericExpenseBodySchema), async (c) => {
+  .patch("/:id", zValidator("json", genericExpenseBodySchema), async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -782,9 +767,8 @@ expenseRoutes.patch("/:id", zValidator("json", genericExpenseBodySchema), async 
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Could not update expense" }, 400);
   }
-});
-
-expenseRoutes.delete("/:id", async (c) => {
+})
+  .delete("/:id", async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -794,8 +778,7 @@ expenseRoutes.delete("/:id", async (c) => {
 
   await deleteExpense(expenseId, auth.id);
   return c.json({ ok: true });
-});
-
+})
 /**
  * Undoes a delete.
  *
@@ -804,7 +787,7 @@ expenseRoutes.delete("/:id", async (c) => {
  * soft delete never touches. That is the whole reason soft deletes were worth
  * having, and until now there was no way to use it.
  */
-expenseRoutes.post("/:id/restore", async (c) => {
+  .post("/:id/restore", async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -818,10 +801,8 @@ expenseRoutes.post("/:id/restore", async (c) => {
     return c.json({ error: err instanceof Error ? err.message : "Could not restore expense" }, 400);
   }
 });
-
-export const categoryRoutes = new Hono<AppEnv>();
-
-categoryRoutes.get("/", async (c) => {
+export const categoryRoutes = new Hono<AppEnv>()
+  .get("/", async (c) => {
   const categories = await db
     .selectFrom("categories")
     .select(["id", "parent_id", "name", "icon", "is_default"])
@@ -829,9 +810,8 @@ categoryRoutes.get("/", async (c) => {
     .orderBy("id")
     .execute();
   return c.json({ categories });
-});
-
-categoryRoutes.get("/currencies", async (c) => {
+})
+  .get("/currencies", async (c) => {
   const currencies = await db
     .selectFrom("currencies")
     .select(["code", "decimal_places", "symbol", "name"])

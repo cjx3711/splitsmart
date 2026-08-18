@@ -33,11 +33,40 @@ import { previewMerge, mergeUsers, MergeError } from "../../domain/merge.ts";
 import { ulidSchema } from "./expense-schema.ts";
 import { personCamel } from "../../domain/person.ts";
 
-export const claimRoutes = new Hono<AppEnv>();
-claimRoutes.use("*", requireAuth);
-
 const tokenSchema = z.object({ linkToken: z.string().min(1) });
 
+const claimSchema = tokenSchema.extend({ userId: ulidSchema });
+
+/**
+ * Checks the link really covers this person before anything is read or written.
+ *
+ * Shared by preview and confirm so the two cannot disagree about who is
+ * claimable; a preview of one merge followed by a different merge would be the
+ * worst possible bug in this file.
+ */
+async function authoriseClaim(
+  linkToken: string,
+  userId: string,
+): Promise<{ ok: true } | { ok: false; status: 400 | 403; error: string }> {
+  const resolved = await resolveAccessLink(linkToken);
+  if (!resolved.ok) {
+    return { ok: false, status: 400, error: failureMessage(resolved.reason) };
+  }
+
+  const actable = await listActablePeople(db, resolved.link);
+  if (!actable.some((p) => p.id === userId)) {
+    return {
+      ok: false,
+      status: 403,
+      error: "This link cannot claim that person.",
+    };
+  }
+
+  return { ok: true };
+}
+
+export const claimRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
 /**
  * Resolves a guest link for a signed-in caller and returns the people it makes
  * claimable, or the reason it cannot.
@@ -50,7 +79,7 @@ const tokenSchema = z.object({ linkToken: z.string().min(1) });
  *   claimable       a list of unclaimed ghosts the link can act as.
  *   none            the link works, but everyone it covers is already taken.
  */
-claimRoutes.post("/candidates", zValidator("json", tokenSchema), async (c) => {
+  .post("/candidates", zValidator("json", tokenSchema), async (c) => {
   const auth = c.get("user");
   const resolved = await resolveAccessLink(c.req.valid("json").linkToken);
 
@@ -93,38 +122,7 @@ claimRoutes.post("/candidates", zValidator("json", tokenSchema), async (c) => {
       : null,
     candidates,
   });
-});
-
-const claimSchema = tokenSchema.extend({ userId: ulidSchema });
-
-/**
- * Checks the link really covers this person before anything is read or written.
- *
- * Shared by preview and confirm so the two cannot disagree about who is
- * claimable; a preview of one merge followed by a different merge would be the
- * worst possible bug in this file.
- */
-async function authoriseClaim(
-  linkToken: string,
-  userId: string,
-): Promise<{ ok: true } | { ok: false; status: 400 | 403; error: string }> {
-  const resolved = await resolveAccessLink(linkToken);
-  if (!resolved.ok) {
-    return { ok: false, status: 400, error: failureMessage(resolved.reason) };
-  }
-
-  const actable = await listActablePeople(db, resolved.link);
-  if (!actable.some((p) => p.id === userId)) {
-    return {
-      ok: false,
-      status: 403,
-      error: "This link cannot claim that person.",
-    };
-  }
-
-  return { ok: true };
-}
-
+})
 /**
  * What the merge would do, in the words the confirm dialog shows.
  *
@@ -132,7 +130,7 @@ async function authoriseClaim(
  * is never silent: the count, and the descriptions when there are few enough to
  * read, go in front of the user before anything happens.
  */
-claimRoutes.post("/preview", zValidator("json", claimSchema), async (c) => {
+  .post("/preview", zValidator("json", claimSchema), async (c) => {
   const auth = c.get("user");
   const { linkToken, userId } = c.req.valid("json");
 
@@ -160,10 +158,9 @@ claimRoutes.post("/preview", zValidator("json", claimSchema), async (c) => {
     sharedGroupCount: preview.sharedGroupCount,
     linkCount: preview.linkCount,
   });
-});
-
+})
 /** Runs the merge. Everything in one transaction; see src/domain/merge.ts. */
-claimRoutes.post("/", zValidator("json", claimSchema), async (c) => {
+  .post("/", zValidator("json", claimSchema), async (c) => {
   const auth = c.get("user");
   const { linkToken, userId } = c.req.valid("json");
 

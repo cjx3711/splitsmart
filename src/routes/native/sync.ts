@@ -27,6 +27,7 @@
  */
 import { Hono } from "hono";
 import { compress } from "hono/compress";
+import { zValidator } from "@hono/zod-validator";
 import { gunzipSync } from "node:zlib";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -57,13 +58,6 @@ import {
   loadUsers,
   serialiseFriendships,
 } from "./sync-serializers.ts";
-
-export const syncRoutes = new Hono<AppEnv>();
-syncRoutes.use("*", requireAuth);
-// Pull / bootstrap / snapshot can be large. The browser decompresses gzip
-// automatically; we do not gzip them in the client. Push bodies are gzipped
-// the other way - see readPushBody.
-syncRoutes.use("*", compress());
 
 /**
  * Expenses per bootstrap page.
@@ -133,160 +127,6 @@ async function visibleExpenseIdPage(
 
   return rows.rows.map((r) => r.id);
 }
-
-// ---------------------------------------------------------------------------
-// GET /bootstrap
-// ---------------------------------------------------------------------------
-
-/**
- * Everything the caller can see, for a fresh install or a local database reset.
- *
- * `seq` IS CAPTURED BEFORE ANYTHING IS READ, and the client keeps the value from
- * the FIRST page for the whole run. Snapshotting it at the end instead would
- * drop every write that landed after its page had already been scanned - those
- * changes are below the cursor, so no later pull would ever deliver them. Taking
- * it first means the opposite error, a change delivered twice, and applying a
- * whole-entity upsert twice is a no-op.
- *
- * Reference data (currencies, categories) rides along on the first page only.
- * That is not an optimisation: `web/src/money.tsx` will not render an amount
- * without its currency's decimal places, so a client that has expenses and no
- * currencies table shows a screen of dashes.
- */
-syncRoutes.get("/bootstrap", async (c) => {
-  const auth = c.get("user");
-
-  const seq = await currentSeq(db);
-
-  const rawCursor = c.req.query("cursor") ?? null;
-  if (rawCursor !== null && !isUlid(rawCursor)) {
-    return c.json({ error: "Invalid cursor" }, 400);
-  }
-  const cursor = rawCursor;
-  const first = cursor === null;
-
-  const expenseIds = await visibleExpenseIdPage(auth.id, cursor, BOOTSTRAP_PAGE);
-  const [expenses, comments] = await Promise.all([
-    loadExpenses(db, expenseIds),
-    loadCommentsForExpenses(db, expenseIds),
-  ]);
-
-  // A short page means the end. Equal to the limit is ambiguous - the next page
-  // may be empty - and one wasted round trip beats a truncated ledger.
-  const nextCursor = expenseIds.length === BOOTSTRAP_PAGE ? expenseIds.at(-1)! : null;
-
-  if (!first) {
-    return c.json({ seq, expenses, comments, nextCursor });
-  }
-
-  const groupIds = await visibleGroupIds(auth.id);
-  const [self, groups, members, friendships, currencies, categories] = await Promise.all([
-    loadUsers(db, [auth.id]),
-    loadGroups(db, groupIds),
-    loadGroupMembers(db, groupIds),
-    loadFriendships(db, auth.id),
-    loadCurrencies(db),
-    loadCategories(db),
-  ]);
-
-  return c.json({
-    seq,
-    self: self.get(auth.id) ?? null,
-    groups,
-    members,
-    friendships,
-    expenses,
-    comments,
-    currencies,
-    categories,
-    nextCursor,
-  });
-});
-
-// ---------------------------------------------------------------------------
-// GET /snapshot
-// ---------------------------------------------------------------------------
-
-/**
- * Catch-up for access the caller has just been granted.
- *
- * Incremental pull is `seq > :since` and does not backfill: the log rows for a
- * group's ten-year history are all below the cursor of a client that has been
- * syncing for months, so joining that group would deliver the membership row and
- * nothing else. This is the endpoint that fills the gap, and `/pull` names it
- * explicitly in `catchUp` rather than making the client guess.
- *
- * Two shapes, because there are two ways to gain access:
- *
- *   ?group_id=  a group you are now in: the group, its members, its expenses and
- *               their threads.
- *   ?expense_id= one non-group bill you have just been added to. THE THREAD
- *               ONLY - the expense itself arrives as an ordinary upsert in the
- *               same pull page. Its comments are a separate entity whose seqs are
- *               all below the cursor, which is the entire gap being closed here.
- *
- * Does NOT rewind the cursor. The client applies what it gets and leaves `since`
- * where the pull page put it.
- */
-syncRoutes.get("/snapshot", async (c) => {
-  const auth = c.get("user");
-  const groupId = c.req.query("group_id");
-  const expenseId = c.req.query("expense_id");
-
-  if ((groupId === undefined) === (expenseId === undefined)) {
-    return c.json({ error: "Pass exactly one of group_id or expense_id" }, 400);
-  }
-
-  if (expenseId !== undefined) {
-    if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
-
-    // Participant-only, and 404 rather than 403 for a stranger: a 403 would
-    // confirm the expense exists. Same rule as GET /expenses/:id.
-    const participant = await db
-      .selectFrom("expense_users")
-      .select("user_id")
-      .where("expense_id", "=", expenseId)
-      .where("user_id", "=", auth.id)
-      .executeTakeFirst();
-
-    if (!participant) return c.json({ error: "Not found" }, 404);
-
-    return c.json({
-      expenses: await loadExpenses(db, [expenseId]),
-      comments: await loadCommentsForExpenses(db, [expenseId]),
-    });
-  }
-
-  if (!isUlid(groupId!)) return c.json({ error: "Invalid group id" }, 400);
-
-  const membership = await db
-    .selectFrom("group_members")
-    .select("user_id")
-    .where("group_id", "=", groupId!)
-    .where("user_id", "=", auth.id)
-    .where("left_at", "is", null)
-    .executeTakeFirst();
-
-  if (!membership) return c.json({ error: "Not found" }, 404);
-
-  const expenseIds = (
-    await db
-      .selectFrom("expenses")
-      .select("id")
-      .where("group_id", "=", groupId!)
-      .orderBy("id")
-      .execute()
-  ).map((r) => r.id);
-
-  const [groups, members, expenses, comments] = await Promise.all([
-    loadGroups(db, [groupId!]),
-    loadGroupMembers(db, [groupId!]),
-    loadExpenses(db, expenseIds),
-    loadCommentsForExpenses(db, expenseIds),
-  ]);
-
-  return c.json({ groups, members, expenses, comments });
-});
 
 // ---------------------------------------------------------------------------
 // GET /pull
@@ -419,97 +259,6 @@ function changeKey(row: LogRow): string {
   if (row.entity === "user_merge") return `user_merge:${row.entity_id}:${row.other_user_id}`;
   return `${row.entity}:${row.entity_id}`;
 }
-
-/**
- * What changed since `since`.
- *
- * Entities are returned WHOLE, and the page is collapsed so each entity appears
- * once, carrying its final state and the seq of the last row that touched it.
- * Three edits to one bill in one page are one upsert of the current row - the
- * client is replacing a document either way, and replaying the intermediate
- * states would only widen the window in which its screens show a number that was
- * never final.
- *
- * `catchUp` is collected from the RAW rows, before that collapse: the marker for
- * "you have just been added to this bill" is a second expense upsert addressed to
- * the caller, and it is the same (entity, id) as the ordinary one it accompanies.
- *
- * Drain `more` within one sync cycle rather than one page per tick. A client that
- * takes a page every five minutes is not syncing, it is trickling.
- */
-syncRoutes.get("/pull", async (c) => {
-  const auth = c.get("user");
-
-  const since = Number(c.req.query("since") ?? 0);
-  if (!Number.isInteger(since) || since < 0) {
-    return c.json({ error: "since must be a non-negative integer" }, 400);
-  }
-
-  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? PULL_PAGE) || PULL_PAGE, 1), PULL_PAGE);
-
-  const rows = await pullPage(auth.id, since, limit + 1);
-  const more = rows.length > limit;
-  const page = more ? rows.slice(0, limit) : rows;
-
-  if (page.length === 0) {
-    return c.json({ changes: [], seq: since, more: false, remaining: 0, catchUp: [] });
-  }
-
-  // Last row per entity wins. Insertion order in a Map is preserved, and the
-  // rows arrive in seq order, so re-setting a key keeps its original position -
-  // which is what makes a `user_merge` stay ahead of the expense upserts it has
-  // to be applied before.
-  const collapsed = new Map<string, LogRow>();
-  for (const row of page) collapsed.set(changeKey(row), row);
-
-  const latest = [...collapsed.values()];
-
-  // Batch the payload loads: one query per entity kind, not one per change.
-  const expenseIds = latest
-    .filter((r) => r.entity === "expense" && r.op !== "forget")
-    .map((r) => r.entity_id);
-  const commentIds = latest.filter((r) => r.entity === "comment").map((r) => r.entity_id);
-  const groupIds = latest.filter((r) => r.entity === "group").map((r) => r.entity_id);
-  const userIds = latest.filter((r) => r.entity === "user").map((r) => r.entity_id);
-
-  const [expenses, comments, groups, users] = await Promise.all([
-    loadExpenses(db, expenseIds),
-    loadComments(db, commentIds),
-    loadGroups(db, groupIds),
-    loadUsers(db, userIds),
-  ]);
-
-  const expenseById = new Map(expenses.map((e) => [e.id, e]));
-  const commentById = new Map(comments.map((cm) => [cm.id, cm]));
-  const groupById = new Map(groups.map((g) => [g.id, g]));
-
-  const changes: Array<{ seq: number; entity: string; op: string; data: unknown }> = [];
-
-  for (const row of latest) {
-    const data = await payloadFor(row, auth.id, {
-      expenseById,
-      commentById,
-      groupById,
-      users,
-    });
-    // A row whose entity has vanished from under it. Skipping is right: there is
-    // nothing to deliver, and the cursor still advances past it so the client does
-    // not ask again forever.
-    if (data === null) continue;
-    changes.push({ seq: row.seq, entity: row.entity, op: row.op, data });
-  }
-
-  const catchUp = await collectCatchUp(page, auth.id);
-  const head = page.at(-1)!.seq;
-
-  return c.json({
-    changes,
-    seq: head,
-    more,
-    remaining: more ? await pullRemaining(auth.id, head) : 0,
-    catchUp,
-  });
-});
 
 /** Builds one change's `data`, from the batches loaded above. */
 async function payloadFor(
@@ -760,32 +509,6 @@ async function readPushBody(c: { req: { header: (name: string) => string | undef
   const inflated = gunzipSync(Buffer.from(await c.req.arrayBuffer()));
   return JSON.parse(inflated.toString("utf8"));
 }
-
-syncRoutes.post("/push", async (c) => {
-  let raw: unknown;
-  try {
-    raw = await readPushBody(c);
-  } catch {
-    return c.json({ error: "Could not read body" }, 400);
-  }
-  const parsed = pushSchema.safeParse(raw);
-  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
-
-  const auth = c.get("user");
-  const { ops } = parsed.data;
-
-  const results: PushResult[] = [];
-
-  // Sequential, deliberately. The ops in one batch can depend on each other - a
-  // comment on an expense created two entries earlier - and every writer opens
-  // its own transaction, so running them concurrently would race a child against
-  // its parent for no gain on a single SQLite connection.
-  for (const op of ops) {
-    results.push(await applyPushOp(auth.id, op));
-  }
-
-  return c.json({ results, seq: await currentSeq(db) });
-});
 
 /** Runs one op, turning every failure into a status rather than a 500. */
 async function applyPushOp(userId: string, op: PushOp): Promise<PushResult> {
@@ -1072,3 +795,294 @@ async function pushCommentDelete(
   await deleteComment(op.id, userId);
   return { id: op.id, kind: op.kind, status: "applied" };
 }
+
+export const syncRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+// Pull / bootstrap / snapshot can be large. The browser decompresses gzip
+// automatically; we do not gzip them in the client. Push bodies are gzipped
+// the other way - see readPushBody.
+  .use("*", compress())
+// ---------------------------------------------------------------------------
+// GET /bootstrap
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything the caller can see, for a fresh install or a local database reset.
+ *
+ * `seq` IS CAPTURED BEFORE ANYTHING IS READ, and the client keeps the value from
+ * the FIRST page for the whole run. Snapshotting it at the end instead would
+ * drop every write that landed after its page had already been scanned - those
+ * changes are below the cursor, so no later pull would ever deliver them. Taking
+ * it first means the opposite error, a change delivered twice, and applying a
+ * whole-entity upsert twice is a no-op.
+ *
+ * Reference data (currencies, categories) rides along on the first page only.
+ * That is not an optimisation: `web/src/money.tsx` will not render an amount
+ * without its currency's decimal places, so a client that has expenses and no
+ * currencies table shows a screen of dashes.
+ */
+  .get(
+    "/bootstrap",
+    zValidator("query", z.object({ cursor: z.string().optional() })),
+    async (c) => {
+  const auth = c.get("user");
+
+  const seq = await currentSeq(db);
+
+  const rawCursor = c.req.query("cursor") ?? null;
+  if (rawCursor !== null && !isUlid(rawCursor)) {
+    return c.json({ error: "Invalid cursor" }, 400);
+  }
+  const cursor = rawCursor;
+  const first = cursor === null;
+
+  const expenseIds = await visibleExpenseIdPage(auth.id, cursor, BOOTSTRAP_PAGE);
+  const [expenses, comments] = await Promise.all([
+    loadExpenses(db, expenseIds),
+    loadCommentsForExpenses(db, expenseIds),
+  ]);
+
+  // A short page means the end. Equal to the limit is ambiguous - the next page
+  // may be empty - and one wasted round trip beats a truncated ledger.
+  const nextCursor = expenseIds.length === BOOTSTRAP_PAGE ? expenseIds.at(-1)! : null;
+
+  if (!first) {
+    return c.json({ seq, expenses, comments, nextCursor });
+  }
+
+  const groupIds = await visibleGroupIds(auth.id);
+  const [self, groups, members, friendships, currencies, categories] = await Promise.all([
+    loadUsers(db, [auth.id]),
+    loadGroups(db, groupIds),
+    loadGroupMembers(db, groupIds),
+    loadFriendships(db, auth.id),
+    loadCurrencies(db),
+    loadCategories(db),
+  ]);
+
+  return c.json({
+    seq,
+    self: self.get(auth.id) ?? null,
+    groups,
+    members,
+    friendships,
+    expenses,
+    comments,
+    currencies,
+    categories,
+    nextCursor,
+  });
+})
+// ---------------------------------------------------------------------------
+// GET /snapshot
+// ---------------------------------------------------------------------------
+
+/**
+ * Catch-up for access the caller has just been granted.
+ *
+ * Incremental pull is `seq > :since` and does not backfill: the log rows for a
+ * group's ten-year history are all below the cursor of a client that has been
+ * syncing for months, so joining that group would deliver the membership row and
+ * nothing else. This is the endpoint that fills the gap, and `/pull` names it
+ * explicitly in `catchUp` rather than making the client guess.
+ *
+ * Two shapes, because there are two ways to gain access:
+ *
+ *   ?group_id=  a group you are now in: the group, its members, its expenses and
+ *               their threads.
+ *   ?expense_id= one non-group bill you have just been added to. THE THREAD
+ *               ONLY - the expense itself arrives as an ordinary upsert in the
+ *               same pull page. Its comments are a separate entity whose seqs are
+ *               all below the cursor, which is the entire gap being closed here.
+ *
+ * Does NOT rewind the cursor. The client applies what it gets and leaves `since`
+ * where the pull page put it.
+ */
+  .get(
+    "/snapshot",
+    zValidator(
+      "query",
+      z.object({ group_id: z.string().optional(), expense_id: z.string().optional() }),
+    ),
+    async (c) => {
+  const auth = c.get("user");
+  const groupId = c.req.query("group_id");
+  const expenseId = c.req.query("expense_id");
+
+  if ((groupId === undefined) === (expenseId === undefined)) {
+    return c.json({ error: "Pass exactly one of group_id or expense_id" }, 400);
+  }
+
+  if (expenseId !== undefined) {
+    if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+    // Participant-only, and 404 rather than 403 for a stranger: a 403 would
+    // confirm the expense exists. Same rule as GET /expenses/:id.
+    const participant = await db
+      .selectFrom("expense_users")
+      .select("user_id")
+      .where("expense_id", "=", expenseId)
+      .where("user_id", "=", auth.id)
+      .executeTakeFirst();
+
+    if (!participant) return c.json({ error: "Not found" }, 404);
+
+    return c.json({
+      groups: [],
+      members: [],
+      expenses: await loadExpenses(db, [expenseId]),
+      comments: await loadCommentsForExpenses(db, [expenseId]),
+    });
+  }
+
+  if (!isUlid(groupId!)) return c.json({ error: "Invalid group id" }, 400);
+
+  const membership = await db
+    .selectFrom("group_members")
+    .select("user_id")
+    .where("group_id", "=", groupId!)
+    .where("user_id", "=", auth.id)
+    .where("left_at", "is", null)
+    .executeTakeFirst();
+
+  if (!membership) return c.json({ error: "Not found" }, 404);
+
+  const expenseIds = (
+    await db
+      .selectFrom("expenses")
+      .select("id")
+      .where("group_id", "=", groupId!)
+      .orderBy("id")
+      .execute()
+  ).map((r) => r.id);
+
+  const [groups, members, expenses, comments] = await Promise.all([
+    loadGroups(db, [groupId!]),
+    loadGroupMembers(db, [groupId!]),
+    loadExpenses(db, expenseIds),
+    loadCommentsForExpenses(db, expenseIds),
+  ]);
+
+  return c.json({ groups, members, expenses, comments });
+})
+/**
+ * What changed since `since`.
+ *
+ * Entities are returned WHOLE, and the page is collapsed so each entity appears
+ * once, carrying its final state and the seq of the last row that touched it.
+ * Three edits to one bill in one page are one upsert of the current row - the
+ * client is replacing a document either way, and replaying the intermediate
+ * states would only widen the window in which its screens show a number that was
+ * never final.
+ *
+ * `catchUp` is collected from the RAW rows, before that collapse: the marker for
+ * "you have just been added to this bill" is a second expense upsert addressed to
+ * the caller, and it is the same (entity, id) as the ordinary one it accompanies.
+ *
+ * Drain `more` within one sync cycle rather than one page per tick. A client that
+ * takes a page every five minutes is not syncing, it is trickling.
+ */
+  .get(
+    "/pull",
+    zValidator(
+      "query",
+      z.object({ since: z.string().optional(), limit: z.string().optional() }),
+    ),
+    async (c) => {
+  const auth = c.get("user");
+
+  const since = Number(c.req.query("since") ?? 0);
+  if (!Number.isInteger(since) || since < 0) {
+    return c.json({ error: "since must be a non-negative integer" }, 400);
+  }
+
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? PULL_PAGE) || PULL_PAGE, 1), PULL_PAGE);
+
+  const rows = await pullPage(auth.id, since, limit + 1);
+  const more = rows.length > limit;
+  const page = more ? rows.slice(0, limit) : rows;
+
+  if (page.length === 0) {
+    return c.json({ changes: [], seq: since, more: false, remaining: 0, catchUp: [] });
+  }
+
+  // Last row per entity wins. Insertion order in a Map is preserved, and the
+  // rows arrive in seq order, so re-setting a key keeps its original position -
+  // which is what makes a `user_merge` stay ahead of the expense upserts it has
+  // to be applied before.
+  const collapsed = new Map<string, LogRow>();
+  for (const row of page) collapsed.set(changeKey(row), row);
+
+  const latest = [...collapsed.values()];
+
+  // Batch the payload loads: one query per entity kind, not one per change.
+  const expenseIds = latest
+    .filter((r) => r.entity === "expense" && r.op !== "forget")
+    .map((r) => r.entity_id);
+  const commentIds = latest.filter((r) => r.entity === "comment").map((r) => r.entity_id);
+  const groupIds = latest.filter((r) => r.entity === "group").map((r) => r.entity_id);
+  const userIds = latest.filter((r) => r.entity === "user").map((r) => r.entity_id);
+
+  const [expenses, comments, groups, users] = await Promise.all([
+    loadExpenses(db, expenseIds),
+    loadComments(db, commentIds),
+    loadGroups(db, groupIds),
+    loadUsers(db, userIds),
+  ]);
+
+  const expenseById = new Map(expenses.map((e) => [e.id, e]));
+  const commentById = new Map(comments.map((cm) => [cm.id, cm]));
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+
+  const changes: Array<{ seq: number; entity: string; op: string; data: unknown }> = [];
+
+  for (const row of latest) {
+    const data = await payloadFor(row, auth.id, {
+      expenseById,
+      commentById,
+      groupById,
+      users,
+    });
+    // A row whose entity has vanished from under it. Skipping is right: there is
+    // nothing to deliver, and the cursor still advances past it so the client does
+    // not ask again forever.
+    if (data === null) continue;
+    changes.push({ seq: row.seq, entity: row.entity, op: row.op, data });
+  }
+
+  const catchUp = await collectCatchUp(page, auth.id);
+  const head = page.at(-1)!.seq;
+
+  return c.json({
+    changes,
+    seq: head,
+    more,
+    remaining: more ? await pullRemaining(auth.id, head) : 0,
+    catchUp,
+  });
+})
+  .post("/push", async (c) => {
+  let raw: unknown;
+  try {
+    raw = await readPushBody(c);
+  } catch {
+    return c.json({ error: "Could not read body" }, 400);
+  }
+  const parsed = pushSchema.safeParse(raw);
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  const auth = c.get("user");
+  const { ops } = parsed.data;
+
+  const results: PushResult[] = [];
+
+  // Sequential, deliberately. The ops in one batch can depend on each other - a
+  // comment on an expense created two entries earlier - and every writer opens
+  // its own transaction, so running them concurrently would race a child against
+  // its parent for no gain on a single SQLite connection.
+  for (const op of ops) {
+    results.push(await applyPushOp(auth.id, op));
+  }
+
+  return c.json({ results, seq: await currentSeq(db) });
+});

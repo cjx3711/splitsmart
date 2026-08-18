@@ -28,10 +28,13 @@ import { Activity } from "./pages/Activity.tsx";
 import { Claim } from "./pages/Claim.tsx";
 import { Settings } from "./pages/Settings.tsx";
 import { Import } from "./pages/Import.tsx";
+import { Admin } from "./pages/Admin.tsx";
+import { AdminUser } from "./pages/AdminUser.tsx";
 import { Verify } from "./pages/Verify.tsx";
 import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 import { Footer } from "./Footer.tsx";
+import { api } from "./api.ts";
 
 /**
  * The session, as every screen has always read it.
@@ -112,6 +115,26 @@ function Shell() {
       <Route path="/conflicts" element={<Protected><Conflicts /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/import" element={<Protected><Import /></Protected>} />
+      <Route
+        path="/admin"
+        element={
+          <Protected>
+            <AdminGate>
+              <Admin />
+            </AdminGate>
+          </Protected>
+        }
+      />
+      <Route
+        path="/admin/users/:id"
+        element={
+          <Protected>
+            <AdminGate>
+              <AdminUser />
+            </AdminGate>
+          </Protected>
+        }
+      />
       <Route path="*" element={<p className="muted">Not found.</p>} />
     </Routes>
   );
@@ -160,6 +183,40 @@ function Protected({ children }: { children: ReactNode }) {
     const next = `${location.pathname}${location.search}`;
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />;
   }
+  return <>{children}</>;
+}
+
+/** Operator-only; ADMIN_EMAILS via /auth/me isAdmin. */
+function AdminGate({ children }: { children: ReactNode }) {
+  const { user, setUser, loading } = useAuth();
+  const [checked, setChecked] = useState(user?.isAdmin !== undefined);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    if (user.isAdmin !== undefined) {
+      setChecked(true);
+      return;
+    }
+    // Cached profile has no isAdmin; revalidate before deciding.
+    let live = true;
+    void api
+      .me()
+      .then(({ user: fresh }) => {
+        if (live) {
+          setUser(fresh);
+          setChecked(true);
+        }
+      })
+      .catch(() => {
+        if (live) setChecked(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [user, loading, setUser]);
+
+  if (loading || !checked) return <p className="muted">Loading…</p>;
+  if (!user?.isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 

@@ -77,7 +77,12 @@ export function ApiDocs() {
         <Code>{`{ "user": { "id": "01ARZ…", "email": "you@example.com", "name": "Alex Chen",
   "nickname": null, "iconLetters": null, "iconEmoji": null, "iconHue": null,
   "isGhost": false, "defaultCurrency": "USD",
-  "emailVerified": true, "needsEmailVerification": false } }`}</Code>
+  "emailVerified": true, "needsEmailVerification": false, "isAdmin": false } }`}</Code>
+        <p>
+          <code>isAdmin</code> is true when the account's email is listed in the
+          server's <code>ADMIN_EMAILS</code> env var. Native only; not on the
+          compat wire format.
+        </p>
       </Endpoint>
       <Endpoint method="PATCH" path="/api/v1/auth/me">
         <Code>{`{ "name": "Alex Chen", "nickname": "Alex", "iconLetters": "AC",
@@ -503,6 +508,31 @@ export function ApiDocs() {
           <code>{`{ currencies: [{ code, decimal_places, symbol, name }] }`}</code>
         </p>
       </Endpoint>
+
+      <h3>Admin (usage)</h3>
+      <p>
+        Operator-only. The caller's email must appear in{" "}
+        <code>ADMIN_EMAILS</code> (comma-separated, case-insensitive). Empty
+        means nobody. Returns counts and a 30-day series only — never amounts,
+        titles, friend names, or link secrets.{" "}
+        <code>as_of=YYYY-MM-DD</code> pins the series window (UTC); missing or
+        malformed falls back to today.
+      </p>
+      <Endpoint method="GET" path="/api/v1/admin/users" auth="admin">
+        <Code>{`{ "asOf": "2026-08-18",
+  "users": [{ "id", "name", "email", "createdAt",
+    "counts": { "expensesCreated", "expensesParticipated", "groups",
+      "friends", "recurring", "guestLinks", "ghosts" },
+    "series": [{ "date": "2026-07-20", "count": 0 }, "…"] }] }`}</Code>
+        <p>
+          Optional <code>q</code> (name/email substring) and{" "}
+          <code>as_of</code>. Real accounts only; capped at 50.
+        </p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/admin/users/:id" auth="admin">
+        <p>Same shape for one user. <code>404</code> for ghosts or deleted.</p>
+      </Endpoint>
+
       <Endpoint method="GET" path="/health" auth="public">
         <p>
           Liveness. <code>{`{ ok: true, version }`}</code>
@@ -554,6 +584,16 @@ export function ApiDocs() {
       <Endpoint method="POST" path="/api/v1/import/run">
         <Code>{`{ "apiKey": "…", "maxPages": 50 }`}</Code>
         <p>Friends, groups, expenses up to the page cap, then comments.</p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/import/wipe">
+        <Code>{`{ "confirm": "DELETE ALL DATA" }`}</Code>
+        <p>
+          Hard-delete this account&apos;s groups, friends, expenses, comments
+          and placeholder people so a Splitwise import can run on an empty book.
+          The account itself stays. Refuses with <code>409</code> if another
+          live account shares a group or expense with you. The confirmation
+          phrase is required; a stray POST is not enough.
+        </p>
       </Endpoint>
 
       <h2 id="compat">Compat API</h2>

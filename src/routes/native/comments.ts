@@ -58,10 +58,11 @@ export function commentErrorResponse(err: unknown): { status: 400 | 403 | 404; e
 
 // --- mounted at /api/v1/expenses --------------------------------------------
 
-export const expenseCommentRoutes = new Hono<AppEnv>();
-expenseCommentRoutes.use("*", requireAuth);
+// --- mounted at /api/v1/comments --------------------------------------------
 
-expenseCommentRoutes.get("/:id/comments", async (c) => {
+export const expenseCommentRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+  .get("/:id/comments", async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -72,9 +73,8 @@ expenseCommentRoutes.get("/:id/comments", async (c) => {
 
   const comments = await listComments(db, expenseId);
   return c.json({ comments: comments.map(serializeComment) });
-});
-
-expenseCommentRoutes.post("/:id/comments", zValidator("json", commentBodySchema), async (c) => {
+})
+  .post("/:id/comments", zValidator("json", commentBodySchema), async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -98,13 +98,9 @@ expenseCommentRoutes.post("/:id/comments", zValidator("json", commentBodySchema)
     return c.json({ error: mapped.error }, mapped.status);
   }
 });
-
-// --- mounted at /api/v1/comments --------------------------------------------
-
-export const commentRoutes = new Hono<AppEnv>();
-commentRoutes.use("*", requireAuth);
-
-commentRoutes.delete("/:id", async (c) => {
+export const commentRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+  .delete("/:id", async (c) => {
   const auth = c.get("user");
   const commentId = c.req.param("id");
   if (!isUlid(commentId)) return c.json({ error: "Invalid comment id" }, 400);

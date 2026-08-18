@@ -327,6 +327,7 @@ export async function localProfile(db: LocalDb): Promise<ApiUser | null> {
     iconHue: profile.iconHue,
     isGhost: profile.isGhost,
     defaultCurrency: profile.defaultCurrency,
+    // isAdmin is live from /auth/me only — never cached in Dexie.
   };
 }
 
@@ -617,7 +618,9 @@ async function toSummaries(db: LocalDb, rows: LocalExpense[]): Promise<ExpenseSu
       user_id: s.userId,
       paid_share_minor: s.paidShareMinor,
       owed_share_minor: s.owedShareMinor,
+      expense_id: row.id,
     })),
+    split_meta: row.splitMeta,
     syncState: row.syncState,
   }));
 }

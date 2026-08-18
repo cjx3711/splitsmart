@@ -40,7 +40,7 @@ import { createExpense, createPayment } from "../../domain/expenses.ts";
 import { commentCountSql } from "../../domain/comments.ts";
 import { findFriendLink, mintAccessLink } from "../../domain/access-links.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
-import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
+import { expenseFilterWhere, expenseListQuerySchema, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
 import { env } from "../../env.ts";
@@ -52,9 +52,6 @@ import {
   identityColumns,
   identityPatchSchema,
 } from "./person-schema.ts";
-
-export const friendRoutes = new Hono<AppEnv>();
-friendRoutes.use("*", requireAuth);
 
 interface FriendBreakdown {
   groupId: string | null;
@@ -103,7 +100,20 @@ function byGroupName(a: { groupName: string | null }, b: { groupName: string | n
   return a.groupName.localeCompare(b.groupName);
 }
 
-friendRoutes.get("/", async (c) => {
+const addFriendSchema = z.object({
+  name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
+  // Optional on purpose: adding someone by name alone is a legitimate way to
+  // track what they owe you without ever contacting them.
+  email: z
+    .string()
+    .email()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+});
+
+export const friendRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+  .get("/", async (c) => {
   const auth = c.get("user");
 
   const ids = await listRelatedUserIds(db, auth.id);
@@ -149,20 +159,8 @@ friendRoutes.get("/", async (c) => {
       breakdown: breakdowns.get(u.id) ?? [],
     })),
   });
-});
-
-const addFriendSchema = z.object({
-  name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
-  // Optional on purpose: adding someone by name alone is a legitimate way to
-  // track what they owe you without ever contacting them.
-  email: z
-    .string()
-    .email()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-});
-
-friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
+})
+  .post("/", zValidator("json", addFriendSchema), async (c) => {
   const auth = c.get("user");
   const input = c.req.valid("json");
 
@@ -346,9 +344,8 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     },
     201,
   );
-});
-
-friendRoutes.get("/:id", async (c) => {
+})
+  .get("/:id", async (c) => {
   const auth = c.get("user");
   const friendId = c.req.param("id");
   if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
@@ -393,8 +390,7 @@ friendRoutes.get("/:id", async (c) => {
       breakdown: breakdowns.get(friendId) ?? [],
     },
   });
-});
-
+})
 /**
  * Edit a placeholder person's name and icon.
  *
@@ -404,7 +400,7 @@ friendRoutes.get("/:id", async (c) => {
  * `user` log rows: a standalone `user` row otherwise only reaches its own
  * subject, and ghosts do not sync.
  */
-friendRoutes.patch(
+  .patch(
   "/:id",
   zValidator("json", identityPatchSchema),
   async (c) => {
@@ -492,15 +488,14 @@ friendRoutes.patch(
       },
     });
   },
-);
-
+)
 /**
  * Expenses shared with one friend, across every group plus the one-on-one ones.
  *
  * Matching the friend screen in Splitwise: the question "what is between us"
  * does not stop at a group boundary.
  */
-friendRoutes.get("/:id/expenses", async (c) => {
+  .get("/:id/expenses", zValidator("query", expenseListQuerySchema), async (c) => {
   const auth = c.get("user");
   const friendId = c.req.param("id");
   if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
@@ -565,8 +560,7 @@ friendRoutes.get("/:id/expenses", async (c) => {
   return c.json({
     expenses: expenses.map((e) => ({ ...e, shares: byExpense.get(e.id) ?? [] })),
   });
-});
-
+})
 /**
  * A one-on-one expense: group_id stays NULL.
  *
@@ -575,7 +569,7 @@ friendRoutes.get("/:id/expenses", async (c) => {
  * deliberately the strictest possible version: exactly the two of you, since
  * a wider set has no screen that can display it.
  */
-friendRoutes.post(
+  .post(
   "/:id/expenses",
   zValidator("json", expenseBodySchema),
   async (c) => {
@@ -608,10 +602,9 @@ friendRoutes.post(
       );
     }
   },
-);
-
+)
 /** Settling up with a friend outside any group. */
-friendRoutes.post(
+  .post(
   "/:id/payments",
   zValidator(
     "json",
@@ -650,8 +643,7 @@ friendRoutes.post(
       );
     }
   },
-);
-
+)
 /**
  * Removes the explicit friendship only.
  *
@@ -659,7 +651,7 @@ friendRoutes.post(
  * you still share a group or an expense they stay in your list as a derived
  * friend, which is correct: you cannot un-owe someone by unfriending them.
  */
-friendRoutes.delete("/:id", async (c) => {
+  .delete("/:id", async (c) => {
   const auth = c.get("user");
   const friendId = c.req.param("id");
   if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);

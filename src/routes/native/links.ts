@@ -36,9 +36,6 @@ import { listRelatedUserIds } from "../../domain/friends.ts";
 import { isUlid } from "../../domain/ulid.ts";
 import { ulidSchema } from "./expense-schema.ts";
 
-export const linkRoutes = new Hono<AppEnv>();
-linkRoutes.use("*", requireAuth);
-
 async function membershipOf(groupId: string, userId: string) {
   return db
     .selectFrom("group_members")
@@ -48,35 +45,6 @@ async function membershipOf(groupId: string, userId: string) {
     .where("left_at", "is", null)
     .executeTakeFirst();
 }
-
-/**
- * Links for one group, with the people they act as resolved.
- *
- * Any member may look: everyone in a group can already read every expense in
- * it, so knowing that a link exists tells them nothing they could not see. The
- * secret is not here, so this is not a way to get in.
- */
-linkRoutes.get("/", async (c) => {
-  const auth = c.get("user");
-  const groupId = c.req.query("groupId");
-  const friendId = c.req.query("friendId");
-
-  if (groupId) {
-    if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
-    if (!(await membershipOf(groupId, auth.id))) {
-      return c.json({ error: "Not a member of this group" }, 403);
-    }
-    return c.json({ links: await withPeople(await listGroupLinks(db, groupId)) });
-  }
-
-  if (friendId) {
-    if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
-    const link = await findFriendLink(db, auth.id, friendId);
-    return c.json({ links: link ? await withPeople([link]) : [] });
-  }
-
-  return c.json({ error: "Ask for groupId or friendId" }, 400);
-});
 
 const mintSchema = z
   .object({
@@ -97,6 +65,69 @@ const mintSchema = z
     path: ["userId"],
   });
 
+/** Attaches names, so the group screen can label a link "Alice's link". */
+async function withPeople(links: LinkSummary[]) {
+  const ids = [...new Set(links.map((l) => l.userId).filter((id): id is string => id !== null))];
+  const people = ids.length
+    ? await db
+        .selectFrom("users")
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+        .where("id", "in", ids)
+        .execute()
+    : [];
+  const byId = new Map(people.map((p) => [p.id, p]));
+
+  return links.map((link) => ({
+    ...link,
+    person: link.userId
+      ? {
+          id: link.userId,
+          name: byId.get(link.userId)?.name ?? null,
+          nickname: byId.get(link.userId)?.nickname ?? null,
+          iconLetters: byId.get(link.userId)?.icon_letters ?? null,
+          iconEmoji: byId.get(link.userId)?.icon_emoji ?? null,
+          iconHue: byId.get(link.userId)?.icon_hue ?? null,
+        }
+      : null,
+  }));
+}
+
+export const linkRoutes = new Hono<AppEnv>()
+  .use("*", requireAuth)
+/**
+ * Links for one group, with the people they act as resolved.
+ *
+ * Any member may look: everyone in a group can already read every expense in
+ * it, so knowing that a link exists tells them nothing they could not see. The
+ * secret is not here, so this is not a way to get in.
+ */
+  .get(
+    "/",
+    zValidator(
+      "query",
+      z.object({ groupId: z.string().optional(), friendId: z.string().optional() }),
+    ),
+    async (c) => {
+  const auth = c.get("user");
+  const groupId = c.req.query("groupId");
+  const friendId = c.req.query("friendId");
+
+  if (groupId) {
+    if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
+    if (!(await membershipOf(groupId, auth.id))) {
+      return c.json({ error: "Not a member of this group" }, 403);
+    }
+    return c.json({ links: await withPeople(await listGroupLinks(db, groupId)) });
+  }
+
+  if (friendId) {
+    if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+    const link = await findFriendLink(db, auth.id, friendId);
+    return c.json({ links: link ? await withPeople([link]) : [] });
+  }
+
+  return c.json({ error: "Ask for groupId or friendId" }, 400);
+})
 /**
  * Mints a link, replacing whatever live one held the same slot.
  *
@@ -105,7 +136,7 @@ const mintSchema = z
  * link for a group cannot exist, and the old secret dies in the same
  * transaction the new one is born in. No window where both work.
  */
-linkRoutes.post("/", zValidator("json", mintSchema), async (c) => {
+  .post("/", zValidator("json", mintSchema), async (c) => {
   const auth = c.get("user");
   const input = c.req.valid("json");
 
@@ -144,10 +175,9 @@ linkRoutes.post("/", zValidator("json", mintSchema), async (c) => {
     if (err instanceof AccessLinkError) return c.json({ error: err.message }, 400);
     throw err;
   }
-});
-
+})
 /** Revoke. Immediate: the secret is re-checked on every guest request. */
-linkRoutes.delete("/:id", async (c) => {
+  .delete("/:id", async (c) => {
   const auth = c.get("user");
   const id = c.req.param("id");
   if (!isUlid(id)) return c.json({ error: "Invalid link id" }, 400);
@@ -172,30 +202,3 @@ linkRoutes.delete("/:id", async (c) => {
   await revokeAccessLink(db, id);
   return c.json({ ok: true });
 });
-
-/** Attaches names, so the group screen can label a link "Alice's link". */
-async function withPeople(links: LinkSummary[]) {
-  const ids = [...new Set(links.map((l) => l.userId).filter((id): id is string => id !== null))];
-  const people = ids.length
-    ? await db
-        .selectFrom("users")
-        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
-        .where("id", "in", ids)
-        .execute()
-    : [];
-  const byId = new Map(people.map((p) => [p.id, p]));
-
-  return links.map((link) => ({
-    ...link,
-    person: link.userId
-      ? {
-          id: link.userId,
-          name: byId.get(link.userId)?.name ?? null,
-          nickname: byId.get(link.userId)?.nickname ?? null,
-          iconLetters: byId.get(link.userId)?.icon_letters ?? null,
-          iconEmoji: byId.get(link.userId)?.icon_emoji ?? null,
-          iconHue: byId.get(link.userId)?.icon_hue ?? null,
-        }
-      : null,
-  }));
-}

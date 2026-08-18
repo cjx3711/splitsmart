@@ -422,3 +422,25 @@ describe("compat: zero-decimal currencies", () => {
     assert.equal(jpy.amount, "1500");
   });
 });
+
+describe("compat: OpenAPI spec", () => {
+  test("is public and names the six implemented endpoints", async () => {
+    const res = await app.request("/api/sw/v3.0/openapi.json");
+    assert.equal(res.status, 200);
+    const spec = (await res.json()) as {
+      paths: Record<string, unknown>;
+      info: { title: string };
+    };
+    assert.match(spec.info.title, /Splitwise/i);
+    for (const path of [
+      "/get_current_user",
+      "/get_friends",
+      "/get_friend/{id}",
+      "/get_categories",
+      "/get_expenses",
+      "/create_expense",
+    ]) {
+      assert.ok(spec.paths[path], `missing ${path}`);
+    }
+  });
+});

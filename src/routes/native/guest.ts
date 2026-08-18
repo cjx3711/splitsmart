@@ -89,8 +89,6 @@ interface GuestEnv {
   };
 }
 
-export const guestRoutes = new Hono<GuestEnv>();
-
 /**
  * Resolves the link, and the name being acted as when there is one.
  *
@@ -127,8 +125,6 @@ const guestAuth: MiddlewareHandler<GuestEnv> = async (c, next) => {
   await next();
 };
 
-guestRoutes.use("*", guestAuth);
-
 /**
  * The scope, or a 409 that tells the shell to show the picker.
  *
@@ -149,99 +145,6 @@ function scopeOf(c: Context<GuestEnv>): GuestScope {
   }
   return scope;
 }
-
-// ---------------------------------------------------------------------------
-// Session: what this link is, and who it can be
-// ---------------------------------------------------------------------------
-
-/**
- * Everything the guest shell needs to boot: what this link is, who it can be,
- * and where the landing page should send the browser once the secret has been
- * stashed and stripped out of the URL.
- *
- * Answers even when nobody has been picked yet. The picker needs the list of
- * names, so a 409 here would leave the shell with nothing to render and no way
- * out of the deadlock.
- */
-guestRoutes.get("/session", async (c) => {
-  const link = c.get("link");
-  const scope = c.get("scope");
-
-  const actable = await listActablePeople(db, link);
-
-  const me = scope
-    ? await db
-        .selectFrom("users")
-        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "default_currency"])
-        .where("id", "=", scope.actingAs)
-        .executeTakeFirst()
-    : null;
-
-  const group = link.groupId
-    ? await db
-        .selectFrom("groups")
-        .select(["id", "name", "group_type", "default_currency"])
-        .where("id", "=", link.groupId)
-        .where("deleted_at", "is", null)
-        .executeTakeFirst()
-    : null;
-
-  const counterpart = scope?.counterpartId
-    ? await db
-        .selectFrom("users")
-        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
-        .where("id", "=", scope.counterpartId)
-        .executeTakeFirst()
-    : null;
-
-  const groups = scope && scope.groupIds.length
-    ? await db
-        .selectFrom("groups")
-        .select(["id", "name", "group_type", "default_currency"])
-        .where("id", "in", scope.groupIds)
-        .where("deleted_at", "is", null)
-        .orderBy("name")
-        .execute()
-    : [];
-
-  return c.json({
-    kind: link.kind,
-    /** True when the holder may swap to a different name at any time. */
-    canRepick: link.kind === "group",
-    /** The shell shows a picker instead of a screen while this is true. */
-    needsPicker: !scope,
-    expiresAt: link.expiresAt,
-    people: actable,
-    actingAs: me
-      ? {
-          id: me.id,
-          ...personCamel(me),
-          defaultCurrency: me.default_currency,
-        }
-      : null,
-    group,
-    groups,
-    counterpart: counterpart
-      ? { id: counterpart.id, ...personCamel(counterpart) }
-      : null,
-  });
-});
-
-/**
- * The currencies table. Same payload as the logged-in `/categories/currencies`.
- *
- * The guest shell has no Dexie mirror, so without this it would call `/api/v1`
- * (which 401s a link token) and every amount would render as a dash. Does not
- * need a picked name: the picker page is already inside CurrencyProvider.
- */
-guestRoutes.get("/currencies", async (c) => {
-  const currencies = await db
-    .selectFrom("currencies")
-    .select(["code", "decimal_places", "symbol", "name"])
-    .orderBy("code")
-    .execute();
-  return c.json({ currencies });
-});
 
 // ---------------------------------------------------------------------------
 // Reads
@@ -360,153 +263,6 @@ async function visiblePeople(scope: GuestScope) {
   return rows;
 }
 
-guestRoutes.get("/people", async (c) => {
-  return c.json({ people: await visiblePeople(scopeOf(c)) });
-});
-
-guestRoutes.get("/expenses", async (c) => {
-  const scope = scopeOf(c);
-  const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
-  const filters = parseExpenseFilters(c.req.query());
-  return c.json({
-    expenses: await loadExpenses(await visibleExpenseIds(scope), limit, filters),
-  });
-});
-
-/**
- * The same download the logged-in app offers, over the same builder, with the
- * link's scope as the row set. A guest gets their own history, not the owner's.
- */
-guestRoutes.get("/expenses.csv", async (c) => {
-  const scope = scopeOf(c);
-  const filters = parseExpenseFilters(c.req.query());
-
-  const visible = await visibleExpenseIds(scope);
-  const rows = await loadExpenses(visible, 20_000, filters);
-  const csv = await buildExpenseCsv(db, rows.map((e) => e.id));
-
-  return csvResponse(c, csv, "splitsmart-expenses.csv");
-});
-
-/** One group inside the scope: members, balances, expenses. */
-guestRoutes.get("/groups/:id", async (c) => {
-  const scope = scopeOf(c);
-  const groupId = c.req.param("id");
-  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
-  if (!scope.groupIds.includes(groupId)) return c.json({ error: "Not found" }, 404);
-
-  const group = await db
-    .selectFrom("groups")
-    .select(["id", "name", "group_type", "default_currency", "simplify_by_default"])
-    .where("id", "=", groupId)
-    .where("deleted_at", "is", null)
-    .executeTakeFirst();
-
-  if (!group) return c.json({ error: "Not found" }, 404);
-
-  const members = await db
-    .selectFrom("group_members")
-    .innerJoin("users", "users.id", "group_members.user_id")
-    .select([
-      "users.id",
-      "users.name",
-      "users.nickname",
-      "users.icon_letters",
-      "users.icon_emoji",
-      "users.icon_hue",
-      "users.is_ghost",
-      "group_members.role",
-      "group_members.joined_via",
-    ])
-    .where("group_members.group_id", "=", groupId)
-    .where("group_members.left_at", "is", null)
-    .execute();
-
-  const allVisible = await visibleExpenseIds(scope);
-  const inThisGroup = await db
-    .selectFrom("expenses")
-    .select("id")
-    .where("id", "in", allVisible.length ? allVisible : [""])
-    .where("group_id", "=", groupId)
-    .execute();
-
-  return c.json({
-    group,
-    members,
-    balances: await getGroupBalances(db, groupId),
-    expenses: await loadExpenses(inThisGroup.map((e) => e.id), 200),
-  });
-});
-
-/**
- * The friend-link home: what stands between the guest and the owner.
- *
- * Only reachable on a `friend` link, because only that link has a counterpart.
- */
-guestRoutes.get("/friend", async (c) => {
-  const scope = scopeOf(c);
-  if (!scope.counterpartId) return c.json({ error: "Not found" }, 404);
-
-  const counterpart = await db
-    .selectFrom("users")
-    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
-    .where("id", "=", scope.counterpartId)
-    .executeTakeFirstOrThrow();
-
-  const visible = await visibleExpenseIds(scope);
-
-  return c.json({
-    counterpart: {
-      id: counterpart.id,
-      ...personSnake(counterpart),
-    },
-    balances: await getBalanceBetween(db, scope.actingAs, scope.counterpartId),
-    expenses: await loadExpenses(visible, 200),
-  });
-});
-
-guestRoutes.get("/expenses/:id", async (c) => {
-  const scope = scopeOf(c);
-  const expenseId = c.req.param("id");
-  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
-
-  if (!(await inScope(scope, expenseId))) return c.json({ error: "Not found" }, 404);
-
-  const expense = await db
-    .selectFrom("expenses")
-    .leftJoin("categories", "categories.id", "expenses.category_id")
-    .leftJoin("groups", "groups.id", "expenses.group_id")
-    .select([
-      "expenses.id", "expenses.description", "expenses.details", "expenses.cost_minor",
-      "expenses.currency_code", "expenses.date", "expenses.is_payment",
-      "expenses.split_type", "expenses.split_meta", "expenses.category_id",
-      "expenses.group_id", "expenses.repeat_interval", "expenses.next_repeat",
-      "expenses.repeat_of", "expenses.metadata",
-      "categories.name as category_name", "groups.name as group_name",
-    ])
-    .where("expenses.id", "=", expenseId)
-    .where("expenses.deleted_at", "is", null)
-    .executeTakeFirst();
-
-  if (!expense) return c.json({ error: "Not found" }, 404);
-
-  const shares = await db
-    .selectFrom("expense_users")
-    .select(["user_id", "paid_share_minor", "owed_share_minor", "split_input"])
-    .where("expense_id", "=", expenseId)
-    .execute();
-
-  const { metadata, ...publicExpense } = expense;
-
-  return c.json({
-    expense: {
-      ...publicExpense,
-      shares,
-      repeat_paused: repeatPausedOf(metadata),
-    },
-  });
-});
-
 /**
  * The single visibility question, asked the same way everywhere.
  *
@@ -568,7 +324,241 @@ async function checkWrite(
   return null;
 }
 
-guestRoutes.post("/expenses", zValidator("json", genericExpenseBodySchema), async (c) => {
+export const guestRoutes = new Hono<GuestEnv>()
+  .use("*", guestAuth)
+// ---------------------------------------------------------------------------
+// Session: what this link is, and who it can be
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything the guest shell needs to boot: what this link is, who it can be,
+ * and where the landing page should send the browser once the secret has been
+ * stashed and stripped out of the URL.
+ *
+ * Answers even when nobody has been picked yet. The picker needs the list of
+ * names, so a 409 here would leave the shell with nothing to render and no way
+ * out of the deadlock.
+ */
+  .get("/session", async (c) => {
+  const link = c.get("link");
+  const scope = c.get("scope");
+
+  const actable = await listActablePeople(db, link);
+
+  const me = scope
+    ? await db
+        .selectFrom("users")
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "default_currency"])
+        .where("id", "=", scope.actingAs)
+        .executeTakeFirst()
+    : null;
+
+  const group = link.groupId
+    ? await db
+        .selectFrom("groups")
+        .select(["id", "name", "group_type", "default_currency"])
+        .where("id", "=", link.groupId)
+        .where("deleted_at", "is", null)
+        .executeTakeFirst()
+    : null;
+
+  const counterpart = scope?.counterpartId
+    ? await db
+        .selectFrom("users")
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+        .where("id", "=", scope.counterpartId)
+        .executeTakeFirst()
+    : null;
+
+  const groups = scope && scope.groupIds.length
+    ? await db
+        .selectFrom("groups")
+        .select(["id", "name", "group_type", "default_currency"])
+        .where("id", "in", scope.groupIds)
+        .where("deleted_at", "is", null)
+        .orderBy("name")
+        .execute()
+    : [];
+
+  return c.json({
+    kind: link.kind,
+    /** True when the holder may swap to a different name at any time. */
+    canRepick: link.kind === "group",
+    /** The shell shows a picker instead of a screen while this is true. */
+    needsPicker: !scope,
+    expiresAt: link.expiresAt,
+    people: actable,
+    actingAs: me
+      ? {
+          id: me.id,
+          ...personCamel(me),
+          defaultCurrency: me.default_currency,
+        }
+      : null,
+    group,
+    groups,
+    counterpart: counterpart
+      ? { id: counterpart.id, ...personCamel(counterpart) }
+      : null,
+  });
+})
+/**
+ * The currencies table. Same payload as the logged-in `/categories/currencies`.
+ *
+ * The guest shell has no Dexie mirror, so without this it would call `/api/v1`
+ * (which 401s a link token) and every amount would render as a dash. Does not
+ * need a picked name: the picker page is already inside CurrencyProvider.
+ */
+  .get("/currencies", async (c) => {
+  const currencies = await db
+    .selectFrom("currencies")
+    .select(["code", "decimal_places", "symbol", "name"])
+    .orderBy("code")
+    .execute();
+  return c.json({ currencies });
+})
+  .get("/people", async (c) => {
+  return c.json({ people: await visiblePeople(scopeOf(c)) });
+})
+  .get("/expenses", async (c) => {
+  const scope = scopeOf(c);
+  const limit = Math.min(Number(c.req.query("limit") ?? 100) || 100, 500);
+  const filters = parseExpenseFilters(c.req.query());
+  return c.json({
+    expenses: await loadExpenses(await visibleExpenseIds(scope), limit, filters),
+  });
+})
+/**
+ * The same download the logged-in app offers, over the same builder, with the
+ * link's scope as the row set. A guest gets their own history, not the owner's.
+ */
+  .get("/expenses.csv", async (c) => {
+  const scope = scopeOf(c);
+  const filters = parseExpenseFilters(c.req.query());
+
+  const visible = await visibleExpenseIds(scope);
+  const rows = await loadExpenses(visible, 20_000, filters);
+  const csv = await buildExpenseCsv(db, rows.map((e) => e.id));
+
+  return csvResponse(c, csv, "splitsmart-expenses.csv");
+})
+/** One group inside the scope: members, balances, expenses. */
+  .get("/groups/:id", async (c) => {
+  const scope = scopeOf(c);
+  const groupId = c.req.param("id");
+  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
+  if (!scope.groupIds.includes(groupId)) return c.json({ error: "Not found" }, 404);
+
+  const group = await db
+    .selectFrom("groups")
+    .select(["id", "name", "group_type", "default_currency", "simplify_by_default"])
+    .where("id", "=", groupId)
+    .where("deleted_at", "is", null)
+    .executeTakeFirst();
+
+  if (!group) return c.json({ error: "Not found" }, 404);
+
+  const members = await db
+    .selectFrom("group_members")
+    .innerJoin("users", "users.id", "group_members.user_id")
+    .select([
+      "users.id",
+      "users.name",
+      "users.nickname",
+      "users.icon_letters",
+      "users.icon_emoji",
+      "users.icon_hue",
+      "users.is_ghost",
+      "group_members.role",
+      "group_members.joined_via",
+    ])
+    .where("group_members.group_id", "=", groupId)
+    .where("group_members.left_at", "is", null)
+    .execute();
+
+  const allVisible = await visibleExpenseIds(scope);
+  const inThisGroup = await db
+    .selectFrom("expenses")
+    .select("id")
+    .where("id", "in", allVisible.length ? allVisible : [""])
+    .where("group_id", "=", groupId)
+    .execute();
+
+  return c.json({
+    group,
+    members,
+    balances: await getGroupBalances(db, groupId),
+    expenses: await loadExpenses(inThisGroup.map((e) => e.id), 200),
+  });
+})
+/**
+ * The friend-link home: what stands between the guest and the owner.
+ *
+ * Only reachable on a `friend` link, because only that link has a counterpart.
+ */
+  .get("/friend", async (c) => {
+  const scope = scopeOf(c);
+  if (!scope.counterpartId) return c.json({ error: "Not found" }, 404);
+
+  const counterpart = await db
+    .selectFrom("users")
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+    .where("id", "=", scope.counterpartId)
+    .executeTakeFirstOrThrow();
+
+  const visible = await visibleExpenseIds(scope);
+
+  return c.json({
+    counterpart: {
+      id: counterpart.id,
+      ...personSnake(counterpart),
+    },
+    balances: await getBalanceBetween(db, scope.actingAs, scope.counterpartId),
+    expenses: await loadExpenses(visible, 200),
+  });
+})
+  .get("/expenses/:id", async (c) => {
+  const scope = scopeOf(c);
+  const expenseId = c.req.param("id");
+  if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
+
+  if (!(await inScope(scope, expenseId))) return c.json({ error: "Not found" }, 404);
+
+  const expense = await db
+    .selectFrom("expenses")
+    .leftJoin("categories", "categories.id", "expenses.category_id")
+    .leftJoin("groups", "groups.id", "expenses.group_id")
+    .select([
+      "expenses.id", "expenses.description", "expenses.details", "expenses.cost_minor",
+      "expenses.currency_code", "expenses.date", "expenses.is_payment",
+      "expenses.split_type", "expenses.split_meta", "expenses.category_id",
+      "expenses.group_id", "expenses.repeat_interval", "expenses.next_repeat",
+      "expenses.repeat_of", "expenses.metadata",
+      "categories.name as category_name", "groups.name as group_name",
+    ])
+    .where("expenses.id", "=", expenseId)
+    .where("expenses.deleted_at", "is", null)
+    .executeTakeFirst();
+
+  if (!expense) return c.json({ error: "Not found" }, 404);
+
+  const shares = await db
+    .selectFrom("expense_users")
+    .select(["user_id", "paid_share_minor", "owed_share_minor", "split_input"])
+    .where("expense_id", "=", expenseId)
+    .execute();
+
+  const { metadata, ...publicExpense } = expense;
+
+  return c.json({
+    expense: {
+      ...publicExpense,
+      shares,
+      repeat_paused: repeatPausedOf(metadata),
+    },
+  });
+})
+  .post("/expenses", zValidator("json", genericExpenseBodySchema), async (c) => {
   const scope = scopeOf(c);
   // `repeatInterval` is dropped rather than rejected. A guest can add and edit
   // bills, but starting a recurring series is a server job the owner cannot see
@@ -591,9 +581,8 @@ guestRoutes.post("/expenses", zValidator("json", genericExpenseBodySchema), asyn
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Could not create expense" }, 400);
   }
-});
-
-guestRoutes.patch("/expenses/:id", zValidator("json", genericExpenseBodySchema), async (c) => {
+})
+  .patch("/expenses/:id", zValidator("json", genericExpenseBodySchema), async (c) => {
   const scope = scopeOf(c);
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -624,9 +613,8 @@ guestRoutes.patch("/expenses/:id", zValidator("json", genericExpenseBodySchema),
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "Could not update expense" }, 400);
   }
-});
-
-guestRoutes.delete("/expenses/:id", async (c) => {
+})
+  .delete("/expenses/:id", async (c) => {
   const scope = scopeOf(c);
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -635,9 +623,8 @@ guestRoutes.delete("/expenses/:id", async (c) => {
 
   await deleteExpense(expenseId, scope.actingAs);
   return c.json({ ok: true });
-});
-
-guestRoutes.post(
+})
+  .post(
   "/payments",
   zValidator(
     "json",
@@ -673,8 +660,7 @@ guestRoutes.post(
       return c.json({ error: err instanceof Error ? err.message : "Could not record payment" }, 400);
     }
   },
-);
-
+)
 // ---------------------------------------------------------------------------
 // Comments
 // ---------------------------------------------------------------------------
@@ -686,8 +672,7 @@ guestRoutes.post(
 // What a guest cannot do: write a system comment (there is no `kind` on the
 // wire anywhere), or delete somebody else's note. Both are enforced in
 // src/domain/comments.ts rather than here, so the two shells cannot disagree.
-
-guestRoutes.get("/expenses/:id/comments", async (c) => {
+  .get("/expenses/:id/comments", async (c) => {
   const scope = scopeOf(c);
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -696,9 +681,8 @@ guestRoutes.get("/expenses/:id/comments", async (c) => {
 
   const comments = await listComments(db, expenseId);
   return c.json({ comments: comments.map(serializeComment) });
-});
-
-guestRoutes.post("/expenses/:id/comments", zValidator("json", commentBodySchema), async (c) => {
+})
+  .post("/expenses/:id/comments", zValidator("json", commentBodySchema), async (c) => {
   const scope = scopeOf(c);
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
@@ -722,9 +706,8 @@ guestRoutes.post("/expenses/:id/comments", zValidator("json", commentBodySchema)
     const mapped = commentErrorResponse(err);
     return c.json({ error: mapped.error }, mapped.status);
   }
-});
-
-guestRoutes.delete("/comments/:id", async (c) => {
+})
+  .delete("/comments/:id", async (c) => {
   const scope = scopeOf(c);
   const commentId = c.req.param("id");
   if (!isUlid(commentId)) return c.json({ error: "Invalid comment id" }, 400);
@@ -749,10 +732,9 @@ guestRoutes.delete("/comments/:id", async (c) => {
     const mapped = commentErrorResponse(err);
     return c.json({ error: mapped.error }, mapped.status);
   }
-});
-
+})
 /** Suggested transfers for a group in scope. Presentational, like the app's. */
-guestRoutes.get("/groups/:id/settle", async (c) => {
+  .get("/groups/:id/settle", async (c) => {
   const scope = scopeOf(c);
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);

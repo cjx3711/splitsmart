@@ -181,6 +181,25 @@ export class SyncEngine {
     await setMeta(this.db, "lastError", null);
   }
 
+  /**
+   * Empties the local ledger and bootstraps again.
+   *
+   * Used after the server wiped this account's data. Pull cannot reconstruct a
+   * deleted history, so the mirror has to start over. The cached profile stays
+   * so a reload still knows who is signed in.
+   */
+  async resetMirror(): Promise<void> {
+    if (this.inFlight) await this.inFlight;
+    const profile = await getMeta(this.db, "profile");
+    await this.db.transaction("rw", this.db.tables, async () => {
+      await Promise.all(this.db.tables.map((table) => table.clear()));
+    });
+    if (profile) await setMeta(this.db, "profile", profile);
+    await setMeta(this.db, "bootstrapped", false);
+    await setMeta(this.db, "cursor", 0);
+    await this.sync();
+  }
+
   // -------------------------------------------------------------------------
   // Bootstrap
   // -------------------------------------------------------------------------
@@ -448,9 +467,9 @@ export class SyncEngine {
         // that counts.
         if (op.seq !== undefined) await this.db.outbox.delete(op.seq);
         if (result.server && !isComment) {
-          await putExpenses(this.db, [result.server as SyncExpense]);
+          await putExpenses(this.db, [result.server as unknown as SyncExpense]);
         } else if (result.server) {
-          await putComments(this.db, [result.server as SyncComment]);
+          await putComments(this.db, [result.server as unknown as SyncComment]);
         }
         return true;
       }
@@ -466,7 +485,7 @@ export class SyncEngine {
         }
         await markExpense(this.db, op.id, {
           syncState: "conflict",
-          conflictWith: (result.server as SyncExpense | undefined) ?? null,
+          conflictWith: (result.server as unknown as SyncExpense | undefined) ?? null,
         });
         return false;
       }

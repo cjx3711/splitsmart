@@ -212,11 +212,15 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
 `scripts/export-splitwise.ts` stays as an independent raw-JSON backup, unrelated
 to this flow. It still takes `SPLITWISE_API_KEY` from the shell.
 
-## Phase 6: Type safety end to end ⬜
+## Phase 6: Type safety end to end ✅
 
-- ⬜ Replace `web/src/api.ts` hand-written types with Hono RPC (`hc<AppType>()`)
-- ⬜ `@hono/zod-openapi` on the compat routes to emit an OpenAPI spec, mainly as
-      documentation of the compat surface
+- ✅ Replace `web/src/api.ts` hand-written types with Hono RPC (`hc<NativeApi>()`).
+      Native routers are chained so Hono can infer them; `src/routes/native/v1.ts`
+      is the composed type the client imports. The `api` object is a thin wrapper
+      for credentials, `ApiError`, and the gzipped sync push.
+- ✅ `@hono/zod-openapi` documents the six compat endpoints at
+      `GET /api/sw/v3.0/openapi.json` (public; it is the frozen wire, not a ledger).
+      Handlers in `v3.ts` are unchanged, so the spec cannot grow a second write path.
 - ⬜ Optionally generate a client for `splitwise-to-toshl` with hey-api, though
       six endpoints of hand-written types is barely worth the build step
 
