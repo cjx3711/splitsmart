@@ -14,10 +14,9 @@
  * only a person can say which number is right. See web/src/pages/Conflicts.tsx.
  */
 import { useEffect, useMemo, useState } from "react";
-import { displayName, type ExpenseDetail } from "./api.ts";
-import { Modal } from "./Modal.tsx";
-import { ExpenseForm, type ExpenseFormInit } from "./ExpenseForm.tsx";
-import type { Person } from "./PeoplePicker.tsx";
+import { type ExpenseDetail } from "./api.ts";
+import { ExpenseDialog, expensePeople } from "./ExpenseDialog.tsx";
+import type { ExpenseFormInit } from "./ExpenseForm.tsx";
 import { useAuth } from "./App.tsx";
 import { useFriends, useGroups, useGroupView } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
@@ -64,46 +63,31 @@ export function EditExpenseDialog({
 
   if (!user) return null;
 
-  const members: Person[] | null =
-    groupId === null || !groupView
-      ? null
-      : groupView.members.map((m) => ({
-          id: m.id,
-          label: m.id === user.id ? "You" : displayName(m),
-        }));
-
-  const you: Person = { id: user.id, label: "You" };
-  const candidates: Person[] =
-    groupId !== null
-      ? (members ?? [you])
-      : [you, ...friends.map((f) => ({ id: f.id, label: displayName(f) }))];
-
   return (
-    <Modal open={open} title="Edit expense" onClose={onClose}>
-      <ExpenseForm
-        className="stack"
-        candidates={candidates}
-        initialParticipantIds={initialParticipantIds}
-        currentUserId={user.id}
-        defaultCurrency={expense.currency_code}
-        groups={groups}
-        groupId={groupId}
-        onGroupChange={setGroupId}
-        submitLabel="Save changes"
-        initial={initial}
-        allowRepeat={online}
-        onSubmit={async (input) => {
-          if (!engine) throw new Error("Not ready to save yet.");
-          await engine.enqueue({
-            kind: "expense.update",
-            id: expense.id,
-            baseVersion: expense.version ?? 1,
-            payload: { ...input, groupId },
-          });
-          onClose();
-          await onSaved();
-        }}
-      />
-    </Modal>
+    <ExpenseDialog
+      open={open}
+      title="Edit expense"
+      onClose={onClose}
+      candidates={expensePeople(user.id, groupId, groupView?.members, friends)}
+      initialParticipantIds={initialParticipantIds}
+      currentUserId={user.id}
+      defaultCurrency={expense.currency_code}
+      groups={groups}
+      groupId={groupId}
+      onGroupChange={setGroupId}
+      submitLabel="Save changes"
+      initial={initial}
+      allowRepeat={online}
+      onSubmit={async (input) => {
+        if (!engine) throw new Error("Not ready to save yet.");
+        await engine.enqueue({
+          kind: "expense.update",
+          id: expense.id,
+          baseVersion: expense.version ?? 1,
+          payload: { ...input, groupId },
+        });
+        await onSaved();
+      }}
+    />
   );
 }

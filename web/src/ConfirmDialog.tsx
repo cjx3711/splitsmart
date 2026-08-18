@@ -2,8 +2,8 @@
  * Two-button confirmation on top of Modal.
  *
  * Use for irreversible or hard-to-undo actions: revoking credentials, rotating
- * links, removing people. Expense delete uses the same shape inline; new
- * confirmations should use this instead of copying the layout again.
+ * links, removing people, deleting an expense. New confirmations should use
+ * this instead of copying the layout again.
  */
 import type { ReactNode } from "react";
 import { Modal } from "./Modal.tsx";

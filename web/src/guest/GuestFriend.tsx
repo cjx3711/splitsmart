@@ -11,12 +11,14 @@ import { Link } from "react-router-dom";
 import type { CurrencyAmount, ExpenseSummary } from "../api.ts";
 import { Amount, useFormatMoney } from "../money.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
-import { SettleUpForm } from "../SettleUpForm.tsx";
-import { Modal } from "../Modal.tsx";
+import { ExpenseDialog } from "../ExpenseDialog.tsx";
+import {
+  SettleUpDialog,
+  friendSettleChoices,
+} from "../SettleUpDialog.tsx";
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { GroupTypeIcon } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
-import { GuestExpenseDialog } from "./GuestExpenseDialog.tsx";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
 
@@ -81,7 +83,6 @@ export function GuestFriend() {
   );
 
   const owed = [...balances].sort((a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor));
-  const top = owed[0];
   const currenciesInPlay = [
     ...new Set([...owed.map((b) => b.currencyCode), me.defaultCurrency]),
   ];
@@ -111,7 +112,7 @@ export function GuestFriend() {
         the one between these two. A group expense is added from that group's
         own page, which is where the members list lives.
       */}
-      <GuestExpenseDialog
+      <ExpenseDialog
         open={openDialog === "expense"}
         title={`Add an expense with ${name}`}
         onClose={() => setOpenDialog(null)}
@@ -121,37 +122,25 @@ export function GuestFriend() {
         defaultCurrency={me.defaultCurrency}
         groupId={null}
         onSubmit={async (input) => {
-          await guestApi.createExpense(input);
+          await guestApi.createExpense({ ...input, groupId: null });
           await load();
         }}
       />
 
-      <Modal
+      <SettleUpDialog
         open={openDialog === "settle"}
         title={`Settle up with ${name}`}
+        people={pair}
+        currencies={currenciesInPlay}
+        preferredCurrency={me.defaultCurrency}
+        choices={friendSettleChoices(owed, me.id, counterpart.id, name, formatMoney)}
         onClose={() => setOpenDialog(null)}
-      >
-        <SettleUpForm
-          className="stack"
-          people={pair}
-          currencies={currenciesInPlay}
-          preferredCurrency={me.defaultCurrency}
-          initial={
-            top && {
-              // Positive means they owe you, so they are the payer.
-              fromUserId: top.amountMinor > 0 ? counterpart.id : me.id,
-              toUserId: top.amountMinor > 0 ? me.id : counterpart.id,
-              amount: formatMoney(Math.abs(top.amountMinor), top.currencyCode) ?? "",
-              currencyCode: top.currencyCode,
-            }
-          }
-          onSubmit={async (payment) => {
-            await guestApi.createPayment({ ...payment, groupId: null });
-            setOpenDialog(null);
-            await load();
-          }}
-        />
-      </Modal>
+        onSubmit={async (payment) => {
+          await guestApi.createPayment({ ...payment, groupId: null });
+          setOpenDialog(null);
+          await load();
+        }}
+      />
 
       <div className="card">
         <span className="eyebrow">Between you</span>

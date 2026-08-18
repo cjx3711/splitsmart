@@ -6,6 +6,10 @@
  *                  can match instead of duplicating. Never the native PK, never
  *                  on the compat wire.
  *   notes        — freeform user notes.
+ *   repeat_paused — the interval a stopped series had, so Resume can put it
+ *                  back without guessing weekly vs monthly. Not a column: the
+ *                  CHECK on repeat_interval/next_repeat cannot represent
+ *                  "interval set, nothing scheduled".
  *
  * Extra keys are allowed. Do not put anything here that needs an index or a
  * JOIN; those stay as real columns. The unique expression indexes on
@@ -16,6 +20,8 @@ import { sql, type RawBuilder } from "kysely";
 export interface EntityMetadata {
   splitwise_id?: number;
   notes?: string;
+  /** Set while a series is stopped; the live interval lives in repeat_interval. */
+  repeat_paused?: string;
   [key: string]: unknown;
 }
 

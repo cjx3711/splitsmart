@@ -23,7 +23,7 @@ import {
 import { isUlid, ulid } from "./ulid.ts";
 import { parseMetadata, serializeMetadata, type EntityMetadata } from "./metadata.ts";
 import { recordExpenseEvent, snapshotExpense } from "./comments.ts";
-import { nextOccurrence, type RepeatInterval } from "./recurring.ts";
+import { isRepeatInterval, nextOccurrence, nextOccurrenceOnOrAfter, type RepeatInterval } from "./recurring.ts";
 import { logChange, logExpenseAudience, participantIds } from "./sync-log.ts";
 
 export interface CreateExpenseInput {
@@ -305,6 +305,7 @@ export interface UpdateExpenseInput
 export async function updateExpense(
   expenseId: string,
   input: UpdateExpenseInput,
+  now: Date = new Date(),
 ): Promise<{ updatedAt: string; version: number }> {
   const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
     items: input.items,
@@ -322,7 +323,7 @@ export async function updateExpense(
       .selectFrom("expenses")
       .select([
         "id", "deleted_at", "repeat_interval", "next_repeat", "repeat_of", "date",
-        "group_id", "version",
+        "group_id", "version", "metadata",
       ])
       .where("id", "=", expenseId)
       .executeTakeFirst();
@@ -349,19 +350,35 @@ export async function updateExpense(
     // An occurrence can never become a template (schema CHECK), and editing a
     // template must not move bills that already happened: only `next_repeat`
     // moves, and only forward from the new date.
+    const existingInterval = isRepeatInterval(existing.repeat_interval)
+      ? existing.repeat_interval
+      : null;
     const requested =
       input.repeatInterval === undefined
-        ? (existing.repeat_interval as RepeatInterval | null)
+        ? existingInterval
         : input.repeatInterval;
     const repeatInterval = existing.repeat_of !== null ? null : requested;
     const nextRepeat =
       repeatInterval === null
         ? null
-        : repeatInterval === existing.repeat_interval && existing.next_repeat !== null && date === existing.date
-          ? // Same schedule, same date: leave the series where it is, so an
-            // unrelated edit does not silently skip or duplicate a bill.
-            existing.next_repeat
-          : nextOccurrence(date, repeatInterval);
+        : repeatInterval === existingInterval && existing.next_repeat !== null && date === existing.date
+          ? existing.next_repeat
+          : existingInterval === null
+            ? // Starting or resuming: do not walk from a past bill date, or the
+              // scheduler would backfill every skipped month.
+              nextOccurrenceOnOrAfter(date, repeatInterval, now)
+            : nextOccurrence(date, repeatInterval);
+
+    const existingMeta = parseMetadata(existing.metadata);
+    const nextMeta: EntityMetadata = { ...(input.metadata ?? existingMeta) };
+    if (repeatInterval === null && existingInterval !== null) {
+      nextMeta.repeat_paused = existingInterval;
+    } else if (repeatInterval !== null) {
+      delete nextMeta.repeat_paused;
+    }
+    const writeMetadata =
+      input.metadata !== undefined ||
+      nextMeta.repeat_paused !== existingMeta.repeat_paused;
 
     // `version = version + 1` in the statement, and `version = :expected` in the
     // WHERE, rather than a read-then-write of a number we already have. The
@@ -387,7 +404,7 @@ export async function updateExpense(
         version: sql<number>`version + 1`,
         updated_by: input.updatedBy,
         updated_at: updatedAt,
-        ...(input.metadata ? { metadata: serializeMetadata(input.metadata) } : {}),
+        ...(writeMetadata ? { metadata: serializeMetadata(nextMeta) } : {}),
       })
       .where("id", "=", expenseId)
       .$if(input.expectedVersion !== undefined, (qb) =>

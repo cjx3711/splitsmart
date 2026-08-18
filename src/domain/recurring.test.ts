@@ -20,6 +20,7 @@ import {
   isBehind,
   isRepeatInterval,
   nextOccurrence,
+  nextOccurrenceOnOrAfter,
   repeatLabel,
   RecurrenceError,
   seriesTemplateId,
@@ -115,6 +116,23 @@ describe("scheduling", () => {
     assert.ok(isBehind("2026-05-10T12:00:00Z", now), "due exactly now counts as due");
     assert.ok(!isBehind("2026-06-01T00:00:00Z", now));
   });
+
+  test("nextOccurrenceOnOrAfter skips past due dates instead of backfilling", () => {
+    const from = "2026-02-21T00:00:00.000Z";
+    assert.equal(
+      nextOccurrenceOnOrAfter(from, "monthly", new Date("2026-08-18T12:00:00Z")),
+      "2026-08-21T00:00:00.000Z",
+    );
+    // Same calendar day still fires today rather than jumping a month.
+    assert.equal(
+      nextOccurrenceOnOrAfter(from, "monthly", new Date("2026-08-21T15:00:00Z")),
+      "2026-08-21T00:00:00.000Z",
+    );
+    assert.equal(
+      nextOccurrenceOnOrAfter(from, "monthly", new Date("2026-08-22T00:00:00Z")),
+      "2026-09-21T00:00:00.000Z",
+    );
+  });
 });
 
 describe("seriesTemplateId", () => {
@@ -126,7 +144,7 @@ describe("seriesTemplateId", () => {
     assert.equal(seriesTemplateId("bill", "tmpl", null), "tmpl");
   });
 
-  test("a one-off is not in a series", () => {
-    assert.equal(seriesTemplateId("once", null, null), null);
+  test("a paused template is still the series, so it can be resumed", () => {
+    assert.equal(seriesTemplateId("tmpl", null, null, "monthly"), "tmpl");
   });
 });

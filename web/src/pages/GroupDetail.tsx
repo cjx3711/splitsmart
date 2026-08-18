@@ -16,19 +16,17 @@ import { Amount, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
-import { SettleUpForm } from "../SettleUpForm.tsx";
-import { Modal } from "../Modal.tsx";
+import {
+  SettleUpDialog,
+  groupSettleChoices,
+  paymentAsExpense,
+} from "../SettleUpDialog.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
-import {
-  PersonIdentityForm,
-  draftFromPerson,
-  identityPayload,
-  type IdentityDraft,
-} from "../PersonIdentityForm.tsx";
+import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { ulid } from "../../../src/domain/ulid.ts";
@@ -39,11 +37,7 @@ export function GroupDetail() {
   const { user } = useAuth();
 
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
-  const [identity, setIdentity] = useState<IdentityDraft | null>(null);
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
-  const [identityBusy, setIdentityBusy] = useState(false);
-  const [identityError, setIdentityError] = useState<string | null>(null);
-  const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
@@ -79,25 +73,9 @@ export function GroupDetail() {
     ]),
   ];
 
-  // Prefill the settle-up dialog from the largest suggested transfer, so the
-  // usual case is one click and a confirm rather than three dropdowns.
-  const topTransfer = settle.flatMap((s) =>
-    s.transfers.map((t) => ({ ...t, currencyCode: s.currencyCode })),
-  )[0];
-
   const outstandingCurrencies = [
     ...new Set(balances.flatMap((e) => e.balances.map((b) => b.currencyCode))),
   ];
-  const showSettlePicker = outstandingCurrencies.length > 1 && settleCurrency === null;
-  const activeCurrency = settleCurrency ?? (outstandingCurrencies.length <= 1 ? outstandingCurrencies[0] : null);
-  const activeTransfer = activeCurrency
-    ? settle.find((s) => s.currencyCode === activeCurrency)?.transfers[0]
-    : topTransfer;
-
-  function closeSettle() {
-    setOpenDialog(null);
-    setSettleCurrency(null);
-  }
 
   const isOwner = role === "owner";
 
@@ -151,128 +129,47 @@ export function GroupDetail() {
         onClose={() => setOpenDialog(null)}
       />
 
-      <Modal
+      <PersonIdentityDialog
         open={openDialog === "identity"}
-        title={identityMember ? `Edit ${displayName(identityMember)}` : "Edit name"}
-        onClose={() => setOpenDialog(null)}
-      >
-        {identity && identityMember && (
-          <form
-            className="stack"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const payload = identityPayload(identity);
-              if (!payload.name) return;
-              setIdentityBusy(true);
-              setIdentityError(null);
-              void api
-                .updateFriend(identityMember.id, payload)
-                .then(() => {
-                  syncNow();
-                  setOpenDialog(null);
-                })
-                .catch((err) =>
-                  setIdentityError(err instanceof Error ? err.message : "Could not save"),
-                )
-                .finally(() => setIdentityBusy(false));
-            }}
-          >
-            {identityError && <p className="error">{identityError}</p>}
-            <PersonIdentityForm id={identityMember.id} value={identity} onChange={setIdentity} />
-            <button type="submit" disabled={identityBusy || !identity.name.trim()}>
-              {identityBusy ? "Saving…" : "Save"}
-            </button>
-          </form>
-        )}
-      </Modal>
+        person={identityMember}
+        onClose={() => {
+          setOpenDialog(null);
+          setIdentityMember(null);
+        }}
+        onSave={async (id, payload) => {
+          await api.updateFriend(id, payload);
+          syncNow();
+        }}
+      />
 
-      <Modal
+      <SettleUpDialog
         open={openDialog === "settle"}
         title={`Settle up in ${group.name}`}
-        onClose={closeSettle}
-      >
-        {showSettlePicker ? (
-          <div className="settle-currency-picker">
-            <p className="muted" style={{ margin: 0 }}>
-              Which balance do you want to settle? A payment only clears that currency.
-            </p>
-            {outstandingCurrencies.map((code) => {
-              const transfer = settle.find((s) => s.currencyCode === code)?.transfers[0];
-              return (
-                <button
-                  key={code}
-                  type="button"
-                  className="secondary"
-                  onClick={() => setSettleCurrency(code)}
-                >
-                  {transfer ? (
-                    <>
-                      {nameOf(transfer.fromUserId)} → {nameOf(transfer.toUserId)}{" "}
-                      <Amount minor={transfer.amountMinor} currency={code} />
-                    </>
-                  ) : (
-                    code
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <SettleUpForm
-            className="stack"
-            people={people}
-            currencies={currenciesInPlay}
-            preferredCurrency={user.defaultCurrency}
-            initial={
-              activeTransfer && activeCurrency
-                ? {
-                    fromUserId: activeTransfer.fromUserId,
-                    toUserId: activeTransfer.toUserId,
-                    amount: formatMoney(activeTransfer.amountMinor, activeCurrency) ?? "",
-                    currencyCode: activeCurrency,
-                  }
-                : activeCurrency
-                  ? {
-                      fromUserId: people[0]?.id ?? "",
-                      toUserId: people[1]?.id ?? "",
-                      amount: "",
-                      currencyCode: activeCurrency,
-                    }
-                  : topTransfer && {
-                      fromUserId: topTransfer.fromUserId,
-                      toUserId: topTransfer.toUserId,
-                      amount: formatMoney(topTransfer.amountMinor, topTransfer.currencyCode) ?? "",
-                      currencyCode: topTransfer.currencyCode,
-                    }
-            }
-            onSubmit={async (payment) => {
-              // A payment is an ordinary expense with is_payment set: the payer
-              // fronts the whole cost and the recipient owes all of it, which is
-              // what cancels an equivalent slice of the balance. Queued like any
-              // other write, so settling up works at the table.
-              if (!engine) throw new Error("Not ready to save yet.");
-              await engine.enqueue({
-                kind: "payment.create",
-                id: ulid(),
-                payload: {
-                  groupId: group.id,
-                  description: "Payment",
-                  costMinor: payment.amountMinor,
-                  currencyCode: payment.currencyCode,
-                  date: payment.date ?? new Date().toISOString(),
-                  splitType: "exact",
-                  isPayment: true,
-                  participants: [
-                    { userId: payment.fromUserId, paidMinor: payment.amountMinor, input: 0 },
-                    { userId: payment.toUserId, paidMinor: 0, input: payment.amountMinor },
-                  ],
-                },
-              });
-              closeSettle();
-            }}
-          />
+        people={people}
+        currencies={currenciesInPlay}
+        preferredCurrency={user.defaultCurrency}
+        choices={groupSettleChoices(
+          outstandingCurrencies,
+          settle,
+          nameOf,
+          people,
+          formatMoney,
         )}
-      </Modal>
+        onClose={() => setOpenDialog(null)}
+        onSubmit={async (payment) => {
+          // A payment is an ordinary expense with is_payment set: the payer
+          // fronts the whole cost and the recipient owes all of it, which is
+          // what cancels an equivalent slice of the balance. Queued like any
+          // other write, so settling up works at the table.
+          if (!engine) throw new Error("Not ready to save yet.");
+          await engine.enqueue({
+            kind: "payment.create",
+            id: ulid(),
+            payload: paymentAsExpense(payment, group.id),
+          });
+          setOpenDialog(null);
+        }}
+      />
 
       <h2 style={{ marginTop: 0 }}>Balances</h2>
       {balances.length === 0 ? (
@@ -371,8 +268,6 @@ export function GroupDetail() {
                   className="link"
                   onClick={() => {
                     setIdentityMember(m);
-                    setIdentity(draftFromPerson(m));
-                    setIdentityError(null);
                     setOpenDialog("identity");
                   }}
                 >

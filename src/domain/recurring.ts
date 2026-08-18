@@ -98,6 +98,30 @@ export function firstScheduledRepeat(date: string, interval: RepeatInterval): st
   return nextOccurrence(date, interval);
 }
 
+/**
+ * The next fire on this cadence that is not a past calendar day.
+ *
+ * Used when a stopped series is turned back on: walking from the original bill
+ * date would put `next_repeat` months ago and the scheduler would backfill.
+ * Same-day still fires (the scheduler treats `next_repeat <= now` as due).
+ */
+export function nextOccurrenceOnOrAfter(
+  from: string,
+  interval: RepeatInterval,
+  now: Date = new Date(),
+): string {
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  let next = nextOccurrence(from, interval);
+  for (let i = 0; i < 2_400; i++) {
+    const due = new Date(next);
+    if (Number.isNaN(due.getTime())) throw new RecurrenceError(`Invalid date: ${next}`);
+    const dueDay = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+    if (dueDay >= todayUtc) return next;
+    next = nextOccurrence(next, interval);
+  }
+  throw new RecurrenceError("Could not find a future occurrence");
+}
+
 /** True when the series has a bill the scheduler owes you. Display only. */
 export function isBehind(nextRepeat: string, now: Date = new Date()): boolean {
   const due = new Date(nextRepeat);
@@ -114,8 +138,9 @@ export function seriesTemplateId(
   id: string,
   repeatOf: string | null | undefined,
   repeatInterval: string | null | undefined,
+  repeatPaused?: string | null | undefined,
 ): string | null {
   if (repeatOf) return repeatOf;
-  if (repeatInterval) return id;
+  if (repeatInterval || repeatPaused) return id;
   return null;
 }

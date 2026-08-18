@@ -11,12 +11,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { ExpenseDetail as ExpenseDetailData } from "../api.ts";
 import { Amount, useCurrencies } from "../money.tsx";
 import { makeLookup } from "../ExpenseList.tsx";
-import { Modal } from "../Modal.tsx";
 import { reconstructExpenseForm } from "../reopenExpense.ts";
 import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import { GuestExpenseDialog } from "./GuestExpenseDialog.tsx";
+import { ConfirmDialog } from "../ConfirmDialog.tsx";
+import { ExpenseDialog } from "../ExpenseDialog.tsx";
 import { expenseCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
@@ -164,7 +164,7 @@ export function GuestExpense() {
         }}
       />
 
-      <GuestExpenseDialog
+      <ExpenseDialog
         open={editing}
         title="Edit expense"
         onClose={() => setEditing(false)}
@@ -176,50 +176,38 @@ export function GuestExpense() {
         initial={initial}
         submitLabel="Save changes"
         onSubmit={async (input) => {
-          await guestApi.updateExpense(expense.id, input);
+          await guestApi.updateExpense(expense.id, { ...input, groupId: expense.group_id });
           await load();
         }}
       />
 
-      <Modal
+      <ConfirmDialog
         open={confirmingDelete}
         title={
           deleteSeriesNote?.kind === "template"
             ? `Delete "${title}" and stop the series?`
             : `Delete "${title}"?`
         }
+        confirmLabel={
+          deleteSeriesNote?.kind === "template" ? "Delete and stop series" : "Delete expense"
+        }
+        busyLabel="Deleting…"
+        busy={deleting}
         onClose={() => setConfirmingDelete(false)}
+        onConfirm={handleDelete}
       >
-        <div className="stack">
-          <p style={{ margin: 0 }}>
-            This removes it from every balance it affects. This can't be undone.
+        <p style={{ margin: 0 }}>
+          This removes it from every balance it affects. This can't be undone.
+        </p>
+        {deleteSeriesNote?.kind === "template" && (
+          <div className="notice">{deleteSeriesNote.text}</div>
+        )}
+        {deleteSeriesNote?.kind === "occurrence" && (
+          <p className="muted" style={{ margin: 0 }}>
+            {deleteSeriesNote.text}
           </p>
-          {deleteSeriesNote?.kind === "template" && (
-            <div className="notice">{deleteSeriesNote.text}</div>
-          )}
-          {deleteSeriesNote?.kind === "occurrence" && (
-            <p className="muted" style={{ margin: 0 }}>
-              {deleteSeriesNote.text}
-            </p>
-          )}
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              className="secondary"
-              onClick={() => setConfirmingDelete(false)}
-              disabled={deleting}
-            >
-              Cancel
-            </button>
-            <button onClick={() => void handleDelete()} disabled={deleting}>
-              {deleting
-                ? "Deleting…"
-                : deleteSeriesNote?.kind === "template"
-                  ? "Delete and stop series"
-                  : "Delete expense"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        )}
+      </ConfirmDialog>
     </>
   );
 }

@@ -20,10 +20,7 @@
  * trip with people you have already added.
  */
 import { useEffect, useState } from "react";
-import { displayName } from "./api.ts";
-import { Modal } from "./Modal.tsx";
-import { ExpenseForm } from "./ExpenseForm.tsx";
-import type { Person } from "./PeoplePicker.tsx";
+import { ExpenseDialog, expensePeople } from "./ExpenseDialog.tsx";
 import { useAuth } from "./App.tsx";
 import { useFriends, useGroups, useGroupView } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
@@ -64,19 +61,7 @@ export function AddExpenseDialog({
 
   if (!user) return null;
 
-  const members: Person[] | null =
-    groupId === null || !groupView
-      ? null
-      : groupView.members.map((m) => ({
-          id: m.id,
-          label: m.id === user.id ? "You" : displayName(m),
-        }));
-
-  const you: Person = { id: user.id, label: "You" };
-  const candidates: Person[] =
-    groupId !== null
-      ? (members ?? [you])
-      : [you, ...friends.map((f) => ({ id: f.id, label: displayName(f) }))];
+  const candidates = expensePeople(user.id, groupId, groupView?.members, friends);
 
   const initialParticipantIds =
     groupId !== null
@@ -86,37 +71,36 @@ export function AddExpenseDialog({
         : [user.id];
 
   return (
-    <Modal open={open} title={title} onClose={onClose}>
-      <ExpenseForm
-        className="stack"
-        candidates={candidates}
-        initialParticipantIds={initialParticipantIds}
-        currentUserId={user.id}
-        defaultCurrency={
-          groups.find((g) => g.id === groupId)?.default_currency ?? user.defaultCurrency
-        }
-        groups={groups}
-        groupId={groupId}
-        onGroupChange={setGroupId}
-        // Repeat is online-only: the scheduler owns next_repeat. Offline this
-        // is off, so the form omits the field and an existing series is left
-        // alone. The guest dialog never offers it at all.
-        allowRepeat={online}
-        onSubmit={async (input) => {
-          // THE CLIENT MINTS THE ULID and it is the primary key. A retry of the
-          // same id is a no-op that returns the stored row, which is the
-          // lost-response case rather than a merge, and is why a create can never
-          // conflict. See docs/OFFLINE.md, decision 1.
-          if (!engine) throw new Error("Not ready to save yet.");
-          await engine.enqueue({
-            kind: "expense.create",
-            id: ulid(),
-            payload: { ...input, groupId },
-          });
-          onClose();
-          await onCreated?.();
-        }}
-      />
-    </Modal>
+    <ExpenseDialog
+      open={open}
+      title={title}
+      onClose={onClose}
+      candidates={candidates}
+      initialParticipantIds={initialParticipantIds}
+      currentUserId={user.id}
+      defaultCurrency={
+        groups.find((g) => g.id === groupId)?.default_currency ?? user.defaultCurrency
+      }
+      groups={groups}
+      groupId={groupId}
+      onGroupChange={setGroupId}
+      // Repeat is online-only: the scheduler owns next_repeat. Offline this
+      // is off, so the form omits the field and an existing series is left
+      // alone. The guest dialog never offers it at all.
+      allowRepeat={online}
+      onSubmit={async (input) => {
+        // THE CLIENT MINTS THE ULID and it is the primary key. A retry of the
+        // same id is a no-op that returns the stored row, which is the
+        // lost-response case rather than a merge, and is why a create can never
+        // conflict. See docs/OFFLINE.md, decision 1.
+        if (!engine) throw new Error("Not ready to save yet.");
+        await engine.enqueue({
+          kind: "expense.create",
+          id: ulid(),
+          payload: { ...input, groupId },
+        });
+        await onCreated?.();
+      }}
+    />
   );
 }

@@ -18,8 +18,11 @@ import { Amount, Amounts, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
-import { SettleUpForm } from "../SettleUpForm.tsx";
-import { Modal } from "../Modal.tsx";
+import {
+  SettleUpDialog,
+  friendSettleChoices,
+  paymentAsExpense,
+} from "../SettleUpDialog.tsx";
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { useFriend, useFriendExpenses, useFriends } from "../localData.ts";
@@ -28,12 +31,7 @@ import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { LinkPanel } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import {
-  PersonIdentityForm,
-  draftFromPerson,
-  identityPayload,
-  type IdentityDraft,
-} from "../PersonIdentityForm.tsx";
+import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 
 export function FriendDetail() {
@@ -41,10 +39,6 @@ export function FriendDetail() {
   const { user } = useAuth();
 
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
-  const [identity, setIdentity] = useState<IdentityDraft | null>(null);
-  const [identityBusy, setIdentityBusy] = useState(false);
-  const [identityError, setIdentityError] = useState<string | null>(null);
-  const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
   const { engine, syncNow } = useSync();
@@ -72,24 +66,12 @@ export function FriendDetail() {
     user.id,
   );
 
-  // What you actually owe each other, biggest first, so the settle-up dialog
-  // opens on the currency worth clearing rather than the alphabetical one.
   const owed = [...friend.balances].sort(
     (a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor),
   );
   const currenciesInPlay = [
     ...new Set([...owed.map((b) => b.currencyCode), user.defaultCurrency]),
   ];
-  const top = owed[0];
-  const selected = settleCurrency
-    ? owed.find((b) => b.currencyCode === settleCurrency)
-    : top;
-  const showSettlePicker = owed.length > 1 && settleCurrency === null;
-
-  function closeSettle() {
-    setOpenDialog(null);
-    setSettleCurrency(null);
-  }
 
   return (
     <>
@@ -114,11 +96,7 @@ export function FriendDetail() {
             <OnlineOnly what="Editing a placeholder's name">
               <button
                 className="secondary"
-                onClick={() => {
-                  setIdentity(draftFromPerson(friend));
-                  setIdentityError(null);
-                  setOpenDialog("identity");
-                }}
+                onClick={() => setOpenDialog("identity")}
               >
                 Edit name
               </button>
@@ -139,106 +117,38 @@ export function FriendDetail() {
 
       />
 
-      <Modal
+      <PersonIdentityDialog
         open={openDialog === "identity"}
-        title={`Edit ${name}`}
+        person={friend}
         onClose={() => setOpenDialog(null)}
-      >
-        {identity && (
-          <form
-            className="stack"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const payload = identityPayload(identity);
-              if (!payload.name) return;
-              setIdentityBusy(true);
-              setIdentityError(null);
-              void api
-                .updateFriend(friend.id, payload)
-                .then(() => {
-                  syncNow();
-                  setOpenDialog(null);
-                })
-                .catch((err) =>
-                  setIdentityError(err instanceof Error ? err.message : "Could not save"),
-                )
-                .finally(() => setIdentityBusy(false));
-            }}
-          >
-            {identityError && <p className="error">{identityError}</p>}
-            <PersonIdentityForm id={friend.id} value={identity} onChange={setIdentity} />
-            <button type="submit" disabled={identityBusy || !identity.name.trim()}>
-              {identityBusy ? "Saving…" : "Save"}
-            </button>
-          </form>
-        )}
-      </Modal>
+        onSave={async (id, payload) => {
+          await api.updateFriend(id, payload);
+          syncNow();
+        }}
+      />
 
-      <Modal
+      <SettleUpDialog
         open={openDialog === "settle"}
         title={`Settle up with ${name}`}
-        onClose={closeSettle}
-      >
-        {showSettlePicker ? (
-          <div className="settle-currency-picker">
-            <p className="muted" style={{ margin: 0 }}>
-              Which balance do you want to settle? A payment only clears that currency.
-            </p>
-            {owed.map((b) => (
-              <button
-                key={b.currencyCode}
-                type="button"
-                className="secondary"
-                onClick={() => setSettleCurrency(b.currencyCode)}
-              >
-                {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
-                <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-              </button>
-            ))}
-          </div>
-        ) : (
-          <SettleUpForm
-            className="stack"
-            people={people}
-            currencies={currenciesInPlay}
-            preferredCurrency={user.defaultCurrency}
-            initial={
-              selected && {
-                // A positive balance means they owe you, so they are the payer.
-                fromUserId: selected.amountMinor > 0 ? friend.id : user.id,
-                toUserId: selected.amountMinor > 0 ? user.id : friend.id,
-                amount: formatMoney(Math.abs(selected.amountMinor), selected.currencyCode) ?? "",
-                currencyCode: selected.currencyCode,
-              }
-            }
-            onSubmit={async (payment) => {
-              // A payment is an expense with is_payment set, so the outbox carries
-              // it like any other. The pair is spelled out rather than sent as a
-              // direction: the queue is a batch of writes, not a set of endpoints,
-              // and "you_paid" would need the recipient inferred at replay time.
-              if (!engine) throw new Error("Not ready to save yet.");
-              await engine.enqueue({
-                kind: "payment.create",
-                id: ulid(),
-                payload: {
-                  groupId: null,
-                  description: "Payment",
-                  costMinor: payment.amountMinor,
-                  currencyCode: payment.currencyCode,
-                  date: payment.date ?? new Date().toISOString(),
-                  splitType: "exact",
-                  isPayment: true,
-                  participants: [
-                    { userId: payment.fromUserId, paidMinor: payment.amountMinor, input: 0 },
-                    { userId: payment.toUserId, paidMinor: 0, input: payment.amountMinor },
-                  ],
-                },
-              });
-              closeSettle();
-            }}
-          />
-        )}
-      </Modal>
+        people={people}
+        currencies={currenciesInPlay}
+        preferredCurrency={user.defaultCurrency}
+        choices={friendSettleChoices(owed, user.id, friend.id, name, formatMoney)}
+        onClose={() => setOpenDialog(null)}
+        onSubmit={async (payment) => {
+          // A payment is an expense with is_payment set, so the outbox carries
+          // it like any other. The pair is spelled out rather than sent as a
+          // direction: the queue is a batch of writes, not a set of endpoints,
+          // and "you_paid" would need the recipient inferred at replay time.
+          if (!engine) throw new Error("Not ready to save yet.");
+          await engine.enqueue({
+            kind: "payment.create",
+            id: ulid(),
+            payload: paymentAsExpense(payment, null),
+          });
+          setOpenDialog(null);
+        }}
+      />
 
       <div className="card">
         <span className="eyebrow">Between you</span>

@@ -27,7 +27,7 @@ export function MarketingApp() {
             <Link to="/docs">API</Link>
           </nav>
           {/* A different document, so a real navigation rather than a route. */}
-          <a href="/app/login" className="mkt-btn mkt-btn-sm">
+          <a href="/app/login" className="mkt-btn mkt-btn-ghost mkt-btn-sm">
             Log in
           </a>
         </div>

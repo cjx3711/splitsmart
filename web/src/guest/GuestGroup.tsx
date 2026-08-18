@@ -11,13 +11,15 @@ import { useParams } from "react-router-dom";
 import type { CurrencyAmount, ExpenseSummary } from "../api.ts";
 import { Amount, useFormatMoney } from "../money.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
-import { SettleUpForm } from "../SettleUpForm.tsx";
-import { Modal } from "../Modal.tsx";
+import { ExpenseDialog } from "../ExpenseDialog.tsx";
+import {
+  SettleUpDialog,
+  groupSettleChoices,
+} from "../SettleUpDialog.tsx";
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import { GuestExpenseDialog } from "./GuestExpenseDialog.tsx";
 import { groupCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestMember } from "./guestApi.ts";
@@ -84,9 +86,9 @@ export function GuestGroup() {
     ]),
   ];
 
-  const topTransfer = settle.flatMap((s) =>
-    s.transfers.map((t) => ({ ...t, currencyCode: s.currencyCode })),
-  )[0];
+  const outstandingCurrencies = [
+    ...new Set(balances.flatMap((e) => e.balances.map((b) => b.currencyCode))),
+  ];
 
   return (
     <>
@@ -108,7 +110,7 @@ export function GuestGroup() {
         </div>
       </div>
 
-      <GuestExpenseDialog
+      <ExpenseDialog
         open={openDialog === "expense"}
         title={`Add an expense to ${group.name}`}
         onClose={() => setOpenDialog(null)}
@@ -118,36 +120,31 @@ export function GuestGroup() {
         defaultCurrency={group.default_currency}
         groupId={group.id}
         onSubmit={async (input) => {
-          await guestApi.createExpense(input);
+          await guestApi.createExpense({ ...input, groupId: group.id });
           await load();
         }}
       />
 
-      <Modal
+      <SettleUpDialog
         open={openDialog === "settle"}
         title={`Settle up in ${group.name}`}
+        people={people}
+        currencies={currenciesInPlay}
+        preferredCurrency={me.defaultCurrency}
+        choices={groupSettleChoices(
+          outstandingCurrencies,
+          settle,
+          nameOf,
+          people,
+          formatMoney,
+        )}
         onClose={() => setOpenDialog(null)}
-      >
-        <SettleUpForm
-          className="stack"
-          people={people}
-          currencies={currenciesInPlay}
-          preferredCurrency={me.defaultCurrency}
-          initial={
-            topTransfer && {
-              fromUserId: topTransfer.fromUserId,
-              toUserId: topTransfer.toUserId,
-              amount: formatMoney(topTransfer.amountMinor, topTransfer.currencyCode) ?? "",
-              currencyCode: topTransfer.currencyCode,
-            }
-          }
-          onSubmit={async (payment) => {
-            await guestApi.createPayment({ ...payment, groupId: group.id });
-            setOpenDialog(null);
-            await load();
-          }}
-        />
-      </Modal>
+        onSubmit={async (payment) => {
+          await guestApi.createPayment({ ...payment, groupId: group.id });
+          setOpenDialog(null);
+          await load();
+        }}
+      />
 
       <h2 style={{ marginTop: 0 }}>Balances</h2>
       {balances.length === 0 ? (
