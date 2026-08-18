@@ -1,7 +1,7 @@
 /**
  * Capture the pixel + DOM snapshots listed in scripts/smoke-screens.ts.
  *
- * The same script records a baseline and captures a run — only the output
+ * The same script records a baseline and captures a run - only the output
  * directory differs. Two captures of an unchanged app must be byte-identical,
  * so everything that could vary is pinned here or neutralised by STABILISE_CSS,
  * and the settings that were actually used are written to manifest.json so

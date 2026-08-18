@@ -7,7 +7,7 @@
  * use for a group picker, and the friend screen has no use for a person picker.
  *
  * Filtering runs over the WHOLE local mirror, not over a page of rows already
- * fetched — which is what the old server-side-only version was protecting against,
+ * fetched - which is what the old server-side-only version was protecting against,
  * since a capped list would have searched the most recent hundred expenses and
  * quietly called that "no results". The rules are the same ones the server
  * applies, from the same module (src/domain/expense-query.ts), so a filter cannot
@@ -41,7 +41,7 @@ export function ExpenseFilters({
   /**
    * The scope the screen itself imposes, for the download only.
    *
-   * The CSV endpoint is `/api/v1/expenses.csv` — everything the caller can see —
+   * The CSV endpoint is `/api/v1/expenses.csv` - everything the caller can see -
    * so on a group or friend screen the filters alone would hand back the whole
    * ledger. Passing the screen's own scope here keeps the file equal to the list
    * above it, which is the entire promise of putting the link in this bar.
@@ -178,7 +178,7 @@ export function ExpenseFilters({
 
       {/* Built from the mirror and handed to the browser as a blob, rather than a
           link to /api/v1/expenses.csv. That endpoint still exists and still works
-          — it is what curl and the API docs use — but a link to it is the one
+          - it is what curl and the API docs use - but a link to it is the one
           thing on this bar that would fail with no network, and the document it
           returns is identical to this one by construction. */}
       <button

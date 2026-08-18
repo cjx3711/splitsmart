@@ -21,7 +21,13 @@ import { EditExpenseDialog } from "../EditExpenseDialog.tsx";
 import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
 import { seriesTemplateId } from "../../../src/domain/recurring.ts";
-import { StopRepeatingButton, StopSeriesDialog, useStopSeries } from "../stopSeries.tsx";
+import {
+  ResumeRepeatingButton,
+  ResumeSeriesDialog,
+  StopRepeatingButton,
+  StopSeriesDialog,
+  useStopSeries,
+} from "../stopSeries.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { SyncBadge } from "../SyncStatusBar.tsx";
@@ -49,6 +55,7 @@ export function ExpenseDetail() {
         loaded.expense.id,
         loaded.expense.repeat_of,
         loaded.expense.repeat_interval,
+        loaded.expense.repeat_paused,
       ) ?? undefined)
     : undefined;
   const stop = useStopSeries(templateId);
@@ -88,7 +95,7 @@ export function ExpenseDetail() {
     if (!id) return;
     setBusy(true);
     try {
-      // A local delete that never left the device folds away entirely — the
+      // A local delete that never left the device folds away entirely - the
       // reducer drops both ops rather than sending a delete and an undo.
       if (!engine) throw new Error("Not ready to save yet.");
       await engine.enqueue({
@@ -176,11 +183,14 @@ export function ExpenseDetail() {
               repeatInterval={expense.repeat_interval}
               nextRepeat={expense.next_repeat}
               repeatOf={expense.repeat_of}
+              repeatPaused={expense.repeat_paused}
               seriesCount={expense.series_count}
               seriesHref={`/expenses/${expense.id}/series`}
               stop={
                 stop.live ? (
                   <StopRepeatingButton onClick={stop.requestStop} />
+                ) : stop.paused ? (
+                  <ResumeRepeatingButton onClick={stop.requestResume} />
                 ) : undefined
               }
             />
@@ -245,11 +255,19 @@ export function ExpenseDetail() {
       </ConfirmDialog>
 
       <StopSeriesDialog
-        open={stop.confirming}
+        open={stop.confirming === "stop"}
         busy={stop.busy}
         error={stop.error}
-        onClose={() => stop.setConfirming(false)}
+        onClose={() => stop.setConfirming(null)}
         onConfirm={stop.confirmStop}
+      />
+      <ResumeSeriesDialog
+        open={stop.confirming === "resume"}
+        busy={stop.busy}
+        error={stop.error}
+        resumeOn={stop.resumeOn}
+        onClose={() => stop.setConfirming(null)}
+        onConfirm={stop.confirmResume}
       />
     </>
   );

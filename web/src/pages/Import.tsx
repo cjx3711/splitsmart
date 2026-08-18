@@ -16,7 +16,7 @@
  *
  * Comments are the last phase of the run, because `comments.expense_id` is a
  * foreign key: they cannot land before the bills they hang off. Calling that step
- * is unconditional and cheap — when Splitwise nested the comments on the expense
+ * is unconditional and cheap - when Splitwise nested the comments on the expense
  * payload they are already in, and the step walks straight past them.
  */
 import { useEffect, useState } from "react";

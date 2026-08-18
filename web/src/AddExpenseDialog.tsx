@@ -13,7 +13,7 @@
  * than no offer).
  *
  * Both questions are answered from the MIRROR, which is what makes adding an
- * expense work with no signal — the canonical case this whole feature exists for,
+ * expense work with no signal - the canonical case this whole feature exists for,
  * a restaurant or a trip. The practical limit falls out of the same fact: offline
  * you can only name people who are already in your local database, because adding
  * a person is a server-side identity and is online-only. The trip you are on is a
@@ -50,7 +50,7 @@ export function AddExpenseDialog({
   const [groupId, setGroupId] = useState<string | null>(initialGroupId);
 
   // Live queries against the mirror, so opening the dialog costs no request at
-  // all — which also means it opens instantly and works offline.
+  // all - which also means it opens instantly and works offline.
   const friends = useFriends()?.friends ?? [];
   const groups = useGroups()?.groups ?? [];
   const groupView = useGroupView(groupId ?? undefined);

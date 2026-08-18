@@ -68,7 +68,8 @@ export function SeriesView({
         </div>
       ) : stoppedReason === "ended" ? (
         <div className="notice">
-          This series has stopped. No more bills will be created. The ones already made stay.
+          This series has stopped. No more bills will be created. The ones already made stay. Resume
+          starts from today - months that were missed will not be created.
         </div>
       ) : (
         <p className="muted">

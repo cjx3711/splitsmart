@@ -42,7 +42,7 @@ All `TEXT`, all `STRICT`, with `CHECK (LENGTH(id) = 26)` on entity PKs.
 Junction tables keep composite primary keys. `group_members (group_id, user_id)`,
 `friendships (user_a_id, user_b_id)`, `expense_users (expense_id, user_id)` do
 not get a surrogate ULID; their FKs just change type. `friendships` orders the
-pair with `CHECK (user_a_id < user_b_id)` — lexicographic `<` on Crockford
+pair with `CHECK (user_a_id < user_b_id)` - lexicographic `<` on Crockford
 strings is a total order, so the CHECK stays. `friendPair()` in
 `src/domain/friends.ts` compares the strings the same way SQLite will.
 
@@ -65,9 +65,9 @@ These are not entity ids.
 `users`, `groups`, `expenses`, and `comments` carry a JSON `metadata` column
 (default `'{}'`). It is a bag for data that is stored, not queried:
 
-- `splitwise_id` — original Splitwise integer, set on import so a second run
+- `splitwise_id` - original Splitwise integer, set on import so a second run
   matches instead of duplicating. Never the native PK, never on the compat wire.
-- `notes` — freeform user notes.
+- `notes` - freeform user notes.
 - Extra keys are allowed.
 
 The one exception to "not queried" is a unique expression index on
@@ -89,7 +89,7 @@ and is used as the PK; if absent the server mints one. Compat and today's web
 UI take the absent path until offline writes land.
 
 A retry with the same id hits the PK and is a no-op that returns the existing
-row. That is the idempotency story offline-first needs — there is no separate
+row. That is the idempotency story offline-first needs - there is no separate
 `client_uuid` column.
 
 Users and groups stay server-minted: creating either is online-only
@@ -105,9 +105,9 @@ so the ULID and the row agree. Native creates still use wall-clock time.
 One pure module, `src/domain/ulid.ts`, imported by the server and by `web/`
 the same way `split.ts` already is. No extra npm dependency.
 
-- `ulid()` — timestamp + 80 bits of `crypto.getRandomValues`
-- `ulidTime(id)` — milliseconds encoded in the first 10 characters
-- `isUlid(s)` — 26 chars, Crockford alphabet, no `I`, `L`, `O`, `U`
+- `ulid()` - timestamp + 80 bits of `crypto.getRandomValues`
+- `ulidTime(id)` - milliseconds encoded in the first 10 characters
+- `isUlid(s)` - 26 chars, Crockford alphabet, no `I`, `L`, `O`, `U`
 - Zod: `z.string().refine(isUlid)` at native route boundaries (`ulidSchema`)
 
 Native path params (`/groups/:id`, `/expenses/:id`, `/friends/:id`) parse as

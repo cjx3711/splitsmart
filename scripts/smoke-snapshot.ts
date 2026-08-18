@@ -2,7 +2,7 @@
  * Normalise a captured page dump and compare it against a committed baseline.
  *
  * Kept for ad-hoc dumps (paste a tree, get a diff). The suite itself captures
- * and compares through `yarn smoke` — see scripts/smoke-capture.ts.
+ * and compares through `yarn smoke` - see scripts/smoke-capture.ts.
  *
  * Usage:
  *   yarn smoke:snapshot -- <run-dir> <test-id> <step> <raw-file>

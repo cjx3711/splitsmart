@@ -129,6 +129,7 @@ export function GuestExpense() {
           repeatInterval={expense.repeat_interval}
           nextRepeat={expense.next_repeat}
           repeatOf={expense.repeat_of}
+          repeatPaused={expense.repeat_paused}
           seriesHref={`/expenses/${expense.id}/series`}
         />
       </div>

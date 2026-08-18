@@ -30,8 +30,8 @@ const DEFAULT_PASSWORD = "password123";
  * SEED_TODAY pins that "today" to a fixed date. The pixel snapshots
  * (docs/AI_SMOKE_TESTS.md) need it: a baseline PNG recorded in March and
  * compared in August differs in every rendered date, which is churn, not a
- * regression. Pinning does NOT make the series stop being behind — dueness is
- * still judged against the real clock — so the catch-up state the demo exists
+ * regression. Pinning does NOT make the series stop being behind - dueness is
+ * still judged against the real clock - so the catch-up state the demo exists
  * to show is intact, and the scheduler's one-per-tick cap keeps the number of
  * generated bills the same however long ago the anchor was.
  */
@@ -47,7 +47,7 @@ if (Number.isNaN(SEED_NOW)) {
 /**
  * ULIDs encode a millisecond timestamp. Creating a dozen groups in the same
  * millisecond makes their sort order random, and the sidebar shows the five
- * newest — so a smoke snapshot would shuffle every reset. Tick the clock once
+ * newest - so a smoke snapshot would shuffle every reset. Tick the clock once
  * per id so oldest-first insertion is also oldest-first in ULID order.
  */
 let seedClock = SEED_NOW;
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     .executeTakeFirst();
 
   if (existing) {
-    console.log(`${email} already has expenses — skipping demo seed.`);
+    console.log(`${email} already has expenses - skipping demo seed.`);
     return;
   }
 
@@ -498,7 +498,7 @@ async function main(): Promise<void> {
   await createComment({
     expenseId: sushiId,
     userId: aisyahId,
-    content: "Taro wasn't there for the second round — should we split that separately?",
+    content: "Taro wasn't there for the second round - should we split that separately?",
     createdAt: `${daysAgo(20)}T12:40:00Z`,
   });
   await createComment({

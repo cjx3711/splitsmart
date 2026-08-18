@@ -3,7 +3,7 @@
  *
  * The filter tests are mostly about scope: a filter narrows what a caller can
  * already see and must never widen it. The one that would matter in the wild is
- * `group_id` on the group endpoint — if that replaced the group scope instead of
+ * `group_id` on the group endpoint - if that replaced the group scope instead of
  * adding to it, `GET /groups/A/expenses?group_id=B` would be a data leak.
  *
  * The CSV tests pin the format that anybody's spreadsheet import mapping would

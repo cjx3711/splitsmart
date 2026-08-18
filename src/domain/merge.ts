@@ -209,7 +209,7 @@ export async function mergeExpenseParticipants(
   // The version bump is the one place a merge behaves like a person editing the
   // bill, and it should: somebody's shares are different afterwards. A device
   // holding a queued edit of this expense will push it, get a conflict, and be
-  // shown the new numbers — which is right, because its edit was written against
+  // shown the new numbers - which is right, because its edit was written against
   // a participant list that no longer exists.
   await trx
     .updateTable("expenses")
@@ -270,7 +270,7 @@ export async function mergeExpenseParticipants(
 
   // The shares on this bill are different now, so every device that holds it
   // needs the new row. Whole-entity upsert, as always: the client must NOT add
-  // the two people's shares locally — that logic lives in this function and a
+  // the two people's shares locally - that logic lives in this function and a
   // second copy in the browser would drift.
   const group = await trx
     .selectFrom("expenses")

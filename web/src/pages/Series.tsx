@@ -9,6 +9,8 @@ import { useParams } from "react-router-dom";
 import { displayName } from "../api.ts";
 import { SeriesView } from "../SeriesView.tsx";
 import {
+  ResumeRepeatingButton,
+  ResumeSeriesDialog,
   StopRepeatingButton,
   StopSeriesDialog,
   useStopSeries,
@@ -59,15 +61,25 @@ export function Series() {
         stop={
           stop.live ? (
             <StopRepeatingButton onClick={stop.requestStop} />
+          ) : stop.paused ? (
+            <ResumeRepeatingButton onClick={stop.requestResume} />
           ) : undefined
         }
       />
       <StopSeriesDialog
-        open={stop.confirming}
+        open={stop.confirming === "stop"}
         busy={stop.busy}
         error={stop.error}
-        onClose={() => stop.setConfirming(false)}
+        onClose={() => stop.setConfirming(null)}
         onConfirm={stop.confirmStop}
+      />
+      <ResumeSeriesDialog
+        open={stop.confirming === "resume"}
+        busy={stop.busy}
+        error={stop.error}
+        resumeOn={stop.resumeOn}
+        onClose={() => stop.setConfirming(null)}
+        onConfirm={stop.confirmResume}
       />
     </>
   );

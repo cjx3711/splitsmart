@@ -120,8 +120,8 @@ proof that the two agree afterwards.
 
 Two kinds of row in `comments`, distinguished by `kind`:
 
-- **`user`** — somebody typed it. Deletable by its author and nobody else.
-- **`system`** — generated when an expense is edited, deleted or restored, and
+- **`user`** - somebody typed it. Deletable by its author and nobody else.
+- **`system`** - generated when an expense is edited, deleted or restored, and
   hung on the bill so "why is this 92.43 now" is answerable from the expense
   rather than from the global activity feed. Never accepted over HTTP, never
   deletable.
@@ -131,7 +131,7 @@ distinguish the two, and a WHERE on `json_extract` is not free.
 
 A comment is **not part of the expense**. It has no `version`, it cannot
 conflict, and writing one must never bump the expense's own version once offline
-sync exists (`docs/OFFLINE.md`) — otherwise an offline note would fight an
+sync exists (`docs/OFFLINE.md`) - otherwise an offline note would fight an
 offline edit of the split. Deletes are soft, so merge and re-import matching
 still find the row. All writes go through `src/domain/comments.ts`.
 

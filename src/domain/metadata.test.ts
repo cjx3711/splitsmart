@@ -6,6 +6,7 @@ import {
   splitwiseIdOf,
   metadataFromSplitwise,
   metadataWithSplitwiseId,
+  repeatPausedOf,
 } from "./metadata.ts";
 
 describe("parseMetadata", () => {
@@ -31,6 +32,14 @@ describe("splitwiseIdOf", () => {
     assert.equal(splitwiseIdOf(metadataFromSplitwise(42)), 42);
     assert.equal(splitwiseIdOf("{}"), null);
     assert.equal(splitwiseIdOf(serializeMetadata({ splitwise_id: 1.5 })), null);
+  });
+});
+
+describe("repeatPausedOf", () => {
+  test("reads a known interval and rejects anything else", () => {
+    assert.equal(repeatPausedOf(serializeMetadata({ repeat_paused: "monthly" })), "monthly");
+    assert.equal(repeatPausedOf("{}"), null);
+    assert.equal(repeatPausedOf(serializeMetadata({ repeat_paused: "daily" })), null);
   });
 });
 

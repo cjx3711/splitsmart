@@ -5,7 +5,7 @@
  * several groups at once and there is no single member roster to read from.
  *
  * Read from the offline mirror, and filtered over ALL of it rather than over a
- * fetched page — the cap that used to make local filtering dishonest is gone
+ * fetched page - the cap that used to make local filtering dishonest is gone
  * along with the fetch. The rules are the server's own (docs/OFFLINE.md).
  */
 import { useState } from "react";

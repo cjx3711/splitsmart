@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-18T06:39:55.776Z",
+  "capturedAt": "2026-08-18T07:12:53.561Z",
   "base": "http://localhost:5644",
   "playwrightVersion": "1.62.1",
   "params": {
@@ -215,6 +215,28 @@
         "Apartment 4B",
         "Rent~repeats",
         "View all bills in this series"
+      ],
+      "auth": "user:user"
+    },
+    {
+      "id": "expense-rent-stop",
+      "viewport": "desktop",
+      "path": "/app/groups",
+      "click": [
+        "Apartment 4B",
+        "Rent~repeats",
+        "Stop repeating"
+      ],
+      "auth": "user:user"
+    },
+    {
+      "id": "expense-rent-stop-mobile",
+      "viewport": "mobile",
+      "path": "/app/groups",
+      "click": [
+        "Apartment 4B",
+        "Rent~repeats",
+        "Stop repeating"
       ],
       "auth": "user:user"
     },

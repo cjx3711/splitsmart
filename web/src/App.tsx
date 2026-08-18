@@ -37,7 +37,7 @@ import { Footer } from "./Footer.tsx";
  * The session, as every screen has always read it.
  *
  * Now a view onto `SyncProvider`, which owns it along with the mirror the user id
- * namespaces and the loop that fills it — see web/src/sync/SyncProvider.tsx for
+ * namespaces and the loop that fills it - see web/src/sync/SyncProvider.tsx for
  * why those three cannot be resolved apart. Kept under this name and shape so the
  * pages did not all have to change to gain an offline session.
  */
@@ -52,8 +52,8 @@ export function useAuth() {
  * The sidebar's lists used to be state a page had to invalidate by bumping a
  * counter. They are Dexie live queries now, so anything that reaches the mirror
  * shows up on its own and no page has to say so. What still needs saying is the
- * opposite: the ONLINE-ONLY writes — adding a friend, creating a group, adding a
- * member — land on the server and would otherwise not appear until the next
+ * opposite: the ONLINE-ONLY writes - adding a friend, creating a group, adding a
+ * member - land on the server and would otherwise not appear until the next
  * five-minute tick. This pulls immediately instead.
  *
  * Kept under the old name because the call sites mean exactly what they always

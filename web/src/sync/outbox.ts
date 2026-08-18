@@ -6,7 +6,7 @@
  * likely to be subtly wrong, and it is testable under `node:test` without a
  * browser (web/src/sync/outbox.test.ts).
  *
- * ONE PENDING OP PER ENTITY. Not a log of everything the user did — a statement
+ * ONE PENDING OP PER ENTITY. Not a log of everything the user did - a statement
  * of what the server still needs to be told. Editing a bill four times offline
  * pushes once, and the four intermediate states never existed as far as anybody
  * else is concerned.
@@ -20,7 +20,7 @@
  * A create cannot conflict. The primary key is a client-minted ULID, so a retry
  * of the same id is the lost-response case rather than a merge, and the server
  * returns the stored row. Comment creates are the same, and comments have no
- * version at all — they must never touch `expenses.version`, or an offline note
+ * version at all - they must never touch `expenses.version`, or an offline note
  * would fight an offline edit of the split.
  */
 import type { OutboxKind, OutboxOp } from "../db/local.ts";
@@ -34,7 +34,7 @@ import type { OutboxKind, OutboxOp } from "../db/local.ts";
  *
  * `repeatInterval` IS THREE-STATE and the distinction is load-bearing: absent
  * leaves an existing schedule alone, `null` stops it, a value sets it. Ordinary
- * edits omit it, because sending the current interval is a *set* — which
+ * edits omit it, because sending the current interval is a *set* - which
  * recomputes `next_repeat` from the date and silently shifts somebody's rent.
  * Only the (online-only) repeat control ever sends one.
  */
@@ -94,7 +94,7 @@ function isCreate(kind: OutboxKind): boolean {
  * Folds a local write into whatever is already queued for that entity.
  *
  * `queuedAt` is passed in rather than read from a clock so this stays pure. It is
- * advisory metadata only — the server stamps what it accepts, and a client
+ * advisory metadata only - the server stamps what it accepts, and a client
  * timestamp is never used to decide a winner.
  */
 export function reduceOutbox(
@@ -286,8 +286,8 @@ export function reconcileRemote(
  *
  * `expense.create` and `payment.create` first, then the ops that change an
  * existing expense, then comments. A `comment.create` whose expense is still
- * sitting later in the same `ops` array is `rejected` by the server — correctly,
- * since the bill genuinely does not exist yet — so getting this wrong turns a
+ * sitting later in the same `ops` array is `rejected` by the server - correctly,
+ * since the bill genuinely does not exist yet - so getting this wrong turns a
  * perfectly good offline dinner and its note into a quarantine entry.
  *
  * Within a tier, insertion order (`seq`) is preserved, so two edits the user made

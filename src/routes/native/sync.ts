@@ -1,9 +1,9 @@
 /**
- * `/api/v1/sync/*` — the endpoints an offline-capable client replicates through.
+ * `/api/v1/sync/*` - the endpoints an offline-capable client replicates through.
  *
  * Three reads and one write, all for a LOGGED-IN account: a cookie session or a
  * bearer API token. `requireAuth` rejects a `link_` guest secret outright, which
- * is the whole reason this can be a plain native router — a guest link is a
+ * is the whole reason this can be a plain native router - a guest link is a
  * capability its owner can expire at any moment, and offline-first means keeping a
  * copy the owner cannot revoke. Those two disagree, so link visitors stay
  * live-only. See docs/GUEST.md and docs/OFFLINE.md.
@@ -16,7 +16,7 @@
  * `/push` ADDS NO SQL against `expenses`, `expense_users` or
  * `expense_repayments`. It is a batching wrapper over `createExpense`,
  * `updateExpense`, `deleteExpense`, `restoreExpense`, `createComment` and
- * `deleteComment` — rule 3 has no exceptions, and it is the only thing enforcing
+ * `deleteComment` - rule 3 has no exceptions, and it is the only thing enforcing
  * the expense invariant, so offline writes give `yarn db:check` no new audit
  * surface.
  *
@@ -62,7 +62,7 @@ export const syncRoutes = new Hono<AppEnv>();
 syncRoutes.use("*", requireAuth);
 // Pull / bootstrap / snapshot can be large. The browser decompresses gzip
 // automatically; we do not gzip them in the client. Push bodies are gzipped
-// the other way — see readPushBody.
+// the other way - see readPushBody.
 syncRoutes.use("*", compress());
 
 /**
@@ -81,8 +81,8 @@ const BOOTSTRAP_PAGE = 400;
  * Groups the caller has a membership row for, LEFT ONES INCLUDED.
  *
  * Deliberately not filtered on `left_at`. Leaving a group does not hide the
- * expenses in it that you are a participant of — that is the rule the All
- * Expenses screen has always used — so the client still needs the group's name
+ * expenses in it that you are a participant of - that is the rule the All
+ * Expenses screen has always used - so the client still needs the group's name
  * to render them. A group row is a name and a default currency; it is not access.
  */
 async function visibleGroupIds(userId: string): Promise<string[]> {
@@ -143,7 +143,7 @@ async function visibleExpenseIdPage(
  *
  * `seq` IS CAPTURED BEFORE ANYTHING IS READ, and the client keeps the value from
  * the FIRST page for the whole run. Snapshotting it at the end instead would
- * drop every write that landed after its page had already been scanned — those
+ * drop every write that landed after its page had already been scanned - those
  * changes are below the cursor, so no later pull would ever deliver them. Taking
  * it first means the opposite error, a change delivered twice, and applying a
  * whole-entity upsert twice is a no-op.
@@ -171,8 +171,8 @@ syncRoutes.get("/bootstrap", async (c) => {
     loadCommentsForExpenses(db, expenseIds),
   ]);
 
-  // A short page means the end. Equal to the limit is ambiguous — the next page
-  // may be empty — and one wasted round trip beats a truncated ledger.
+  // A short page means the end. Equal to the limit is ambiguous - the next page
+  // may be empty - and one wasted round trip beats a truncated ledger.
   const nextCursor = expenseIds.length === BOOTSTRAP_PAGE ? expenseIds.at(-1)! : null;
 
   if (!first) {
@@ -221,7 +221,7 @@ syncRoutes.get("/bootstrap", async (c) => {
  *   ?group_id=  a group you are now in: the group, its members, its expenses and
  *               their threads.
  *   ?expense_id= one non-group bill you have just been added to. THE THREAD
- *               ONLY — the expense itself arrives as an ordinary upsert in the
+ *               ONLY - the expense itself arrives as an ordinary upsert in the
  *               same pull page. Its comments are a separate entity whose seqs are
  *               all below the cursor, which is the entire gap being closed here.
  *
@@ -316,7 +316,7 @@ interface LogRow {
  *
  * The branches, and why each exists:
  *
- *   1. Anything in a group you are CURRENTLY in — expenses, comments, the group
+ *   1. Anything in a group you are CURRENTLY in - expenses, comments, the group
  *      itself, other people's memberships.
  *   2. Expenses you are a participant of, wherever they live. Leaving a group does
  *      not hide the bills you are personally on.
@@ -425,7 +425,7 @@ function changeKey(row: LogRow): string {
  *
  * Entities are returned WHOLE, and the page is collapsed so each entity appears
  * once, carrying its final state and the seq of the last row that touched it.
- * Three edits to one bill in one page are one upsert of the current row — the
+ * Three edits to one bill in one page are one upsert of the current row - the
  * client is replacing a document either way, and replaying the intermediate
  * states would only widen the window in which its screens show a number that was
  * never final.
@@ -456,7 +456,7 @@ syncRoutes.get("/pull", async (c) => {
   }
 
   // Last row per entity wins. Insertion order in a Map is preserved, and the
-  // rows arrive in seq order, so re-setting a key keeps its original position —
+  // rows arrive in seq order, so re-setting a key keeps its original position -
   // which is what makes a `user_merge` stay ahead of the expense upserts it has
   // to be applied before.
   const collapsed = new Map<string, LogRow>();
@@ -641,9 +641,9 @@ async function collectCatchUp(
 /**
  * A BATCHING WRAPPER, and nothing more.
  *
- * Every op below is routed to the existing domain writer — `createExpense`,
+ * Every op below is routed to the existing domain writer - `createExpense`,
  * `updateExpense`, `deleteExpense`, `restoreExpense`, `createComment`,
- * `deleteComment` — and this file adds no SQL of its own against `expenses`,
+ * `deleteComment` - and this file adds no SQL of its own against `expenses`,
  * `expense_users` or `expense_repayments`. That is rule 3 and it is the only thing
  * enforcing the expense invariant, so `yarn db:check` gains no new audit surface
  * from offline writes: a replayed batch goes through exactly the code path a
@@ -665,7 +665,7 @@ const participantSchema = z.object({
  *
  *   applied    it landed. Carries the new `version`; clear the outbox entry.
  *   duplicate  the id was already there, or a delete/restore of a row already in
- *              that state. NOT an error — it is the lost-response case. Carries
+ *              that state. NOT an error - it is the lost-response case. Carries
  *              the STORED ROW, because the client's copy may differ from it and
  *              the server's is the one that counts.
  *   conflict   `baseVersion` was stale. Carries the server's current row; the
@@ -776,8 +776,8 @@ syncRoutes.post("/push", async (c) => {
 
   const results: PushResult[] = [];
 
-  // Sequential, deliberately. The ops in one batch can depend on each other — a
-  // comment on an expense created two entries earlier — and every writer opens
+  // Sequential, deliberately. The ops in one batch can depend on each other - a
+  // comment on an expense created two entries earlier - and every writer opens
   // its own transaction, so running them concurrently would race a child against
   // its parent for no gain on a single SQLite connection.
   for (const op of ops) {
@@ -828,7 +828,7 @@ async function applyPushOp(userId: string, op: PushOp): Promise<PushResult> {
  * The same participant rules as `POST /api/v1/expenses`.
  *
  * Not a lighter version of them. Push is a batching wrapper over the same
- * writers, so it has to be a batching wrapper over the same authorisation too —
+ * writers, so it has to be a batching wrapper over the same authorisation too -
  * otherwise the queue is a way around a check the online form enforces.
  */
 async function assertMayWrite(
@@ -877,7 +877,7 @@ async function pushCreate(
   op: Extract<PushOp, { kind: "expense.create" | "payment.create" }>,
 ): Promise<PushResult> {
   // Checked BEFORE the writer, because `createExpense` short-circuits a known id
-  // without validating anything — which is right for a retry, and would be a hole
+  // without validating anything - which is right for a retry, and would be a hole
   // here if it meant skipping the participant rules on a first write.
   const existing = await db
     .selectFrom("expenses")
@@ -887,7 +887,7 @@ async function pushCreate(
 
   if (existing) {
     // The lost-response case: our write landed, the answer did not. Hand back the
-    // STORED row, not just the id — the client's copy may differ and the server's
+    // STORED row, not just the id - the client's copy may differ and the server's
     // is the one that counts.
     const [server] = await loadExpenses(db, [op.id]);
     return {
@@ -909,8 +909,8 @@ async function pushCreate(
     details: input.details ?? null,
     categoryId: input.categoryId ?? null,
     // The only thing that distinguishes the two create kinds. `is_payment` is not
-    // a field on the expense body — the online API decides it by which route was
-    // called — so here the op kind is what decides it.
+    // a field on the expense body - the online API decides it by which route was
+    // called - so here the op kind is what decides it.
     isPayment: op.kind === "payment.create",
     createdBy: userId,
   });
@@ -965,7 +965,7 @@ async function pushDelete(
  *
  * `baseVersion` is the TOMBSTONE's version. Restoring bumps it, so the follow-up
  * update has to use the version restore just produced rather than the one the
- * client sent — which is the whole reason these are one op: the client has no way
+ * client sent - which is the whole reason these are one op: the client has no way
  * to learn the intermediate version, and asking it to guess would make every
  * restore-and-replace conflict with itself.
  */
@@ -1041,8 +1041,8 @@ async function pushCommentCreate(
     });
   } catch (err) {
     if (err instanceof CommentError && err.status === 404) {
-      // Either the bill is not there yet — a comment sorted ahead of its own
-      // expense, which `sortForPush` exists to prevent — or the caller can no
+      // Either the bill is not there yet - a comment sorted ahead of its own
+      // expense, which `sortForPush` exists to prevent - or the caller can no
       // longer see it. Both are rejections with a reason, never silent drops.
       throw new Error("That expense is not available to comment on.");
     }

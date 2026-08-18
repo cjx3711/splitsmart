@@ -11,7 +11,7 @@
  * 1. IDENTITY IS `metadata.splitwise_id` FIRST, EMAIL SECOND. Every row we
  *    create carries the Splitwise id it came from in the JSON metadata bag, so
  *    a second run matches instead of duplicating. The native PK is a fresh
- *    ULID — the original integer is not reused as `id`. Only when there is no
+ *    ULID - the original integer is not reused as `id`. Only when there is no
  *    id match do we fall back to matching an existing local account by email;
  *    that is the one heuristic in here, and the UI has to say so out loud
  *    before the user starts.
@@ -889,7 +889,7 @@ type LocalExpenseRow = {
  * `markImportSynced`, so a refresh does not make the row look hand-edited to the
  * next run.
  *
- * The split stays `exact` either way — see rule 3's note in this module's header.
+ * The split stays `exact` either way - see rule 3's note in this module's header.
  */
 async function refreshExpense(
   existing: LocalExpenseRow,

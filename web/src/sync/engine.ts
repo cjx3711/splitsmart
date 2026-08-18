@@ -9,17 +9,21 @@
  * by a queued write that was made before it, and it is what lets the reducer's
  * delete-wins rule fire before we push an edit onto somebody else's deletion.
  *
- * SINGLE-FLIGHT. One cycle at a time, ever. Four triggers can fire at once — the
- * tab coming to the foreground, `online`, the interval, a manual Sync now — and
+ * SINGLE-FLIGHT. One cycle at a time, ever. Four triggers can fire at once - the
+ * tab coming to the foreground, `online`, the interval, a manual Sync now - and
  * without this they would stack into a retry storm against a server that is
  * already struggling, which is exactly when they all fire together.
  *
  * The policy this file obeys but does not own: web/src/sync/outbox.ts decides what
  * a queued write becomes and whether a pulled change may overwrite it. Keeping
- * that pure and keeping this imperative is deliberate — the decisions are the part
+ * that pure and keeping this imperative is deliberate - the decisions are the part
  * worth testing without a browser.
  */
 import { computeSplit, type SplitType } from "../../../src/domain/split.ts";
+import {
+  isRepeatInterval,
+  nextOccurrenceOnOrAfter,
+} from "../../../src/domain/recurring.ts";
 import {
   api,
   ApiError,
@@ -74,7 +78,7 @@ const PUSH_BATCH = 100;
  * Pages drained per cycle, as a runaway guard rather than a real limit.
  *
  * A pull page is a thousand rows and `more` is drained within the cycle, not one
- * page per tick — a client that takes a page every five minutes is not syncing, it
+ * page per tick - a client that takes a page every five minutes is not syncing, it
  * is trickling. The cap exists so a server bug that never advances `seq` cannot
  * spin here forever.
  */
@@ -227,7 +231,7 @@ export class SyncEngine {
       // for them again forever is how a client gets stuck on one bad page.
       if (response.seq > since) await setMeta(this.db, "cursor", response.seq);
 
-      // Access granted since we last synced. `since` is NOT rewound — the history
+      // Access granted since we last synced. `since` is NOT rewound - the history
       // being fetched is all below the cursor by definition, which is the entire
       // reason a snapshot exists rather than a re-bootstrap.
       for (const target of response.catchUp) {
@@ -358,8 +362,8 @@ export class SyncEngine {
   /**
    * A claim happened: a ghost is now an account.
    *
-   * Remap rather than wipe. A wipe would destroy the outbox — the only copy of an
-   * unsynced dinner — plus conflict and quarantine state, and it would fire on the
+   * Remap rather than wipe. A wipe would destroy the outbox - the only copy of an
+   * unsynced dinner - plus conflict and quarantine state, and it would fire on the
    * owner's other laptop merely because somebody claimed a placeholder they had
    * created. Anything the remap cannot do cleanly is quarantined for a person,
    * never guessed at: combining two people's shares is the server's job.
@@ -496,8 +500,8 @@ export class SyncEngine {
    *
    * The local effect is applied in the SAME transaction as the queue entry, so a
    * bill can never be visible without being queued, or queued without being
-   * visible. The split is computed with the real `computeSplit` — the frontend
-   * already imports it for the editor's preview — so the provisional row shows the
+   * visible. The split is computed with the real `computeSplit` - the frontend
+   * already imports it for the editor's preview - so the provisional row shows the
    * same cents the server will store. The server still recomputes on replay and
    * remains authoritative.
    */
@@ -653,7 +657,8 @@ export class SyncEngine {
       // Recurrence is server-owned for `next_repeat`, but an explicit
       // `repeatInterval` on the write is a decision this device just made and
       // has to show immediately: otherwise Stop repeating looks like a no-op
-      // until the next pull. Never invent a next date; the scheduler does that.
+      // until the next pull. Resume computes the next date the same way the
+      // server will, so the note is not blank until pull.
       repeatInterval:
         payload.repeatInterval !== undefined
           ? payload.repeatInterval
@@ -664,9 +669,19 @@ export class SyncEngine {
           : payload.repeatInterval !== undefined &&
               (payload.repeatInterval !== options.base?.repeatInterval ||
                 payload.date !== options.base?.date)
-            ? null
+            ? isRepeatInterval(payload.repeatInterval) && options.base?.repeatPaused
+              ? nextOccurrenceOnOrAfter(payload.date, payload.repeatInterval)
+              : null
             : (options.base?.nextRepeat ?? null),
       repeatOf: options.base?.repeatOf ?? null,
+      repeatPaused:
+        payload.repeatInterval === null
+          ? (isRepeatInterval(options.base?.repeatInterval)
+              ? options.base.repeatInterval
+              : (options.base?.repeatPaused ?? null))
+          : payload.repeatInterval !== undefined
+            ? null
+            : (options.base?.repeatPaused ?? null),
       version: options.base?.version ?? 1,
       createdBy: options.base?.createdBy ?? this.selfId,
       updatedBy: this.selfId,
@@ -693,7 +708,7 @@ export class SyncEngine {
   /**
    * Discards a queued write and keeps the server's row.
    *
-   * The only resolution that needs no new write. Its opposite — "mine wins" — is
+   * The only resolution that needs no new write. Its opposite - "mine wins" - is
    * `retry`, which re-bases the queued op on the version the server has now.
    */
   async discard(entrySeq: number): Promise<void> {

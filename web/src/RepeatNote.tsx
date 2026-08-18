@@ -6,6 +6,8 @@
  *
  *   template     "Repeats monthly, next on 1 March", plus how many bills it has
  *                produced so far, so a series that is generating twice is visible.
+ *   paused       repeating was stopped. Resume starts from today and does not
+ *                create the months that were missed.
  *   behind       the next bill was due in the past. Said as "will be created
  *                soon" rather than explaining the scheduler.
  *   occurrence   this bill came out of a series, and editing it edits THIS BILL,
@@ -23,6 +25,7 @@ export function RepeatNote({
   repeatInterval,
   nextRepeat,
   repeatOf,
+  repeatPaused,
   seriesCount = 0,
   seriesHref,
   stop,
@@ -30,11 +33,13 @@ export function RepeatNote({
   repeatInterval: RepeatInterval | null | undefined;
   nextRepeat: string | null | undefined;
   repeatOf: string | null | undefined;
+  /** Set while repeating is stopped; the interval it will resume with. */
+  repeatPaused?: RepeatInterval | null | undefined;
   /** Bills this template has generated. Ignored unless this IS a template. */
   seriesCount?: number;
   /** Where every bill in the series is listed. Omit to render without a link. */
   seriesHref?: string;
-  /** Stop repeating, without deleting this bill. Logged-in only. */
+  /** Stop or resume repeating. Logged-in only. */
   stop?: ReactNode;
 }) {
   if (repeatInterval) {
@@ -68,6 +73,29 @@ export function RepeatNote({
     );
   }
 
+  if (repeatPaused) {
+    return (
+      <div className="notice">
+        <span className="eyebrow">Series</span>
+        <p style={{ margin: "0.3rem 0 0" }}>
+          {repeatLabel(repeatPaused)} repeating is stopped. Resume starts from today - missed bills
+          will not be created.
+        </p>
+        {seriesCount > 0 && (
+          <p className="muted" style={{ margin: "0.3rem 0 0" }}>
+            {seriesCount} {seriesCount === 1 ? "bill" : "bills"} so far
+          </p>
+        )}
+        {seriesHref && (
+          <p style={{ margin: "0.3rem 0 0" }}>
+            <Link to={seriesHref}>View all bills in this series</Link>
+          </p>
+        )}
+        {stop && <p style={{ margin: "0.3rem 0 0" }}>{stop}</p>}
+      </div>
+    );
+  }
+
   if (repeatOf) {
     return (
       <div className="card">
@@ -77,7 +105,7 @@ export function RepeatNote({
           {seriesHref ? (
             <>
               {" "}
-              — <Link to={seriesHref}>view all bills</Link>.
+              - <Link to={seriesHref}>view all bills</Link>.
             </>
           ) : (
             "."
@@ -95,14 +123,15 @@ export function RepeatNote({
  * Extra copy on the delete confirmation, when this bill is part of a series.
  *
  * The first bill IS the schedule, so deleting it is the destructive way to stop
- * repeating — that case is a warning, not a footnote. An occurrence is just a
+ * repeating - that case is a warning, not a footnote. An occurrence is just a
  * bill, so the rest of the series continues.
  */
 export function seriesDeleteNote(expense: {
   repeat_interval?: string | null;
   repeat_of?: string | null;
+  repeat_paused?: string | null;
 }): { kind: "template" | "occurrence"; text: string } | null {
-  if (expense.repeat_interval) {
+  if (expense.repeat_interval || expense.repeat_paused) {
     return {
       kind: "template",
       text: "This is the first bill of the series. Deleting it stops new bills from being created. The bills already made stay.",

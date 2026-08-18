@@ -146,6 +146,8 @@ export interface ExpenseDetail {
   repeat_interval?: RepeatInterval | null;
   next_repeat?: string | null;
   repeat_of?: string | null;
+  /** Interval a stopped series will resume with. Null while live or on a one-off. */
+  repeat_paused?: RepeatInterval | null;
   /** Bills this template has generated so far. Zero unless this IS a template. */
   series_count?: number;
   /**
@@ -378,7 +380,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
  *
  * A restaurant bill's itemized payload is small; a catch-up of fifty edits is
  * not. The server gunzips when it sees `Content-Encoding: gzip` (node:zlib).
- * Pull responses are gzipped by the HTTP layer instead — we do not compress
+ * Pull responses are gzipped by the HTTP layer instead - we do not compress
  * them here.
  */
 const GZIP_THRESHOLD = 1024;

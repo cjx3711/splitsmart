@@ -17,5 +17,5 @@ splitwise-export/
 *.log
 
 # AI smoke test runs (per-run snapshots and reports). Baselines under
-# smoke/baselines/ ARE committed — they are what a run is compared against.
+# smoke/baselines/ ARE committed - they are what a run is compared against.
 smoke/runs/

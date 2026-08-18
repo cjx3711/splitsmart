@@ -6,8 +6,8 @@
  * it is what a person guesses, and a browser will download it without any
  * negotiation.
  *
- * Scope is the same as `GET /api/v1/expenses` — expenses the caller is a
- * participant of — with the same filters on top (src/routes/native/
+ * Scope is the same as `GET /api/v1/expenses` - expenses the caller is a
+ * participant of - with the same filters on top (src/routes/native/
  * expense-filters.ts), so what you see on the All expenses screen is what you get
  * in the file. The guest equivalent lives in guest.ts, scoped to the link.
  *
@@ -23,14 +23,14 @@ import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-f
 
 /**
  * NO `use("*", requireAuth)` HERE. This router is mounted at `/api/v1`, and a
- * wildcard middleware on it would apply to every path under that prefix —
+ * wildcard middleware on it would apply to every path under that prefix -
  * including `/api/v1/guest/*`, whose whole point is that `requireAuth` never
  * touches it. Auth goes on the route itself.
  */
 export const exportRoutes = new Hono<AppEnv>();
 
 /**
- * A download is a whole-history request, so there is no paging — but there is a
+ * A download is a whole-history request, so there is no paging - but there is a
  * ceiling. 20k rows is a few megabytes of text; past that the honest answer is a
  * narrower date range, not a request that times out halfway through.
  */

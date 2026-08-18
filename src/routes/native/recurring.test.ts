@@ -38,6 +38,8 @@ const { createApiToken } = await import("../../auth/session.ts");
 const { runDueRecurrences } = await import("../../domain/scheduler.ts");
 const { mintAccessLink } = await import("../../domain/access-links.ts");
 const { ulid } = await import("../../domain/ulid.ts");
+const { updateExpense } = await import("../../domain/expenses.ts");
+const { parseMetadata } = await import("../../domain/metadata.ts");
 
 let aliceId: string;
 let bobId: string;
@@ -94,7 +96,7 @@ function occurrencesOf(templateId: string) {
 function row(expenseId: string) {
   return db
     .selectFrom("expenses")
-    .select(["id", "repeat_interval", "next_repeat", "repeat_of", "cost_minor", "date"])
+    .select(["id", "repeat_interval", "next_repeat", "repeat_of", "cost_minor", "date", "metadata"])
     .where("id", "=", expenseId)
     .executeTakeFirstOrThrow();
 }
@@ -187,6 +189,7 @@ describe("creating a template", () => {
 
     assert.equal(detail.body.expense.repeat_interval, "monthly");
     assert.ok(detail.body.expense.next_repeat);
+    assert.equal(detail.body.expense.repeat_paused, null);
     assert.equal(detail.body.expense.series_count, 0);
   });
 
@@ -427,9 +430,109 @@ describe("editing a series", () => {
     const stored = await row(id);
     assert.equal(stored.repeat_interval, null);
     assert.equal(stored.next_repeat, null, "and nothing is left scheduled");
+    assert.equal(parseMetadata(stored.metadata).repeat_paused, "monthly");
+
+    const detail = await as(aliceToken, `/expenses/${id}`);
+    assert.equal(detail.body.expense.repeat_interval, null);
+    assert.equal(detail.body.expense.repeat_paused, "monthly");
+    assert.equal(detail.body.expense.metadata, undefined);
 
     await runDueRecurrences(new Date("2027-01-01T00:00:00Z"));
     assert.deepEqual(await occurrencesOf(id), []);
+  });
+
+  test("resuming a stopped series starts from now and does not backfill", async () => {
+    const id = await template({ description: "Paused rent", date: "2026-02-21" });
+
+    await as(aliceToken, `/expenses/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        groupId,
+        description: "Paused rent",
+        costMinor: 100_000,
+        currencyCode: "USD",
+        date: "2026-02-21",
+        splitType: "equal",
+        repeatInterval: null,
+        participants: [
+          { userId: aliceId, paidMinor: 100_000 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+
+    await updateExpense(
+      id,
+      {
+        groupId,
+        description: "Paused rent",
+        costMinor: 100_000,
+        currencyCode: "USD",
+        date: "2026-02-21",
+        splitType: "equal",
+        repeatInterval: "monthly",
+        participants: [
+          { userId: aliceId, paidMinor: 100_000 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+        updatedBy: aliceId,
+      },
+      new Date("2026-08-18T12:00:00Z"),
+    );
+
+    const stored = await row(id);
+    assert.equal(stored.repeat_interval, "monthly");
+    assert.equal(stored.next_repeat, "2026-08-21T00:00:00.000Z");
+    assert.equal(parseMetadata(stored.metadata).repeat_paused, undefined);
+
+    await runDueRecurrences(new Date("2026-07-01T00:00:00Z"));
+    assert.equal((await occurrencesOf(id)).length, 0, "missed months are not created");
+
+    await runDueRecurrences(new Date("2026-08-21T12:00:00Z"));
+    const bills = await occurrencesOf(id);
+    assert.equal(bills.length, 1);
+    assert.equal(bills[0]!.date.slice(0, 10), "2026-08-21");
+  });
+
+  test("turning repeating on for the first time still schedules from the bill date", async () => {
+    const created = await as(aliceToken, "/expenses", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId,
+        description: "Late repeat",
+        costMinor: 100_000,
+        currencyCode: "USD",
+        date: "2026-02-21",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 100_000 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const id = created.body.id as string;
+
+    await as(aliceToken, `/expenses/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        groupId,
+        description: "Late repeat",
+        costMinor: 100_000,
+        currencyCode: "USD",
+        date: "2026-02-21",
+        splitType: "equal",
+        repeatInterval: "monthly",
+        participants: [
+          { userId: aliceId, paidMinor: 100_000 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+
+    const stored = await row(id);
+    assert.equal(stored.next_repeat, "2026-03-21T00:00:00.000Z");
+    assert.equal(parseMetadata(stored.metadata).repeat_paused, undefined);
   });
 
   test("an omitted interval leaves an existing schedule alone", async () => {

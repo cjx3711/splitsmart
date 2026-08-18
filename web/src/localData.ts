@@ -2,7 +2,7 @@
  * The screens' data layer.
  *
  * Every hook here reads the MIRROR, not the network, and re-renders when the
- * mirror changes — a sync landing, or the user queuing a write. That is the whole
+ * mirror changes - a sync landing, or the user queuing a write. That is the whole
  * shape of the offline app: no page fetches, no refetch-on-focus, no cache to
  * invalidate, and no code path where being offline takes a screen away.
  *

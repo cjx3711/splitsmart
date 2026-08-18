@@ -70,6 +70,7 @@ import {
 } from "./expense-filters.ts";
 import { csvResponse } from "./export.ts";
 import { isUlid } from "../../domain/ulid.ts";
+import { repeatPausedOf } from "../../domain/metadata.ts";
 
 /**
  * Which name the holder of a general group link is speaking as.
@@ -480,7 +481,8 @@ guestRoutes.get("/expenses/:id", async (c) => {
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.category_id",
       "expenses.group_id", "expenses.repeat_interval", "expenses.next_repeat",
-      "expenses.repeat_of", "categories.name as category_name", "groups.name as group_name",
+      "expenses.repeat_of", "expenses.metadata",
+      "categories.name as category_name", "groups.name as group_name",
     ])
     .where("expenses.id", "=", expenseId)
     .where("expenses.deleted_at", "is", null)
@@ -494,7 +496,15 @@ guestRoutes.get("/expenses/:id", async (c) => {
     .where("expense_id", "=", expenseId)
     .execute();
 
-  return c.json({ expense: { ...expense, shares } });
+  const { metadata, ...publicExpense } = expense;
+
+  return c.json({
+    expense: {
+      ...publicExpense,
+      shares,
+      repeat_paused: repeatPausedOf(metadata),
+    },
+  });
 });
 
 /**

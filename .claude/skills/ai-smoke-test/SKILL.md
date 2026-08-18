@@ -22,7 +22,7 @@ a green suite has destroyed the only thing the run was for.
 For the whole run:
 
 - No edits to `src/`, `web/`, `migrations/`, or `scripts/`.
-- No edits to files under `smoke/baselines/` — a snapshot `diff` is a result to
+- No edits to files under `smoke/baselines/` - a snapshot `diff` is a result to
   report, never something to silence. (The user re-records with
   `yarn smoke -- --update` on purpose, on their machine.)
 - No edits to `docs/AI_SMOKE_TESTS.md` to make a step match what you observed.
@@ -41,11 +41,11 @@ No extra argument runs the whole suite (`yarn smoke`).
 
 Pass-through:
 
-- `update` / `--update` — re-record PNG + DOM baselines on this machine, then
+- `update` / `--update` - re-record PNG + DOM baselines on this machine, then
   still run flows and `smoke:check`.
-- a flow id (`F3`) or screen id (`group-tokyo`) — only if the user asked for a
+- a flow id (`F3`) or screen id (`group-tokyo`) - only if the user asked for a
   subset; otherwise run everything.
-- `guest` / `mobile` — still run the whole suite; those words are coverage
+- `guest` / `mobile` - still run the whole suite; those words are coverage
   labels, not a reason to skip Playwright.
 
 ## Procedure
@@ -67,7 +67,7 @@ If Chromium is missing, it will say so. Run `yarn playwright install chromium`
 once, then retry `yarn smoke`. Do not install a system Chrome to work around it.
 
 If the server does not come up, stop. Report a run that could not start; do not
-fall back to the dev stack on 5444 — that one has the user's real data.
+fall back to the dev stack on 5444 - that one has the user's real data.
 
 `--update` (only when the user asked to re-record baselines):
 
@@ -100,7 +100,7 @@ For each finding, in this order:
 Then, in chat:
 
 - the totals and the path to `report.md`;
-- each failure in a sentence or two — expected vs actual;
+- each failure in a sentence or two - expected vs actual;
 - whether a PNG diff looks like a real UI change or like font / antialiasing
   on this machine (in which case tell the user `yarn smoke -- --update` is the
   re-record path, and do not do it yourself);

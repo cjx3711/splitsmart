@@ -133,6 +133,8 @@ export function isBehind(nextRepeat: string, now: Date = new Date()): boolean {
  *
  * The template's own id plus `repeat_of` IS the bundle: there is no series
  * table. An occurrence points at the template; the template points at nothing.
+ * A stopped template has no interval, so `repeatPaused` (the interval it had)
+ * is what keeps it identifiable as the series head until it is resumed.
  */
 export function seriesTemplateId(
   id: string,

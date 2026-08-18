@@ -9,7 +9,7 @@
  * than a real one, exists once.
  *
  * A comment is not part of the expense. It has no `version`, it cannot conflict,
- * and posting one must never bump `expenses.version` — otherwise an offline note
+ * and posting one must never bump `expenses.version` - otherwise an offline note
  * would fight an offline edit of the split. There is no edit, only create and
  * delete.
  *
@@ -54,7 +54,7 @@ export function CommentThread({
   const [error, setError] = useState<string | null>(null);
   const { engine } = useSync();
 
-  // Both hooks always run — React forbids a conditional hook — but only one of
+  // Both hooks always run - React forbids a conditional hook - but only one of
   // them is the source. Passing `undefined` makes the live query a no-op.
   const local = useComments(api ? undefined : expenseId);
 
@@ -97,7 +97,7 @@ export function CommentThread({
           payload: { expenseId, content },
         });
       }
-      // Cleared only once the write is recorded — on the server, or in the outbox —
+      // Cleared only once the write is recorded - on the server, or in the outbox -
       // so a failure does not lose what somebody typed.
       setDraft("");
     } catch (err) {

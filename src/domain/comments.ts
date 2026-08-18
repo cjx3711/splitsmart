@@ -172,7 +172,7 @@ export function commentCountSql(table = "expenses"): RawBuilder<number> {
 export interface CreateCommentInput {
   /**
    * Client-minted ULID. A retry with the same id returns the existing row
-   * rather than a second comment — the offline idempotency story, same as
+   * rather than a second comment - the offline idempotency story, same as
    * expenses (docs/OFFLINE.md). Absent: the server mints one.
    */
   id?: string;
@@ -327,7 +327,7 @@ export async function deleteComment(commentId: string, deletedBy: string): Promi
  * Denormalising one column beats an outer join in the hot path of every sync.
  *
  * A comment never touches `expenses.version`. That is load-bearing rather than
- * an oversight — see the module header — so there is nothing to bump here.
+ * an oversight - see the module header - so there is nothing to bump here.
  */
 async function logCommentChange(
   trx: DB,
@@ -548,7 +548,7 @@ export type ExpenseEvent =
  *
  * BEST-EFFORT IS THE CONTRACT. The ledger is the invariant; the sentence is
  * not. A failure building or writing the note is swallowed and logged rather
- * than rolling back the expense write it describes — an edit that fails because
+ * than rolling back the expense write it describes - an edit that fails because
  * its own footnote failed would be a far worse bug than a missing footnote.
  *
  * Runs inside the caller's transaction so a note never survives an edit that

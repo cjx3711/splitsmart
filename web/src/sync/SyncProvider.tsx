@@ -9,7 +9,7 @@
  *
  * BOOT ORDER, and every step of it matters:
  *
- *   1. Read the last signed-in user id from `localStorage`. Just the id — the
+ *   1. Read the last signed-in user id from `localStorage`. Just the id - the
  *      ledger lives in IndexedDB and nothing sensitive goes here.
  *   2. Open that user's Dexie and read the cached profile. Render NOW, with no
  *      network at all. This is "a logged-in reload without a connection is the
@@ -18,7 +18,7 @@
  *
  * A FAILED `/auth/me` IS NOT A LOGOUT. Losing the network, or a 30-day session
  * cookie expiring while unsynced expenses are queued, must not throw the queue
- * away — that queue is the only copy of somebody's dinner. Both cases become
+ * away - that queue is the only copy of somebody's dinner. Both cases become
  * `reconnecting`, and the app keeps working from the mirror. Only an explicit
  * logout clears anything.
  *
@@ -45,7 +45,7 @@ import { SyncEngine, type SyncStatus } from "./engine.ts";
  * Which account this browser last signed into.
  *
  * `localStorage`, not a cookie: the session cookie is httpOnly and unreadable
- * here, and this is not a credential — it is the name of an IndexedDB database.
+ * here, and this is not a credential - it is the name of an IndexedDB database.
  * Losing it costs a bootstrap, not a session.
  */
 const LAST_USER_KEY = "splitsmart.lastUserId";

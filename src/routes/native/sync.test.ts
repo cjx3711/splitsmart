@@ -29,7 +29,7 @@ const { seed } = await import("../../db/seed.ts");
 const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
-const { createExpense, deleteExpense, updateExpense } = await import("../../domain/expenses.ts");
+const { createExpense, deleteExpense, updateExpense, restoreExpense } = await import("../../domain/expenses.ts");
 const { createComment } = await import("../../domain/comments.ts");
 const { mergeUsers } = await import("../../domain/merge.ts");
 const { runDueRecurrences } = await import("../../domain/scheduler.ts");
@@ -152,11 +152,21 @@ describe("access", () => {
       createdBy: aliceId,
     });
 
-    for (const path of ["/sync/bootstrap", "/sync/pull?since=0"]) {
+    for (const path of [
+      "/sync/bootstrap",
+      "/sync/pull?since=0",
+      "/sync/push",
+      `/sync/snapshot?group_id=${groupId}`,
+    ]) {
       const res = await app.request(`/api/v1${path}`, {
-        headers: { Authorization: `Bearer link_${link.secret}` },
+        method: path === "/sync/push" ? "POST" : "GET",
+        headers: {
+          Authorization: `Bearer link_${link.secret}`,
+          "Content-Type": "application/json",
+        },
+        body: path === "/sync/push" ? JSON.stringify({ ops: [] }) : undefined,
       });
-      assert.equal(res.status, 401);
+      assert.equal(res.status, 401, `${path} must refuse a guest link`);
       assert.equal(((await res.json()) as any).guestLink, true);
     }
   });
@@ -379,6 +389,23 @@ describe("push", () => {
     assert.equal(second.body.results[0].status, "duplicate");
     assert.equal(second.body.results[0].server.id, id, "the stored row, not just the id");
     assert.equal(second.body.results[0].server.costMinor, 3000);
+
+    // A retry of the same id with a *different* body is still the lost-response
+    // case, not a merge. The stored row is what counts.
+    const different = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [
+          {
+            kind: "expense.create",
+            id,
+            payload: { ...expenseBody([aliceId, bobId], { costMinor: 1 }), groupId },
+          },
+        ],
+      }),
+    });
+    assert.equal(different.body.results[0].status, "duplicate");
+    assert.equal(different.body.results[0].server.costMinor, 3000);
 
     const count = await db
       .selectFrom("expenses")
@@ -630,6 +657,200 @@ describe("push", () => {
     assert.equal(body.results[0].status, "duplicate");
   });
 
+  test("restoring a tombstone at a stale baseVersion is a conflict, and the tombstone stands", async () => {
+    const id = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, bobId]) as any),
+      id,
+      groupId,
+      createdBy: aliceId,
+    });
+    await deleteExpense(id, aliceId); // -> 2
+
+    const { body } = await as(bobToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({ ops: [{ kind: "expense.restore", id, baseVersion: 1 }] }),
+    });
+
+    assert.equal(body.results[0].status, "conflict");
+    const row = await db
+      .selectFrom("expenses")
+      .select(["deleted_at", "version"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    assert.notEqual(row.deleted_at, null);
+    assert.equal(row.version, 2);
+  });
+
+  test("pushing a delete on top of somebody else's restore conflicts, and leaves the live row", async () => {
+    const id = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, bobId]) as any),
+      id,
+      groupId,
+      createdBy: aliceId,
+    });
+    await deleteExpense(id, bobId); // -> 2
+    await restoreExpense(id, bobId); // -> 3
+
+    const { body } = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({ ops: [{ kind: "expense.delete", id, baseVersion: 1 }] }),
+    });
+
+    assert.equal(body.results[0].status, "conflict");
+    const row = await db
+      .selectFrom("expenses")
+      .select(["deleted_at", "version"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    assert.equal(row.deleted_at, null, "Bob's undo stands");
+    assert.equal(row.version, 3);
+  });
+
+  test("an online HTTP edit without a version beats a later stale push", async () => {
+    const ghost = await ghostUser("Guest editor");
+    await db
+      .insertInto("group_members")
+      .values({ group_id: groupId, user_id: ghost, role: "member", joined_via: "added" })
+      .execute();
+    const link = await mintAccessLink(db, {
+      kind: "group_member",
+      groupId,
+      userId: ghost,
+      createdBy: aliceId,
+    });
+
+    const id = ulid();
+    await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [
+          {
+            kind: "expense.create",
+            id,
+            payload: {
+              ...expenseBody([aliceId, ghost], { costMinor: 3000 }),
+              groupId,
+            },
+          },
+        ],
+      }),
+    });
+
+    // Guest PATCH has no expectedVersion, so it always lands and bumps version.
+    const patched = await app.request(`/api/v1/guest/expenses/${id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer link_${link.secret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        groupId,
+        description: "Guest was online",
+        costMinor: 8000,
+        currencyCode: "USD",
+        date: "2026-04-01",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 8000 },
+          { userId: ghost, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(patched.status, 200);
+
+    const alicePush = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [
+          {
+            kind: "expense.update",
+            id,
+            baseVersion: 1,
+            payload: {
+              ...expenseBody([aliceId, ghost], { costMinor: 100 }),
+              participants: [
+                { userId: aliceId, paidMinor: 100 },
+                { userId: ghost, paidMinor: 0 },
+              ],
+              groupId,
+            },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(alicePush.body.results[0].status, "conflict");
+    const row = await db
+      .selectFrom("expenses")
+      .select(["cost_minor", "description", "version"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    assert.equal(row.cost_minor, 8000, "the guest's online edit is ledger truth");
+    assert.equal(row.description, "Guest was online");
+    assert.equal(row.version, 2);
+  });
+
+  test("an ordinary push omit of repeatInterval leaves a live series alone", async () => {
+    const id = ulid();
+    await createExpense({
+      id,
+      groupId,
+      description: "Rent",
+      costMinor: 100000,
+      currencyCode: "USD",
+      date: "2026-01-01",
+      splitType: "equal",
+      participants: [
+        { userId: aliceId, paidMinor: 100000 },
+        { userId: bobId, paidMinor: 0 },
+      ],
+      repeatInterval: "monthly",
+      createdBy: aliceId,
+    });
+    const before = await db
+      .selectFrom("expenses")
+      .select(["repeat_interval", "next_repeat", "version"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+
+    const { body } = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [
+          {
+            kind: "expense.update",
+            id,
+            baseVersion: before.version,
+            payload: {
+              description: "Rent, typo fixed",
+              costMinor: 100000,
+              currencyCode: "USD",
+              date: "2026-01-01",
+              splitType: "equal",
+              groupId,
+              participants: [
+                { userId: aliceId, paidMinor: 100000 },
+                { userId: bobId, paidMinor: 0 },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(body.results[0].status, "applied");
+    const after = await db
+      .selectFrom("expenses")
+      .select(["repeat_interval", "next_repeat", "description"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    assert.equal(after.repeat_interval, "monthly");
+    assert.equal(after.next_repeat, before.next_repeat);
+    assert.equal(after.description, "Rent, typo fixed");
+  });
+
   test("deleting a comment twice is a duplicate", async () => {
     const expenseId = ulid();
     await createExpense({
@@ -682,6 +903,91 @@ describe("push", () => {
       .where("id", "=", expenseId)
       .executeTakeFirstOrThrow();
     assert.equal(row.version, 1);
+  });
+
+  test("a client-minted comment create is idempotent, even with a different body", async () => {
+    const expenseId = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, bobId]) as any),
+      id: expenseId,
+      groupId,
+      createdBy: aliceId,
+    });
+    const commentId = ulid();
+
+    const first = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [{ kind: "comment.create", id: commentId, payload: { expenseId, content: "original" } }],
+      }),
+    });
+    assert.equal(first.body.results[0].status, "applied");
+
+    const second = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [{ kind: "comment.create", id: commentId, payload: { expenseId, content: "different" } }],
+      }),
+    });
+    assert.equal(second.body.results[0].status, "duplicate");
+    assert.equal(second.body.results[0].server.content, "original");
+  });
+
+  test("deleting someone else's comment via push is rejected", async () => {
+    const expenseId = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, bobId]) as any),
+      id: expenseId,
+      groupId,
+      createdBy: aliceId,
+    });
+    const commentId = await createComment({ expenseId, userId: aliceId, content: "Alice's note" });
+
+    const { body } = await as(bobToken, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({ ops: [{ kind: "comment.delete", id: commentId }] }),
+    });
+    assert.equal(body.results[0].status, "rejected");
+
+    const row = await db
+      .selectFrom("comments")
+      .select("deleted_at")
+      .where("id", "=", commentId)
+      .executeTakeFirstOrThrow();
+    assert.equal(row.deleted_at, null);
+  });
+
+  test("a comment on an expense you can no longer see is rejected", async () => {
+    const dropped = await realUser("Unseen", "unseen@example.com");
+    const token = (await createApiToken(dropped, "test")).token;
+    await makeGroup("Bridge", [aliceId, dropped]);
+
+    const id = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, dropped]) as any),
+      id,
+      groupId: null,
+      createdBy: aliceId,
+    });
+
+    await updateExpense(id, {
+      ...(expenseBody([aliceId, bobId]) as any),
+      participants: [
+        { userId: aliceId, paidMinor: 3000 },
+        { userId: bobId, paidMinor: 0 },
+      ],
+      groupId: null,
+      updatedBy: aliceId,
+    });
+
+    const { body } = await as(token, "/sync/push", {
+      method: "POST",
+      body: JSON.stringify({
+        ops: [{ kind: "comment.create", id: ulid(), payload: { expenseId: id, content: "peeking" } }],
+      }),
+    });
+    assert.equal(body.results[0].status, "rejected");
+    assert.match(body.results[0].reason, /not available to comment on/);
   });
 
   describe("rejections", () => {
@@ -888,6 +1194,19 @@ describe("catch-up", () => {
     assert.equal(res.status, 404);
   });
 
+  test("a snapshot of an expense you are not on is a 404, never a 403", async () => {
+    const id = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, bobId], { description: "Private" }) as any),
+      id,
+      groupId: null,
+      createdBy: aliceId,
+    });
+
+    const res = await as(carolToken, `/sync/snapshot?expense_id=${id}`);
+    assert.equal(res.status, 404);
+  });
+
   test("exactly one of group_id or expense_id is required", async () => {
     assert.equal((await as(aliceToken, "/sync/snapshot")).status, 400);
     assert.equal(
@@ -951,6 +1270,97 @@ describe("leaving and forgetting", () => {
     assert.ok(change, "without it they would never learn they had left");
     assert.notEqual(change.data.leftAt, null);
     assert.deepEqual(body.catchUp, [], "being removed is not an access grant");
+  });
+
+  test("leaving a group keeps bills you are on and drops the rest", async () => {
+    const leaver = await realUser("StillOwed", "still-owed@example.com");
+    const token = (await createApiToken(leaver, "test")).token;
+    const temp = await makeGroup("Weekend", [aliceId, leaver]);
+
+    const onIt = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId, leaver], { description: "Dinner we both ate" }) as any),
+      id: onIt,
+      groupId: temp,
+      createdBy: aliceId,
+    });
+    const notOnIt = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId], { description: "Alice's taxi" }) as any),
+      id: notOnIt,
+      groupId: temp,
+      createdBy: aliceId,
+    });
+
+    const before = await as(token, "/sync/bootstrap");
+    assert.ok(before.body.expenses.some((e: any) => e.id === onIt));
+    assert.ok(before.body.expenses.some((e: any) => e.id === notOnIt), "in the group, so they saw it");
+
+    const since = before.body.seq;
+    assert.equal((await as(aliceToken, `/groups/${temp}/members/${leaver}`, { method: "DELETE" })).status, 200);
+
+    const boot = await as(token, "/sync/bootstrap");
+    const ids = boot.body.expenses.map((e: any) => e.id);
+    assert.ok(ids.includes(onIt), "somebody still owes them for that dinner");
+    assert.ok(!ids.includes(notOnIt), "a group bill they were not on is gone");
+
+    const newInGroup = ulid();
+    await createExpense({
+      ...(expenseBody([aliceId], { description: "After they left" }) as any),
+      id: newInGroup,
+      groupId: temp,
+      createdBy: aliceId,
+    });
+
+    const later = await as(token, `/sync/pull?since=${since}`);
+    assert.ok(
+      !later.body.changes.some((ch: any) => ch.entity === "expense" && ch.data?.id === newInGroup),
+      "new group bills do not follow a departed member",
+    );
+
+    await updateExpense(onIt, {
+      ...(expenseBody([aliceId, leaver], { description: "Dinner, corrected" }) as any),
+      groupId: temp,
+      updatedBy: aliceId,
+    });
+    const afterEdit = await as(token, `/sync/pull?since=${later.body.seq}`);
+    assert.ok(
+      afterEdit.body.changes.some(
+        (ch: any) => ch.entity === "expense" && ch.data?.id === onIt && ch.data?.description === "Dinner, corrected",
+      ),
+      "edits of a bill they are on still arrive",
+    );
+  });
+
+  test("re-adding someone who left restores membership and catch-up", async () => {
+    const returning = await realUser("Returning", "returning@example.com");
+    const token = (await createApiToken(returning, "test")).token;
+    const temp = await makeGroup("Comeback", [aliceId, returning]);
+
+    await as(aliceToken, "/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Returning", email: "returning@example.com" }),
+    });
+
+    assert.equal(
+      (await as(aliceToken, `/groups/${temp}/members/${returning}`, { method: "DELETE" })).status,
+      200,
+    );
+
+    const since = (await as(token, "/sync/pull?since=0")).body.seq;
+    const added = await as(aliceToken, `/groups/${temp}/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId: returning }),
+    });
+    assert.equal(added.status, 201);
+
+    const pull = await as(token, `/sync/pull?since=${since}`);
+    const member = pull.body.changes.find(
+      (ch: any) => ch.entity === "group_member" && ch.data?.userId === returning,
+    );
+    assert.ok(member);
+    assert.equal(member.data.leftAt, null);
+    assert.deepEqual(pull.body.catchUp, [{ entity: "group", id: temp }]);
   });
 });
 
@@ -1046,6 +1456,28 @@ describe("claim / merge", () => {
     // And the survivor's new membership triggers a group catch-up rather than a
     // full re-bootstrap.
     assert.deepEqual(body.catchUp, [{ entity: "group", id: trip }]);
+  });
+
+  test("the owner's other device also receives the merge, not only the survivor", async () => {
+    const owner = await realUser("Host", "host@example.com");
+    const ownerToken = (await createApiToken(owner, "test")).token;
+    const claimer = await realUser("GuestAccount", "guest-account@example.com");
+    const ghost = await ghostUser("Seat");
+
+    const trip = await makeGroup("Hosted", [owner, ghost]);
+    await createExpense({
+      ...(expenseBody([owner, ghost]) as any),
+      groupId: trip,
+      createdBy: owner,
+    });
+
+    const since = (await as(ownerToken, "/sync/pull?since=0")).body.seq;
+    await mergeUsers(ghost, claimer);
+
+    const { body } = await as(ownerToken, `/sync/pull?since=${since}`);
+    const merge = body.changes.find((ch: any) => ch.entity === "user_merge");
+    assert.ok(merge, "the owner has to remap the ghost in their replica too");
+    assert.deepEqual(merge.data, { fromUserId: ghost, toUserId: claimer });
   });
 });
 

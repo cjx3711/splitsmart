@@ -91,7 +91,7 @@ export function friendInviteEmail(input: FriendInviteEmail): {
   const { name, inviterName, acceptUrl, isNewAccount } = input;
 
   const lead = isNewAccount
-    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to see what the two of you have split — no account or password needed, as long as the link has not expired.`
+    ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to see what the two of you have split - no account or password needed, as long as the link has not expired.`
     : `${inviterName} added you as a friend on SplitSmart. You can see what you owe each other next time you log in.`;
 
   const action = isNewAccount ? "Open your expenses" : "Open SplitSmart";

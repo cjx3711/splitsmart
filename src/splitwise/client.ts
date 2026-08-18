@@ -63,7 +63,7 @@ export interface SplitwiseExpenseUser {
 /**
  * A comment on an expense, as Splitwise returns it.
  *
- * `comment_type` is `"User"` or `"System"` — capitalised, and the reason the
+ * `comment_type` is `"User"` or `"System"` - capitalised, and the reason the
  * importer maps rather than trusting the string. System rows are the edit history
  * of the bill ("Jane updated this transaction: ..."), and they are the only
  * edit history Splitwise will ever give us, so they are imported too.
@@ -182,7 +182,7 @@ export class SplitwiseClient {
    *
    * Needed because `get_expenses` may or may not nest them: this is the fallback
    * that makes comment import work either way, and the paged
-   * `POST /api/v1/import/comments` step is built on it. Still read-only — there
+   * `POST /api/v1/import/comments` step is built on it. Still read-only - there
    * is no `create_comment` here and there must not be.
    */
   async getComments(expenseId: number): Promise<SplitwiseComment[]> {

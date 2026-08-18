@@ -340,9 +340,12 @@ export function ApiDocs() {
       <p>
         <strong>Three states, and they differ.</strong> Omitting{" "}
         <code>repeatInterval</code> leaves an existing schedule alone,{" "}
-        <code>null</code> stops it, and a value sets it. Editing a template
-        affects future bills only; deleting it stops the series and keeps the
-        bills it already made. Guests cannot create or change a template.
+        <code>null</code> stops it, and a value sets it. Stopping remembers the
+        interval so it can be turned back on; resuming starts from now and does
+        not create the bills that were missed while it was stopped. Editing a
+        template affects future bills only; deleting it stops the series and
+        keeps the bills it already made. Guests cannot create or change a
+        template.
       </p>
 
       <h3>Comments</h3>
@@ -544,7 +547,7 @@ export function ApiDocs() {
           to call either way: when Splitwise nests comments on the expenses page
           they are already in, and each expense is stamped once fetched so a
           second run does not ask again. Splitwise's automatic{" "}
-          <em>System</em> comments are imported too — they are the only edit
+          <em>System</em> comments are imported too - they are the only edit
           history it will hand over.
         </p>
       </Endpoint>

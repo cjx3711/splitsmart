@@ -12,7 +12,7 @@
  *              only a person knows which is right. There is deliberately no
  *              "merge": applying both edits would double the money, so the choice
  *              is keep theirs or resend mine.
- *   REJECTED   the server refused it outright — an unknown currency, a group you
+ *   REJECTED   the server refused it outright - an unknown currency, a group you
  *              have since left, shares that do not add up. Usually needs the
  *              expense re-entered rather than resent, so the reason is shown
  *              verbatim.
@@ -60,7 +60,7 @@ export function Conflicts() {
                   {local ? local.description : describeKind(op.kind)}
                   {local && (
                     <>
-                      {" — "}
+                      {" - "}
                       <Amount minor={local.costMinor} currency={local.currencyCode} />
                     </>
                   )}

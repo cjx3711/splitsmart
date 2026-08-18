@@ -89,7 +89,7 @@ export function ExpenseForm({
    * shell: generating occurrences is a server job, and a series a guest started
    * would be one the owner cannot see or stop (docs/PARITY.md slice 2). When this
    * is off the form sends NO `repeatInterval` at all, which the server reads as
-   * "leave the schedule alone" — so a guest editing a bill cannot end a series.
+   * "leave the schedule alone" - so a guest editing a bill cannot end a series.
    */
   allowRepeat?: boolean;
 }) {

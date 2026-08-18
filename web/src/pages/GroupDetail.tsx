@@ -2,7 +2,7 @@
  * One group: balances, suggested settle-up, expenses, members, guest links.
  *
  * Everything on the left of the offline/online line in docs/OFFLINE.md is read
- * from the mirror and written through the outbox — the balances and the settle-up
+ * from the mirror and written through the outbox - the balances and the settle-up
  * suggestions are derived here with the same pure functions the server uses, not
  * fetched. Adding a member and minting a guest link stay online-only, and say so.
  */
@@ -334,7 +334,7 @@ export function GroupDetail() {
         slots={linkSlots}
         intro={
           isOwner
-            ? "Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime — if a link is compromised, revoke it and create a new one."
+            ? "Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime - if a link is compromised, revoke it and create a new one."
             : "Only the group owner can create or turn off guest links."
         }
       />

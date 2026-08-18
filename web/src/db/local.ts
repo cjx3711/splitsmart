@@ -10,8 +10,8 @@
  * THREE RULES, and each of them is load-bearing rather than stylistic.
  *
  * 1. **The database name is namespaced by user id.** `splitsmart-<userId>`.
- *    Two accounts on one browser must not share a ledger, and — more importantly
- *    — a *guest link* must never be used as a namespace. Which brings us to:
+ *    Two accounts on one browser must not share a ledger, and - more importantly
+ *    - a *guest link* must never be used as a namespace. Which brings us to:
  *
  * 2. **A guest-link visitor never opens this.** Nothing under web/src/guest/
  *    imports this module, and there is no code path that would let it: a link is
@@ -64,8 +64,8 @@ export type {
  *
  * `synced` is the server's own version of the row. `pending` has an outbox entry
  * waiting. `conflict` means push came back with somebody else's newer row and a
- * person has to choose. `rejected` means the server refused it outright — an
- * unknown currency, a departed member — and it is sitting in quarantine rather
+ * person has to choose. `rejected` means the server refused it outright - an
+ * unknown currency, a departed member - and it is sitting in quarantine rather
  * than silently gone, because an expense that vanishes between devices is worse
  * than an error message.
  */
@@ -82,7 +82,7 @@ export type SyncState = "synced" | "pending" | "conflict" | "rejected";
  *
  * `serverVersion` is what a later edit sends as `baseVersion`. It is the version
  * the row was at when it last came FROM the server, and it does not move when a
- * local edit is queued — an optimistic bump would make the conflict check
+ * local edit is queued - an optimistic bump would make the conflict check
  * compare the wrong number.
  */
 export interface LocalExpense extends SyncExpense {
@@ -101,7 +101,7 @@ export interface LocalComment extends SyncComment {
 }
 
 export interface LocalGroupMember extends SyncGroupMember {
-  /** `${groupId}:${userId}` — a junction table has no id of its own. */
+  /** `${groupId}:${userId}` - a junction table has no id of its own. */
   key: string;
 }
 

@@ -165,7 +165,7 @@
   - paragraph: Creates a placeholder person. Send them a guest link below and they can use the group without an account.
   - button "Add to group" [disabled]
   - heading "Guest links" [level=2]
-  - paragraph: Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime — if a link is compromised, revoke it and create a new one.
+  - paragraph: Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime - if a link is compromised, revoke it and create a new one.
   - strong: Anyone with the link
   - text: No link
   - paragraph: They pick which name they are, and can change it later.

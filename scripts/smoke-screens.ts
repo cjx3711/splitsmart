@@ -171,6 +171,17 @@ const DEFS: ScreenDef[] = [
     waitForText: "Deleting a later one does not stop the series",
   },
   {
+    id: "expense-rent-stop",
+    auth: { kind: "user" },
+    path: "/app/groups",
+    click: [
+      "Apartment 4B",
+      { text: "Rent", near: "repeats" },
+      "Stop repeating",
+    ],
+    waitForText: "Stop repeating this series?",
+  },
+  {
     id: "add-expense-dialog",
     auth: { kind: "user" },
     path: "/app",

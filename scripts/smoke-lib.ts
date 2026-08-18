@@ -35,7 +35,7 @@ export function flag(name: string): boolean {
 /**
  * Everything that changes between two runs of an app that did not change.
  *
- * Amounts, names, counts and labels are left alone — those are the regression.
+ * Amounts, names, counts and labels are left alone - those are the regression.
  */
 const RULES: [RegExp, string][] = [
   [/\b[0-9A-HJKMNP-TV-Z]{26}\b/g, "<ULID>"],

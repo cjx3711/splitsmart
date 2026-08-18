@@ -139,7 +139,7 @@ Path split, not a subdomain. Service workers are origin-wide unless scoped.
 ```
 /app/*     logged-in SPA. PWA SW scope /app/. start_url /app/.
 /guest/*   guest SPA. Network-only SW scope /guest/. No precache of API.
-/          marketing, about, docs — not the PWA.
+/          marketing, about, docs - not the PWA.
 ```
 
 Vite MPA: `index.html`, `app.html` and `guest.html`, three `createRoot`s,
@@ -147,11 +147,11 @@ shared `web/src` components (`ExpenseForm`, `SplitEditor`, `money.tsx`,
 `reopenExpense.ts`, …). Guest bundle imports no Dexie, no sync, and no
 logged-in router. Router basenames `/app` and `/guest`; the marketing shell is
 at the root. Crossing shells is a document load, so those links are plain
-`<a href>` — a `<Link to="/about">` inside `/app` resolves to `/app/about` and
+`<a href>` - a `<Link to="/about">` inside `/app` resolves to `/app/about` and
 404s, which is why `Footer.tsx` says so at the top.
 
 Guest SW exists so a future or leftover SW at `/` cannot control `/guest/`:
-longer matching scope wins. It is network-only and never touches `caches` —
+longer matching scope wins. It is network-only and never touches `caches` -
 `caches.keys()` is origin-wide, so deleting them would wipe the logged-in app
 shell the moment someone opens a claim link. Navigate with no network is a
 needs-connection screen, not last week's balances. That is the whole point of
@@ -178,7 +178,7 @@ them to `/app/groups/:id`. They are not offered a different name to become.
 ## Claim
 
 One user flow. Create the account first, then claim. No in-place
-"set password on the ghost" path — that is a second flow for the same outcome.
+"set password on the ghost" path - that is a second flow for the same outcome.
 
 ```
 Guest (not logged in)
@@ -202,8 +202,8 @@ placeholder. `authoriseClaim` is shared by preview and confirm so the two
 cannot disagree about who is claimable.
 
 The banner passes the secret to `/app/claim` in the query string. That is the
-one place a secret goes back into a URL and it is unavoidable — `/app` is a
-different document and cannot read the guest shell's memory — so the claim page
+one place a secret goes back into a URL and it is unavoidable - `/app` is a
+different document and cannot read the guest shell's memory - so the claim page
 `replaceState`s it away as soon as it has read it.
 
 After merge the ghost is retired (`deleted_at` + `merged_into_user_id`), so
@@ -241,7 +241,7 @@ row to the account id when the account is already on it. Combine instead:
 
 - `paid_share_minor` and `owed_share_minor` **sum**.
 - Drop the `from` row.
-- Totals still equal `cost_minor` — we did not change the pie, only the
+- Totals still equal `cost_minor` - we did not change the pie, only the
   number of slices. Then `deriveRepayments()` as on every other write.
 - Set `split_type = 'exact'`, `split_input = owed` for remaining people,
   `split_meta = NULL`. Do **not** re-run `computeSplit` from the old type:
@@ -302,7 +302,7 @@ in the same transaction.
 Rotating a general link does not kill per-member or friend links. Revoking a
 person's member link does not kill the general link (they can still pick
 themselves there until you expire that too). Removing a member from a group
-revokes their `group_member` link for that group — that rule lives in
+revokes their `group_member` link for that group - that rule lives in
 `routes/native/groups.ts`, next to the removal itself.
 
 ---
@@ -355,7 +355,7 @@ an index.
 A persistent banner (`ClaimBanner.tsx`): create an account to claim this
 identity. The rest of the guest app is the existing group/friend/expense
 screens with owner-only controls stripped. People picker is group members (or
-the owner, on a friend link) — no "add a person". `ExpenseList` takes
+the owner, on a friend link) - no "add a person". `ExpenseList` takes
 `personLinks={false}` there, because `/friends/:id` is a logged-in screen and
 would be a dead end.
 

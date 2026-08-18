@@ -6,7 +6,7 @@
  *
  *   adding a friend, adding a group member, creating a group
  *     each mints a server-side USER or GROUP identity. Queueing one means the
- *     client inventing an identity that later has to be reconciled — by email, for
+ *     client inventing an identity that later has to be reconciled - by email, for
  *     friends, which is the single heuristic the Splitwise importer gates behind a
  *     named preview because a wrong match merges two people's money. The same
  *     placeholder created offline on two devices is two people where there should

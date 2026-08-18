@@ -1,7 +1,7 @@
 /**
  * Recurrence arithmetic.
  *
- * Pure, so this file needs no database and no server — the same reason
+ * Pure, so this file needs no database and no server - the same reason
  * split.test.ts is fast. What it pins is the two things that go wrong quietly in
  * a scheduler:
  *
@@ -52,7 +52,7 @@ describe("nextOccurrence", () => {
   test("clamping does not compound: advancing from the clamped date returns to 31", () => {
     // The anchor is the DATE ITSELF, so a series that got clamped in February
     // does not stay on the 28th for the rest of its life. Advancing from
-    // 2026-01-31 twice, one interval at a time, is how the scheduler does it —
+    // 2026-01-31 twice, one interval at a time, is how the scheduler does it -
     // which is exactly why it re-derives from `next_repeat` and not from "now".
     const feb = nextOccurrence("2026-01-31T00:00:00Z", "monthly");
     assert.equal(feb, "2026-02-28T00:00:00.000Z");
@@ -142,6 +142,10 @@ describe("seriesTemplateId", () => {
 
   test("an occurrence points at the template, never at another occurrence", () => {
     assert.equal(seriesTemplateId("bill", "tmpl", null), "tmpl");
+  });
+
+  test("a one-off is not in a series", () => {
+    assert.equal(seriesTemplateId("once", null, null), null);
   });
 
   test("a paused template is still the series, so it can be resumed", () => {

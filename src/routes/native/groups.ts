@@ -26,6 +26,7 @@ import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-f
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 import { MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
+import { repeatPausedOf } from "../../domain/metadata.ts";
 
 export const groupRoutes = new Hono<AppEnv>();
 groupRoutes.use("*", requireAuth);
@@ -465,7 +466,7 @@ groupRoutes.delete("/:id/members/:userId", async (c) => {
 
     // An `upsert` carrying `left_at`, not a `forget`. The departing member has to
     // RECEIVE this row, and after `left_at` is set they no longer match the
-    // membership clause in the pull query — which is why that query also matches
+    // membership clause in the pull query - which is why that query also matches
     // `entity = 'group_member' AND entity_id = :me`. They apply it, drop the
     // group's expenses they are not a participant of, and keep the ones they are.
     await logChange(trx, {
@@ -685,6 +686,7 @@ expenseRoutes.get("/:id", async (c) => {
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.category_id", "expenses.group_id",
       "expenses.repeat_interval", "expenses.next_repeat", "expenses.repeat_of",
+      "expenses.metadata",
       // What an offline edit sends back as `baseVersion`, so a stale write is a
       // conflict rather than an overwrite. See docs/OFFLINE.md.
       "expenses.version",
@@ -702,10 +704,14 @@ expenseRoutes.get("/:id", async (c) => {
     .where("expense_id", "=", expenseId)
     .execute();
 
+  const { metadata, ...publicExpense } = expense;
+  const repeatPaused = repeatPausedOf(metadata);
+
   // How many bills this series has produced, or where this one came from. The
-  // template id plus `repeat_of` IS the bundle; there is no bundle table.
+  // template id plus `repeat_of` IS the bundle; there is no bundle table. A
+  // paused template still counts: it is the series head until resumed.
   const seriesCount =
-    expense.repeat_interval === null
+    publicExpense.repeat_interval === null && repeatPaused === null
       ? 0
       : Number(
           (
@@ -718,7 +724,14 @@ expenseRoutes.get("/:id", async (c) => {
           ).n,
         );
 
-  return c.json({ expense: { ...expense, shares, series_count: seriesCount } });
+  return c.json({
+    expense: {
+      ...publicExpense,
+      shares,
+      series_count: seriesCount,
+      repeat_paused: repeatPaused,
+    },
+  });
 });
 
 /** Replaces an expense's contents via the domain layer's updateExpense. */

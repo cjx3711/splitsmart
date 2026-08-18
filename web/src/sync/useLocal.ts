@@ -7,8 +7,8 @@
  * `useEffect` + `api.x()` + `setState` shape had to be told when its data was
  * stale, and the answer was always "somewhere else in the tree".
  *
- * `undefined` means the query has not resolved yet — the same convention
- * `useLiveQuery` uses — and every caller distinguishes that from an empty result,
+ * `undefined` means the query has not resolved yet - the same convention
+ * `useLiveQuery` uses - and every caller distinguishes that from an empty result,
  * because "loading" and "you have no expenses" are very different screens.
  */
 import { useLiveQuery } from "dexie-react-hooks";

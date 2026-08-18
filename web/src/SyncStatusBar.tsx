@@ -4,14 +4,14 @@
  * Offline-first without this is a lie by omission: the app looks identical whether
  * a write is on the server or sitting in IndexedDB on one laptop, and the moment
  * somebody finds that out is the moment they stop trusting the ledger. So the bar
- * appears exactly when there is something true to say and is silent otherwise —
+ * appears exactly when there is something true to say and is silent otherwise -
  * a permanent "all synced" banner is noise that trains people not to read it.
  *
  * Four things it can say, in order of how much they matter:
  *
  *   1. Writes the server REFUSED or overtook. A link to the quarantine screen.
  *   2. No connection, with the unsynced count and when we last managed a sync.
- *   3. Unsynced writes while apparently online — a failing sync rather than a
+ *   3. Unsynced writes while apparently online - a failing sync rather than a
  *      missing network, which is a different problem and worth distinguishing.
  *   4. Signed out on the server with a queue still waiting. Reconnect, not logout.
  */
@@ -92,7 +92,7 @@ function lastSynced(at: string | null): string {
 /**
  * A per-row badge: pending, conflict, or rejected.
  *
- * Rendered by the expense list and the expense page. Nothing for a synced row —
+ * Rendered by the expense list and the expense page. Nothing for a synced row -
  * that is the normal case, and marking it would make the exceptions harder to see,
  * not easier.
  */

@@ -37,7 +37,7 @@ function decide(queued: OutboxOp | undefined, write: LocalWrite) {
   return reduceOutbox(queued, write, AT);
 }
 
-describe("reduceOutbox — nothing queued", () => {
+describe("reduceOutbox - nothing queued", () => {
   test("create becomes a pending create", () => {
     const d = decide(undefined, { kind: "expense.create", id: ID, payload: payload as never });
     assert.equal(d.action, "insert");
@@ -74,7 +74,7 @@ describe("reduceOutbox — nothing queued", () => {
   });
 });
 
-describe("reduceOutbox — folding", () => {
+describe("reduceOutbox - folding", () => {
   test("edit of a pending create stays a create with the new payload", () => {
     const d = decide(pending("expense.create"), {
       kind: "expense.update",
@@ -158,6 +158,36 @@ describe("reduceOutbox — folding", () => {
       "drop",
     );
   });
+
+  test("edit of a pending payment create stays a payment create", () => {
+    const d = decide(pending("payment.create"), {
+      kind: "expense.update",
+      id: ID,
+      payload: { ...payload, description: "Settled" } as never,
+      baseVersion: 1,
+    });
+    assert.equal(d.action, "replace");
+    if (d.action === "replace") {
+      assert.equal(d.entry.kind, "payment.create");
+      assert.equal(d.entry.baseVersion, null);
+      assert.equal((d.entry.payload as { description: string }).description, "Settled");
+    }
+  });
+
+  test("edit of a pending delete is ignored, not a resurrection", () => {
+    const d = decide(pending("expense.delete"), {
+      kind: "expense.update",
+      id: ID,
+      payload: payload as never,
+      baseVersion: 3,
+    });
+    assert.equal(d.action, "ignore");
+  });
+
+  test("restore of a live pending create is ignored", () => {
+    const d = decide(pending("expense.create"), { kind: "expense.restore", id: ID, baseVersion: 1 });
+    assert.equal(d.action, "ignore");
+  });
 });
 
 describe("reconcileRemote", () => {
@@ -189,6 +219,20 @@ describe("reconcileRemote", () => {
     assert.equal(r.applyRemote, false);
     assert.equal(r.keepPending, true);
     assert.equal(r.conflict, true);
+  });
+
+  test("pending restore vs a remote upsert is kept, not overwritten", () => {
+    const r = reconcileRemote(pending("expense.restore"), { type: "upsert" });
+    assert.equal(r.applyRemote, false);
+    assert.equal(r.keepPending, true);
+    assert.equal(r.conflict, false);
+  });
+
+  test("pending create vs a remote delete still loses: delete wins", () => {
+    const r = reconcileRemote(pending("expense.create"), { type: "delete" });
+    assert.equal(r.applyRemote, true);
+    assert.equal(r.keepPending, false);
+    assert.equal(r.conflict, false);
   });
 
   test("no pending op applies the remote", () => {

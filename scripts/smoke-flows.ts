@@ -63,6 +63,41 @@ async function openGroupExpense(page: Page, group: string): Promise<void> {
   await dialog(page).getByLabel("Description").waitFor({ timeout: 10_000 });
 }
 
+async function openRentTemplate(page: Page): Promise<void> {
+  await clickNamed(page, "Groups");
+  await clickNamed(page, "Apartment 4B");
+  await clickNamed(page, { text: "Rent", near: "repeats" });
+  await page.getByRole("button", { name: "Stop repeating" }).waitFor({ timeout: 10_000 });
+}
+
+function utcToday(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Next-bill dates only - never the dates of bills already in the list. */
+function nextBillDate(text: string): string | null {
+  const match =
+    text.match(/next bill will be (\d{4}-\d{2}-\d{2})/i) ??
+    text.match(/Coming\s+(\d{4}-\d{2}-\d{2})/) ??
+    text.match(/next on\s+(\d{4}-\d{2}-\d{2})/i) ??
+    text.match(/The bill for (\d{4}-\d{2}-\d{2}) will be created soon/);
+  return match?.[1] ?? null;
+}
+
+function requireFutureNextBill(label: string, text: string): string {
+  const date = nextBillDate(text);
+  if (!date) throw new Error(`${label} had no next-bill date: ${JSON.stringify(text.slice(0, 400))}`);
+  const today = utcToday();
+  if (date < today) {
+    throw new Error(`${label} next bill ${date} is before ${today}; resume backfilled`);
+  }
+  return date;
+}
+
+async function seriesRentBillCount(page: Page): Promise<number> {
+  return page.locator("main .list-item[role='link']").filter({ hasText: "Rent" }).count();
+}
+
 async function screenshot(page: Page, ctx: FlowCtx, id: string): Promise<string> {
   await page.addStyleTag({ content: STABILISE_CSS }).catch(() => {});
   const path = join(ctx.shotDir, `${id}.png`);
@@ -271,6 +306,88 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       } finally {
         await jjCtx.close();
       }
+    },
+  },
+  {
+    id: "F8",
+    title: "Stop a series warns; resume starts from today and does not backfill",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+      await openRentTemplate(page);
+
+      await page.getByRole("button", { name: "Stop repeating" }).click();
+      const stopDlg = dialog(page);
+      await stopDlg.getByRole("heading", { name: "Stop repeating this series?" }).waitFor({ timeout: 5_000 });
+      const stopCopy = (await stopDlg.innerText()).replace(/\s+/g, " ");
+      if (!/missed while it was stopped will not be created/i.test(stopCopy)) {
+        throw new Error(`stop warning omitted no-backfill copy: ${stopCopy}`);
+      }
+      if (!/bills already made stay/i.test(stopCopy)) {
+        throw new Error(`stop warning omitted that existing bills stay: ${stopCopy}`);
+      }
+
+      await stopDlg.getByRole("button", { name: "Cancel" }).click();
+      await stopDlg.waitFor({ state: "hidden", timeout: 5_000 });
+      if (!(await page.getByRole("button", { name: "Stop repeating" }).isVisible())) {
+        throw new Error("cancelling stop should leave the series live");
+      }
+      await page.getByText("will be created soon").waitFor({ timeout: 5_000 });
+
+      await page.getByRole("button", { name: "Stop repeating" }).click();
+      await dialog(page).getByRole("button", { name: "Stop repeating" }).click();
+      await page.getByRole("button", { name: "Resume repeating" }).waitFor({ timeout: 15_000 });
+      const stoppedBody = await page.locator("main").innerText();
+      if (!/repeating is stopped/i.test(stoppedBody)) {
+        throw new Error(`paused Rent page was ${JSON.stringify(stoppedBody.slice(0, 400))}`);
+      }
+      if (/will be created soon/i.test(stoppedBody)) {
+        throw new Error("paused series still advertised a coming bill");
+      }
+
+      await clickNamed(page, "View all bills in this series");
+      await page.getByText("This series has stopped").waitFor({ timeout: 10_000 });
+      const seriesStopped = await page.locator("main").innerText();
+      if (!/missed will not be created/i.test(seriesStopped)) {
+        throw new Error(`stopped series page omitted resume-from-now copy: ${seriesStopped.slice(0, 400)}`);
+      }
+      if (/\bComing\b/.test(seriesStopped)) {
+        throw new Error("stopped series page still showed a Coming row");
+      }
+      const billsWhileStopped = await seriesRentBillCount(page);
+
+      await page.getByRole("button", { name: "Resume repeating" }).click();
+      const resumeDlg = dialog(page);
+      await resumeDlg.getByRole("heading", { name: "Resume repeating?" }).waitFor({ timeout: 5_000 });
+      const resumeCopy = (await resumeDlg.innerText()).replace(/\s+/g, " ");
+      if (!/will not be created/i.test(resumeCopy)) {
+        throw new Error(`resume dialog omitted no-backfill copy: ${resumeCopy}`);
+      }
+      const resumeOn = requireFutureNextBill("resume dialog", resumeCopy);
+
+      await resumeDlg.getByRole("button", { name: "Cancel" }).click();
+      await resumeDlg.waitFor({ state: "hidden", timeout: 5_000 });
+      await page.getByText("This series has stopped").waitFor({ timeout: 5_000 });
+
+      await page.getByRole("button", { name: "Resume repeating" }).click();
+      await dialog(page).getByRole("button", { name: "Resume repeating" }).click();
+      await page.getByRole("button", { name: "Stop repeating" }).waitFor({ timeout: 15_000 });
+      const seriesLive = await page.locator("main").innerText();
+      if (/this series has stopped/i.test(seriesLive)) {
+        throw new Error("series page still said it was stopped after resume");
+      }
+      if (!/\bComing\b/.test(seriesLive) && !/next on/i.test(seriesLive)) {
+        throw new Error("resumed series showed neither Coming nor a next date");
+      }
+      requireFutureNextBill("resumed series page", seriesLive);
+      const billsAfterResume = await seriesRentBillCount(page);
+      if (billsAfterResume > billsWhileStopped + 1) {
+        throw new Error(
+          `resume created ${billsAfterResume - billsWhileStopped} extra bills (had ${billsWhileStopped}); that is backfill`,
+        );
+      }
+
+      return `Stop warning named missed months; cancel left Rent live; confirm paused it. Resume named ${resumeOn} and did not backfill (${billsWhileStopped} bills stayed ${billsAfterResume}).`;
     },
   },
 ];

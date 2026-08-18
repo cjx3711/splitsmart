@@ -1,8 +1,8 @@
 /**
  * Writing sync payloads into the mirror.
  *
- * Every path that puts server data into Dexie goes through here — bootstrap,
- * pull, snapshot, and the write-through the online API calls do — so there is one
+ * Every path that puts server data into Dexie goes through here - bootstrap,
+ * pull, snapshot, and the write-through the online API calls do - so there is one
  * answer to "what does storing an expense mean" rather than four.
  *
  * These functions are deliberately dumb: they store what they are given. The
@@ -30,6 +30,7 @@ import type {
   SyncUser,
 } from "./local.ts";
 import { friendshipKey, memberKey, setMeta } from "./local.ts";
+import { remapPayloadUser } from "./remap.ts";
 
 // ---------------------------------------------------------------------------
 // People
@@ -166,8 +167,8 @@ export async function dropFriendship(
  * Currencies and categories.
  *
  * Not an optimisation. `web/src/money.tsx` refuses to render an amount without
- * its currency's decimal places — on purpose, since defaulting to 2 is how JPY
- * shows at a hundredth of its value — so a mirror with expenses and no currencies
+ * its currency's decimal places - on purpose, since defaulting to 2 is how JPY
+ * shows at a hundredth of its value - so a mirror with expenses and no currencies
  * is a screen of dashes.
  */
 export async function putReferenceData(
@@ -187,8 +188,8 @@ export async function putReferenceData(
  *
  * This is `forget`, not `delete`. A delete leaves a tombstone every device keeps
  * so the undo works from any of them; a forget means the caller may no longer see
- * this bill at all — they were removed from it, or it moved into a group they are
- * not in — and keeping a copy would leave it counting towards a balance they are
+ * this bill at all - they were removed from it, or it moved into a group they are
+ * not in - and keeping a copy would leave it counting towards a balance they are
  * no longer part of.
  *
  * The outbox entries go too, and that is the point rather than tidiness: pushing
@@ -238,7 +239,7 @@ export async function forgetGroupExpenses(
  * Applies a `user_merge`: the ghost `fromUserId` is now the account `toUserId`.
  *
  * Wipe-and-rebootstrap would be much simpler and is the wrong answer. It destroys
- * the outbox — the only copy of an unsynced dinner — along with conflict and
+ * the outbox - the only copy of an unsynced dinner - along with conflict and
  * quarantine state, and it would fire on the *owner's* other laptop merely because
  * somebody else claimed a placeholder they created. So: remap.
  *
@@ -270,7 +271,7 @@ export async function applyUserMerge(
     db.outbox,
     async () => {
       // Memberships: repoint, unless the survivor already has a row in that
-      // group — then the survivor's row wins and the ghost's is dropped, exactly
+      // group - then the survivor's row wins and the ghost's is dropped, exactly
       // as the server did.
       for (const member of await db.groupMembers.where("userId").equals(fromUserId).toArray()) {
         await db.groupMembers.delete(member.key);
@@ -329,37 +330,6 @@ export async function applyUserMerge(
   return unmappable;
 }
 
-/**
- * Rewrites `from` to `to` in a queued payload's participant list.
- *
- * Returns the payload unchanged when it never mentioned the ghost, or the string
- * `"collision"` when the rewrite would name the survivor twice — see
- * `applyUserMerge`. Structural and defensive on purpose: a payload is `unknown`
- * here because the reducer owns its shape, and a payload we cannot read is one we
- * must not silently mangle.
- */
-function remapPayloadUser(
-  payload: unknown,
-  fromUserId: string,
-  toUserId: string,
-): unknown | "collision" {
-  if (payload === null || typeof payload !== "object") return payload;
-
-  const body = payload as { participants?: Array<{ userId?: unknown }> };
-  if (!Array.isArray(body.participants)) return payload;
-
-  const ids = body.participants.map((p) => p.userId);
-  if (!ids.includes(fromUserId)) return payload;
-  if (ids.includes(toUserId)) return "collision";
-
-  return {
-    ...body,
-    participants: body.participants.map((p) =>
-      p.userId === fromUserId ? { ...p, userId: toUserId } : p,
-    ),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
@@ -381,7 +351,7 @@ export interface BootstrapPage {
  * Applies one bootstrap page.
  *
  * The cursor is NOT advanced here. The caller keeps the `seq` from the FIRST page
- * and writes it once every page has drained — see web/src/sync/engine.ts for why
+ * and writes it once every page has drained - see web/src/sync/engine.ts for why
  * that direction of error is the safe one.
  */
 export async function applyBootstrapPage(db: LocalDb, page: BootstrapPage): Promise<void> {

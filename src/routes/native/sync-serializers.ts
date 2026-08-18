@@ -23,6 +23,7 @@ import type {
   SyncShare,
   SyncUser,
 } from "../../domain/sync-types.ts";
+import { repeatPausedOf } from "../../domain/metadata.ts";
 
 export type {
   SyncCategory,
@@ -126,6 +127,7 @@ const EXPENSE_COLUMNS = [
   "repeat_interval",
   "next_repeat",
   "repeat_of",
+  "metadata",
   "version",
   "created_by",
   "updated_by",
@@ -194,6 +196,7 @@ export async function loadExpenses(
       repeatInterval: row.repeat_interval,
       nextRepeat: row.next_repeat,
       repeatOf: row.repeat_of,
+      repeatPaused: repeatPausedOf(row.metadata),
       version: row.version,
       createdBy: row.created_by,
       updatedBy: row.updated_by,
@@ -358,7 +361,7 @@ export async function loadGroupMember(
  *
  * DERIVED friends are deliberately not here. There is no row for them
  * (src/domain/friends.ts), and the client recomputes the union locally the same
- * way `listRelatedUserIds` does on the server — from the group memberships and
+ * way `listRelatedUserIds` does on the server - from the group memberships and
  * expense shares it already holds.
  */
 export async function loadFriendships(
@@ -403,8 +406,8 @@ export async function serialiseFriendships(
  * Currencies and the category tree.
  *
  * REQUIRED, not an optimisation. `web/src/money.tsx` refuses to render an amount
- * without its currency's `decimalPlaces` — deliberately, because defaulting to 2
- * is how JPY ends up displayed at a hundredth of its value — so a client with no
+ * without its currency's `decimalPlaces` - deliberately, because defaulting to 2
+ * is how JPY ends up displayed at a hundredth of its value - so a client with no
  * currencies table shows a screen of dashes rather than a ledger. That is why
  * these travel with the bootstrap rather than being fetched separately and
  * hoped for.

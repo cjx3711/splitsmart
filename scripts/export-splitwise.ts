@@ -90,8 +90,8 @@ async function fetchAllExpenses(): Promise<unknown[]> {
  * Comments, per expense, for every expense that says it has some.
  *
  * The expenses dump above ALREADY contains them if this Splitwise deployment
- * nests `comments[]` on the list payload. It may not — it may only send
- * `comments_count` — and that is the whole reason this walk exists: comments are
+ * nests `comments[]` on the list payload. It may not - it may only send
+ * `comments_count` - and that is the whole reason this walk exists: comments are
  * the only edit history Splitwise will ever hand over ("Jane updated this
  * transaction: the cost changed from 6.99 to 8.99"), and once the API is behind a
  * paywall that history is gone.

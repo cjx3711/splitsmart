@@ -45,7 +45,7 @@ export function defaultLinkExpiry(from = new Date()): string {
  * Picks the expiry for a new link.
  *
  * Absent means the default (3 months). A requested time is honoured only if it
- * is sooner than that cap — owners cannot mint a link that outlives the max.
+ * is sooner than that cap - owners cannot mint a link that outlives the max.
  */
 export function resolveLinkExpiry(expiresAt?: string | null, from = new Date()): string {
   const cap = new Date(from.getTime() + LINK_TTL_DAYS * MS_PER_DAY);
@@ -118,7 +118,7 @@ export interface MintInput {
  * Mints a link, revoking whatever live link already occupied the same slot.
  *
  * There is at most one live link per (group), (group, member) or (owner,
- * friend) — the schema enforces it with partial unique indexes — so minting is
+ * friend) - the schema enforces it with partial unique indexes - so minting is
  * also how you rotate: the old secret dies at the same instant the new one is
  * born, and no window exists where both work.
  *

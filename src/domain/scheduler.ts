@@ -18,8 +18,8 @@
  *    ordinary expense: same participants, same split type, same split inputs,
  *    with `repeat_of` set and no schedule of its own.
  * 3. **It is idempotent per (template, due date).** The occurrence and the
- *    schedule advance cannot share a transaction — `createExpense` opens its own
- *    and SQLite has no nested BEGIN — so a crash between the two would otherwise
+ *    schedule advance cannot share a transaction - `createExpense` opens its own
+ *    and SQLite has no nested BEGIN - so a crash between the two would otherwise
  *    duplicate a bill. Instead the generator checks for an occurrence already
  *    dated that day and skips it, which also makes a re-run free.
  *

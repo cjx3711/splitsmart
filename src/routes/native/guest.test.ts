@@ -634,4 +634,187 @@ describe("guest writes", () => {
       );
     }
   });
+
+  test("there is no restore route: a guest can delete, and that is the end of it", async () => {
+    const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
+    const created = await guest(secret, "/expenses", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "Gone",
+        costMinor: 100,
+        currencyCode: "USD",
+        date: "2026-04-14",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 100 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+    const { id } = await json<{ id: string }>(created);
+    assert.equal((await guest(secret, `/expenses/${id}`, { method: "DELETE" })).status, 200);
+
+    const restored = await guest(secret, `/expenses/${id}/restore`, { method: "POST", body: "{}" });
+    assert.equal(restored.status, 404, "undo is a logged-in capability; a link cannot un-delete");
+  });
+
+  test("cannot name people this link cannot see", async () => {
+    const stranger = ulid();
+    await db
+      .insertInto("users")
+      .values({ id: stranger, name: "Stranger", default_currency: "USD", is_ghost: 1 })
+      .execute();
+    const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
+
+    const res = await guest(secret, "/expenses", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "With a stranger",
+        costMinor: 100,
+        currencyCode: "USD",
+        date: "2026-04-15",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 100 },
+          { userId: stranger, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(res.status, 403);
+  });
+
+  test("cannot record a settle-up between two other people", async () => {
+    const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
+
+    const res = await guest(secret, "/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        fromUserId: bobId,
+        toUserId: ownerId,
+        amountMinor: 500,
+        currencyCode: "USD",
+      }),
+    });
+    assert.equal(res.status, 403, "Alice has to be on the payment, not just in the group");
+  });
+});
+
+describe("guest writes through a general group link", () => {
+  test("a write with nobody picked is 409, not 401", async () => {
+    const secret = await mint({ kind: "group", groupId: sharedGroupId });
+
+    const res = await guest(secret, "/expenses", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "Unpicked",
+        costMinor: 100,
+        currencyCode: "USD",
+        date: "2026-04-16",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 100 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(res.status, 409, "the link is fine; they have not said who they are");
+    assert.equal((await json<{ needsPicker: boolean }>(res)).needsPicker, true);
+  });
+
+  test("the same secret can write as Alice, then as Bob", async () => {
+    const secret = await mint({ kind: "group", groupId: sharedGroupId });
+
+    const asAlice = await guest(secret, "/expenses", {
+      method: "POST",
+      actingAs: aliceId,
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "Alice's round",
+        costMinor: 400,
+        currencyCode: "USD",
+        date: "2026-04-17",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 400 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(asAlice.status, 201);
+    const aliceExpense = await json<{ id: string }>(asAlice);
+    assert.equal(
+      (
+        await db
+          .selectFrom("expenses")
+          .select("created_by")
+          .where("id", "=", aliceExpense.id)
+          .executeTakeFirstOrThrow()
+      ).created_by,
+      aliceId,
+    );
+
+    const asBob = await guest(secret, "/expenses", {
+      method: "POST",
+      actingAs: bobId,
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "Bob's round",
+        costMinor: 500,
+        currencyCode: "USD",
+        date: "2026-04-18",
+        splitType: "equal",
+        participants: [
+          { userId: bobId, paidMinor: 500 },
+          { userId: aliceId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(asBob.status, 201);
+    const bobExpense = await json<{ id: string }>(asBob);
+    assert.equal(
+      (
+        await db
+          .selectFrom("expenses")
+          .select("created_by")
+          .where("id", "=", bobExpense.id)
+          .executeTakeFirstOrThrow()
+      ).created_by,
+      bobId,
+    );
+  });
+});
+
+describe("guest writes through a friend link", () => {
+  test("can create a 1:1 expense with the owner", async () => {
+    const secret = await mint({ kind: "friend", userId: aliceId });
+
+    const res = await guest(secret, "/expenses", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: null,
+        description: "Taxi home",
+        costMinor: 2000,
+        currencyCode: "USD",
+        date: "2026-04-19",
+        splitType: "equal",
+        participants: [
+          { userId: aliceId, paidMinor: 2000 },
+          { userId: ownerId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(res.status, 201);
+    const { id } = await json<{ id: string }>(res);
+    const row = await db
+      .selectFrom("expenses")
+      .select(["group_id", "created_by"])
+      .where("id", "=", id)
+      .executeTakeFirstOrThrow();
+    assert.equal(row.group_id, null);
+    assert.equal(row.created_by, aliceId);
+  });
 });

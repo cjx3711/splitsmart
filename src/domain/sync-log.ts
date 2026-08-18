@@ -9,8 +9,8 @@
  * remember.
  *
  * It is NOT the activity feed. `activity` is a human story with suppression
- * rules — the Splitwise importer deliberately writes one entry for a thousand
- * expenses — while this is a replication log where every write appears,
+ * rules - the Splitwise importer deliberately writes one entry for a thousand
+ * expenses - while this is a replication log where every write appears,
  * imported ones included. Nothing here is shown to a person.
  *
  * WHO MAY READ A ROW IS DECIDED AT READ TIME. `/api/v1/sync/pull` joins the
@@ -21,7 +21,7 @@
  *
  *   `audience_user_id`  "this row is for you and nobody else". You were removed
  *                       from an expense, so you no longer match the participant
- *                       subquery that would have delivered it — the row that
+ *                       subquery that would have delivered it - the row that
  *                       tells you to drop your copy has to name you.
  *   `other_user_id`     the second half of a pair (a friendship's `user_b_id`,
  *                       a merge's survivor).
@@ -46,8 +46,8 @@ export type SyncEntity = (typeof SYNC_ENTITIES)[number];
  * `upsert` is everything that leaves a readable row behind, including a restore
  * (the row is live again) and a scheduler tick moving `next_repeat`. `delete` is
  * a ledger tombstone: the row still exists and the client keeps it as one.
- * `forget` is different and stronger — drop your replica, you cannot see this
- * any more — and `merge` is a claim.
+ * `forget` is different and stronger - drop your replica, you cannot see this
+ * any more - and `merge` is a claim.
  */
 export type SyncOp = "upsert" | "delete" | "forget" | "merge";
 
@@ -109,7 +109,7 @@ export async function logChange(trx: DB, ...entries: SyncLogEntry[]): Promise<vo
  *
  *   **Lost access.** Someone was a participant and is not any more. They no
  *   longer match the participant subquery, so nothing would ever tell them their
- *   local copy is stale — it would sit in their ledger forever, still counting
+ *   local copy is stale - it would sit in their ledger forever, still counting
  *   towards a balance they are no longer part of. A `forget` addressed to them
  *   is the row that says drop it. Skipped when they are still a current member
  *   of the expense's group, because then they can still see the bill.

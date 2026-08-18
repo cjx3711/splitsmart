@@ -8,7 +8,7 @@
  * the split reopen as typed rather than being re-derived from the stored
  * amounts. See src/domain/expenses.ts.
  *
- * The save is queued, not posted, and carries `baseVersion` — the version this
+ * The save is queued, not posted, and carries `baseVersion` - the version this
  * form was opened against. A mismatch on the server is a CONFLICT rather than an
  * overwrite: somebody else edited the same bill while this one was waiting, and
  * only a person can say which number is right. See web/src/pages/Conflicts.tsx.

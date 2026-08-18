@@ -1,9 +1,9 @@
 /**
  * The wire shapes `/api/v1/sync/*` speaks.
  *
- * PURE TYPES, no imports, deliberately. This module is imported by BOTH sides —
+ * PURE TYPES, no imports, deliberately. This module is imported by BOTH sides -
  * src/routes/native/sync-serializers.ts builds these, and web/src/db/local.ts
- * stores them — for the same reason src/domain/split.ts is shared: one definition
+ * stores them - for the same reason src/domain/split.ts is shared: one definition
  * cannot drift from itself, and the first symptom of drift here would be a field
  * the client silently never reads.
  *
@@ -16,8 +16,8 @@
  * return: these are documents a client stores verbatim, not rows a component
  * reads. Money is integer minor units with its currency alongside, as everywhere.
  *
- * NOT the compat layer. Nothing here is frozen — client and server ship from the
- * same origin — so do not bring Splitwise's decimal strings anywhere near it.
+ * NOT the compat layer. Nothing here is frozen - client and server ship from the
+ * same origin - so do not bring Splitwise's decimal strings anywhere near it.
  */
 /**
  * A person, as somebody else's device needs to render them.
@@ -53,8 +53,8 @@ export interface SyncShare {
  * An expense, its shares, and the people on it.
  *
  * `people` is here rather than left to a separate `users` sync because an
- * expense can arrive naming somebody the caller has never seen — added to a
- * group bill by a third party — and a row of blanks where a name should be is a
+ * expense can arrive naming somebody the caller has never seen - added to a
+ * group bill by a third party - and a row of blanks where a name should be is a
  * worse bug than a few duplicated user records. Names go stale until the next
  * shared write, which is accepted (docs/OFFLINE.md).
  *
@@ -78,6 +78,11 @@ export interface SyncExpense {
   repeatInterval: string | null;
   nextRepeat: string | null;
   repeatOf: string | null;
+  /**
+   * The interval a stopped series will resume with. Null while live or on a
+   * one-off. Not a column: stored in `expenses.metadata.repeat_paused`.
+   */
+  repeatPaused: string | null;
   /** What a later edit has to send back as `baseVersion`. */
   version: number;
   createdBy: string | null;

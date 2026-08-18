@@ -134,7 +134,7 @@ interface Movement {
  * Every who-owes-whom in the mirror, one entry per repayment per expense.
  *
  * This is the server's `expense_repayments` table, recomputed on read instead of
- * replicated. It is cheap — a handful of participants per bill, arithmetic only —
+ * replicated. It is cheap - a handful of participants per bill, arithmetic only -
  * and it means the mirror cannot hold a stale derivation, which is the failure
  * mode a replicated cache would have.
  */
@@ -627,7 +627,7 @@ async function toSummaries(db: LocalDb, rows: LocalExpense[]): Promise<ExpenseSu
  * copies that point at it, oldest first, including tombstones.
  *
  * Returns null when the id is unknown or is not part of a series. A deleted
- * template still returns the bills it already made, with `stopped` set — that
+ * template still returns the bills it already made, with `stopped` set - that
  * is the state deleting the first bill produces, and the series page has to
  * show it rather than 404.
  */
@@ -648,16 +648,33 @@ export async function localSeries(
   const seed = await db.expenses.get(expenseId);
   if (!seed) return null;
 
-  const templateId = seriesTemplateId(seed.id, seed.repeatOf, seed.repeatInterval);
+  let templateId = seriesTemplateId(
+    seed.id,
+    seed.repeatOf,
+    seed.repeatInterval,
+    seed.repeatPaused,
+  );
+  if (!templateId) {
+    const child = await db.expenses.where("repeatOf").equals(seed.id).first();
+    if (child) templateId = seed.id;
+  }
   if (!templateId) return null;
 
   const template = await db.expenses.get(templateId);
   const children = await db.expenses.where("repeatOf").equals(templateId).toArray();
   const rows = [...(template ? [template] : []), ...children].sort(byDateAsc);
   const head = template ?? seed;
-  const interval = isRepeatInterval(head.repeatInterval) ? head.repeatInterval : null;
+  const interval = isRepeatInterval(head.repeatInterval)
+    ? head.repeatInterval
+    : isRepeatInterval(head.repeatPaused)
+      ? head.repeatPaused
+      : null;
   const stoppedReason: "deleted" | "ended" | null =
-    !template || template.deletedAt !== null ? "deleted" : interval === null ? "ended" : null;
+    !template || template.deletedAt !== null
+      ? "deleted"
+      : head.repeatInterval === null
+        ? "ended"
+        : null;
 
   const group = head.groupId === null ? null : await db.groups.get(head.groupId);
 
@@ -702,7 +719,7 @@ export async function localExpense(
 
   // The template's id plus `repeatOf` IS the bundle; there is no bundle table.
   const seriesCount =
-    row.repeatInterval === null
+    row.repeatInterval === null && !row.repeatPaused
       ? 0
       : (await db.expenses.where("repeatOf").equals(id).toArray()).filter(
           (e) => e.deletedAt === null,
@@ -726,6 +743,7 @@ export async function localExpense(
       repeat_interval: row.repeatInterval as ExpenseDetail["repeat_interval"],
       next_repeat: row.nextRepeat,
       repeat_of: row.repeatOf,
+      repeat_paused: isRepeatInterval(row.repeatPaused) ? row.repeatPaused : null,
       series_count: seriesCount,
       version: row.version,
       deleted_at: row.deletedAt,

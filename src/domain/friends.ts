@@ -41,7 +41,7 @@ export function friendPair(
  *
  * Opens its own transaction rather than taking a handle, like the writers in
  * src/domain/expenses.ts and src/domain/comments.ts, because the row and its
- * `sync_log` entry have to land together — a friendship the other devices never
+ * `sync_log` entry have to land together - a friendship the other devices never
  * hear about is a friend who is missing from the picker on the phone.
  *
  * `actorId` is who did it, which is not always one of the pair: the Splitwise

@@ -42,7 +42,7 @@ export function writeReport(report: SmokeReport): { path: string; exitCode: numb
     (report.compareError ? 1 : 0);
 
   const lines: string[] = [];
-  lines.push(`# Smoke run — ${report.run}`);
+  lines.push(`# Smoke run - ${report.run}`);
   lines.push("");
   lines.push(`- Started: ${report.startedAt}`);
   lines.push(`- Target: ${report.base}`);
@@ -97,7 +97,7 @@ export function writeReport(report: SmokeReport): { path: string; exitCode: numb
       lines.push("");
       lines.push(
         "Open the baseline PNG, the current PNG and the `.diff.png` (or `.dom.diff`) and say what moved. " +
-          "If this machine's fonts differ from the committed snapshots, re-record with `yarn smoke -- --update` — " +
+          "If this machine's fonts differ from the committed snapshots, re-record with `yarn smoke -- --update` - " +
           "do not edit a baseline to silence a real UI change.",
       );
       lines.push("");
@@ -115,7 +115,7 @@ export function writeReport(report: SmokeReport): { path: string; exitCode: numb
     }
     lines.push("");
     for (const f of report.flows.filter((x) => x.verdict !== "pass")) {
-      lines.push(`### ❌ ${f.id} — ${f.title}`);
+      lines.push(`### ❌ ${f.id} - ${f.title}`);
       lines.push("");
       if (f.observed) lines.push(`- **Observed:** ${f.observed}`);
       lines.push(`- **Evidence:** ${f.evidence}`);
@@ -123,7 +123,7 @@ export function writeReport(report: SmokeReport): { path: string; exitCode: numb
       lines.push("");
     }
     for (const f of report.flows.filter((x) => x.verdict === "pass")) {
-      lines.push(`- **${f.id}** ${f.title} — ${f.evidence}`);
+      lines.push(`- **${f.id}** ${f.title} - ${f.evidence}`);
     }
     lines.push("");
   }

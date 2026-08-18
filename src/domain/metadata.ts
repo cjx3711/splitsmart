@@ -2,11 +2,11 @@
  * Entity metadata: a JSON bag for data that is stored, not queried.
  *
  * Known keys:
- *   splitwise_id — original Splitwise integer, set on import so a second run
+ *   splitwise_id - original Splitwise integer, set on import so a second run
  *                  can match instead of duplicating. Never the native PK, never
  *                  on the compat wire.
- *   notes        — freeform user notes.
- *   repeat_paused — the interval a stopped series had, so Resume can put it
+ *   notes        - freeform user notes.
+ *   repeat_paused - the interval a stopped series had, so Resume can put it
  *                  back without guessing weekly vs monthly. Not a column: the
  *                  CHECK on repeat_interval/next_repeat cannot represent
  *                  "interval set, nothing scheduled".
@@ -16,6 +16,7 @@
  * `$.splitwise_id` are the one exception, because re-import matching needs them.
  */
 import { sql, type RawBuilder } from "kysely";
+import { isRepeatInterval, type RepeatInterval } from "./recurring.ts";
 
 export interface EntityMetadata {
   splitwise_id?: number;
@@ -40,6 +41,12 @@ export function parseMetadata(raw: string | null | undefined): EntityMetadata {
 
 export function serializeMetadata(meta: EntityMetadata): string {
   return JSON.stringify(meta);
+}
+
+/** The interval a stopped series will resume with, or null if it is not paused. */
+export function repeatPausedOf(raw: string | null | undefined): RepeatInterval | null {
+  const value = parseMetadata(raw).repeat_paused;
+  return isRepeatInterval(value) ? value : null;
 }
 
 export function splitwiseIdOf(raw: string | null | undefined): number | null {

@@ -1,8 +1,8 @@
 # Feature parity
 
-**Built.** This was the plan for the remaining product work — comments,
+**Built.** This was the plan for the remaining product work - comments,
 recurring expenses, search / filters / CSV, restore, and what those forced on
-import and guest links — and all five slices have landed. The document stays as
+import and guest links - and all five slices have landed. The document stays as
 the reference for how they work and why they work that way, because most of the
 "why" is not visible from the code.
 
@@ -28,8 +28,8 @@ Status checklists live in `docs/PLAN.md` phase 2. This document is the how.
 The ledger, six split types, friends, groups, members, settle-up, activity,
 guest links, and an in-app import of people → groups → expenses all existed.
 
-The `comments` table existed — ULID PK, `metadata.splitwise_id` unique index,
-soft `deleted_at`, rewritten in `mergeUsers` — and nothing read or wrote it. The
+The `comments` table existed - ULID PK, `metadata.splitwise_id` unique index,
+soft `deleted_at`, rewritten in `mergeUsers` - and nothing read or wrote it. The
 importer ignored `comments` / `comments_count`. The export script never fetched
 comments as their own resource. Recurring did not exist at all.
 
@@ -100,7 +100,7 @@ The importer does not wait on the answer: it handles **both** shapes (slice 1,
 
 ---
 
-## Slice 1 — Comments ✅
+## Slice 1 - Comments ✅
 
 The load-bearing feature of this plan. Built as described below;
 `src/domain/comments.ts` is the writer, `src/routes/native/comments.ts` and the
@@ -111,8 +111,8 @@ shells render, and `src/routes/native/comments.test.ts` pins the rules.
 
 Splitwise keeps two kinds of row on an expense, both called comments:
 
-- **User** — someone typed it.
-- **System** — generated on edit/delete. Example: `"Jane updated this transaction: - The cost changed from $6.99 to $8.99"`. There is no edit-comment; delete is a tombstone.
+- **User** - someone typed it.
+- **System** - generated on edit/delete. Example: `"Jane updated this transaction: - The cost changed from $6.99 to $8.99"`. There is no edit-comment; delete is a tombstone.
 
 The native activity feed already records `expense.updated`. That is the
 global feed. System comments are the same events hanging on the bill, which
@@ -142,7 +142,7 @@ Do not put `kind` in `metadata`. Listing user comments should not need
 `json_extract`.
 
 No `version` column. Creates cannot conflict. Commenting must **not** bump
-`expenses.version` — otherwise an offline note fights an offline edit of
+`expenses.version` - otherwise an offline note fights an offline edit of
 the split. Comments are their own sync entity in `docs/OFFLINE.md`.
 
 ### Domain
@@ -247,7 +247,7 @@ Either way:
 
 Already rewrites `comments.user_id`. Two people who both commented on the
 same expense keep both rows. System comments that name the ghost in
-`content` stay as imported text — rewriting English is how you invent
+`content` stay as imported text - rewriting English is how you invent
 history.
 
 ### Offline
@@ -259,7 +259,7 @@ still logs, like imported expenses.
 
 ---
 
-## Slice 2 — Recurring expenses ✅
+## Slice 2 - Recurring expenses ✅
 
 Built as described. `src/domain/recurring.ts` is the pure interval arithmetic
 (imported by the form, like `split.ts`), `src/domain/scheduler.ts` is the job, and
@@ -275,9 +275,9 @@ normal expense. The template is the row that still has `repeats: true`.
 
 New columns on `expenses`, folded into `001`:
 
-- `repeat_interval` — `null` means never
-- `next_repeat` — when the scheduler should fire
-- `repeat_of` — ULID of the template; null on the template itself
+- `repeat_interval` - `null` means never
+- `next_repeat` - when the scheduler should fire
+- `repeat_of` - ULID of the template; null on the template itself
 
 Plus CHECKs that a template is always scheduled, that an occurrence is never
 itself a template (series stay one level deep), and that nothing repeats itself.
@@ -309,7 +309,7 @@ not stop the series.
 On `ExpenseForm`, a repeat control: never / weekly / fortnightly / monthly
 / yearly. Occurrences look like normal expenses on the list, with a small
 "repeats" mark that links back to the series. Editing an occurrence is
-editing that bill, not the template — make that obvious.
+editing that bill, not the template - make that obvious.
 
 Guests can see occurrences (they are expenses). Creating or editing a
 template is logged-in only for v1: the scheduler is a server job, and a
@@ -333,7 +333,7 @@ normal expenses and follow the ordinary outbox.
 
 ---
 
-## Slice 3 — Search, filters, CSV ✅
+## Slice 3 - Search, filters, CSV ✅
 
 Built. `src/routes/native/expense-filters.ts` is the one definition, shared by
 the three list endpoints and the CSV export; `web/src/ExpenseFilters.tsx` is the
@@ -345,7 +345,7 @@ a search for `50%` finds a percent sign instead of matching every row.
 **Native list endpoints** (all expenses, group, friend): `q` (description
 substring), `group_id`, `friend_id`, `dated_after`, `dated_before`,
 `category_id`, `is_payment`. Same filter bar on those screens. Do not add
-amount-range until someone asks — per-currency integers make "more than
+amount-range until someone asks - per-currency integers make "more than
 50" ambiguous without a currency.
 
 **CSV:** `GET /api/v1/expenses.csv` with the same filters, scoped to what
@@ -356,13 +356,13 @@ same CSV can be built locally; the HTTP endpoint stays for scripts.
 
 ---
 
-## Slice 4 — Restore ✅
+## Slice 4 - Restore ✅
 
 Built. Soft deletes were already stored; now there is a way back.
 
 Native `POST /expenses/:id/restore` (and later groups, if group delete lands).
 Goes through the expense writer, rebuilds repayments, writes activity and a
-system comment, and must bump `version` once offline exists — otherwise a
+system comment, and must bump `version` once offline exists - otherwise a
 restored row looks like the tombstone it replaced. `yarn db:check` clean after.
 
 UI: the expense page no longer navigates away on delete; it stays and offers the
@@ -370,7 +370,7 @@ undo, and the activity feed offers one for a delete you find later.
 
 ---
 
-## Slice 5 — Import leftovers ✅ (bar the operator step)
+## Slice 5 - Import leftovers ✅ (bar the operator step)
 
 - **Re-import as update.** Implemented as recommended: overwrite through
   `updateExpense` only when the local row is untouched since import, otherwise
@@ -393,7 +393,7 @@ undo, and the activity feed offers one for a delete you find later.
 
 Not required for the app. The six endpoints Toshl uses already work. If
 something else you run wants to list groups or edit an expense through
-`/api/sw/v3.0`, wrap native — do not invent a second write path:
+`/api/sw/v3.0`, wrap native - do not invent a second write path:
 
 - `get_groups` / `get_group/:id`
 - `get_expense/:id`, `update_expense/:id`, `delete_expense/:id`
@@ -425,8 +425,8 @@ rule still applies if you do wrap: money as decimal strings, ULID ids,
 
 ## The order it happened in
 
-0. **Fixtures** — still outstanding, and no longer blocking: see above.
-1. **Comments** — domain, native, guest, UI, import, System rows on live edit.
+0. **Fixtures** - still outstanding, and no longer blocking: see above.
+1. **Comments** - domain, native, guest, UI, import, System rows on live edit.
 2. **Recurring.**
 3. **Search / filters / CSV.**
 4. **Restore**, then re-import-as-update.

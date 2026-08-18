@@ -4,10 +4,10 @@ import { Dialog } from "./Modal.tsx";
 /**
  * Screenshots on the marketing homepage.
  *
- * Copies of `smoke/baselines/png/<name>.png`, kept under the same filename so
- * a later `yarn smoke -- --update` can drop straight over the file in
- * `web/src/assets/gallery/`. Login, settings, and the marketing page itself
- * are not in this set.
+ * Copies of `smoke/baselines/png/<name>.png` and `<name>-mobile.png`, kept
+ * under the same filenames so a later `yarn smoke -- --update` can drop straight
+ * over the files in `web/src/assets/gallery/`. Login, settings, and the
+ * marketing page itself are not in this set.
  */
 const SHOTS: { file: string; caption: string; alt: string }[] = [
   {
@@ -55,7 +55,15 @@ function gallerySrc(file: string): string {
   return match[1];
 }
 
-const SLIDES = SHOTS.map((shot) => ({ ...shot, src: gallerySrc(shot.file) }));
+function mobileFile(file: string): string {
+  return file.replace(/\.png$/, "-mobile.png");
+}
+
+const SLIDES = SHOTS.map((shot) => ({
+  ...shot,
+  src: gallerySrc(shot.file),
+  srcMobile: gallerySrc(mobileFile(shot.file)),
+}));
 const LAST = SLIDES.length - 1;
 const AUTOPLAY_MS = 5200;
 
@@ -217,15 +225,21 @@ export function HomeGallery() {
                   openAt(slideIndex, event.currentTarget);
                 }}
               >
-                <img
-                  src={item.src}
-                  alt={item.alt}
-                  width={1280}
-                  height={800}
-                  draggable={false}
-                  loading={slideIndex === 0 ? "eager" : "lazy"}
-                  decoding="async"
-                />
+                <picture>
+                  <source
+                    media="(max-width: 640px)"
+                    srcSet={item.srcMobile}
+                  />
+                  <img
+                    src={item.src}
+                    alt={item.alt}
+                    width={1280}
+                    height={800}
+                    draggable={false}
+                    loading={slideIndex === 0 ? "eager" : "lazy"}
+                    decoding="async"
+                  />
+                </picture>
                 <span className="mkt-gallery-caption">{item.caption}</span>
               </button>
             </div>
@@ -298,7 +312,13 @@ export function HomeGallery() {
               <Chevron dir="left" />
             </button>
             <figure className="mkt-lightbox-figure">
-              <img src={slide.src} alt={slide.alt} width={1280} height={800} />
+              <picture>
+                <source
+                  media="(max-width: 640px)"
+                  srcSet={slide.srcMobile}
+                />
+                <img src={slide.src} alt={slide.alt} width={1280} height={800} />
+              </picture>
               <figcaption>{slide.caption}</figcaption>
             </figure>
             <button

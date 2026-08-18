@@ -57,7 +57,7 @@ yarn smoke:server    # serve it on 5644/5645 (yarn smoke starts this for you)
 
 **Login:** `test@example.com` / `password123`. A second real account,
 `jj@example.com` / `password123` (Lee Jin Jie / JJ), is a member of Weekend
-in Tokyo and Apartment 4B — that is the "other person in the group" view.
+in Tokyo and Apartment 4B - that is the "other person in the group" view.
 
 The demo seed pins dates with `SEED_TODAY=2026-06-01` and leaves the recurring
 series slightly behind on purpose, so the catch-up note is always visible.
@@ -103,6 +103,7 @@ Listed in `scripts/smoke-screens.ts`. Every id is captured twice: desktop
 | `expense-detail` | Test User | Trader Joe's: user + system comments |
 | `expense-rent` | Test User | Recurring template, next bill coming soon |
 | `expense-series` | Test User | Every bill in the Rent series, oldest first |
+| `expense-rent-stop` | Test User | Stop-repeating warning modal on Rent |
 | `add-expense-dialog` | Test User | The add form |
 | `settings` | Test User | Account + API tokens |
 | `jj-dashboard` | JJ | Same ledger, other side |
@@ -125,8 +126,9 @@ run *after* the screenshots of the seeded state.
 | F5 | Guest link: Tokyo only; nothing hits `/api/v1/` outside `/api/v1/guest/` |
 | F6 | 375×812, Show menu, no horizontal overflow on dashboard / group / expense |
 | F7 | Test User adds "Smoke test paint" in Apartment 4B; JJ's session lists it |
+| F8 | Stop Rent warns (cancel is a no-op); resume starts from today and does not backfill |
 
-`yarn smoke:check` runs last, against whatever F1 / F3 / F7 wrote, and asks
+`yarn smoke:check` runs last, against whatever F1 / F3 / F7 / F8 wrote, and asks
 whether `SUM(paid_share) == SUM(owed_share) == cost` still holds.
 
 ## Adding a screen or a flow

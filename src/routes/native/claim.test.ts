@@ -532,4 +532,55 @@ describe("claiming", () => {
     assert.equal(stub.merged_into_user_id, account.id);
     assert.ok(stub.deleted_at);
   });
+
+  test("two accounts cannot race to claim the same ghost", async () => {
+    const ghost = await makeGhost("Racer");
+    const groupId = await makeGroup("Race", [ownerId, ghost]);
+    const secret = await mintFor({ kind: "group_member", groupId, userId: ghost });
+    const second = await makeAccount("Second");
+
+    await createExpense({
+      groupId,
+      description: "Split cab",
+      costMinor: 2_000,
+      currencyCode: "USD",
+      date: "2026-05-04",
+      splitType: "equal",
+      participants: [
+        { userId: ownerId, paidMinor: 2_000 },
+        { userId: ghost, paidMinor: 0 },
+      ],
+      createdBy: ownerId,
+    });
+
+    assert.equal(
+      (
+        await as(claimerToken, "/api/v1/claim", {
+          method: "POST",
+          body: JSON.stringify({ linkToken: `link_${secret}`, userId: ghost }),
+        })
+      ).status,
+      200,
+    );
+
+    const again = await as(second.token, "/api/v1/claim", {
+      method: "POST",
+      body: JSON.stringify({ linkToken: `link_${secret}`, userId: ghost }),
+    });
+    assert.ok(again.status >= 400, "the link died with the first merge");
+
+    const stub = await db
+      .selectFrom("users")
+      .select("merged_into_user_id")
+      .where("id", "=", ghost)
+      .executeTakeFirstOrThrow();
+    assert.equal(stub.merged_into_user_id, claimerId, "the first claimer keeps the shares");
+
+    const secondShare = await db
+      .selectFrom("expense_users")
+      .select("user_id")
+      .where("user_id", "=", second.id)
+      .execute();
+    assert.deepEqual(secondShare, [], "the loser did not absorb anything");
+  });
 });

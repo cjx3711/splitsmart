@@ -3,7 +3,7 @@
  *
  * PURE, and its own module for exactly one reason: the browser imports it. The
  * offline mirror derives every balance locally (docs/OFFLINE.md, decision 3), and
- * src/domain/balances.ts cannot be imported into a bundle — it pulls in kysely.
+ * src/domain/balances.ts cannot be imported into a bundle - it pulls in kysely.
  * Same arrangement as src/domain/split.ts, src/domain/ulid.ts and
  * src/domain/recurring.ts: keep it free of I/O and both sides can run the one
  * implementation instead of drifting apart by a cent.

@@ -4,8 +4,8 @@
  * Run with `yarn icons`. The output is checked in, because a build should not
  * need a rasteriser installed; re-run it if the mark ever changes.
  *
- * WHY THIS IS HAND-ROLLED. An installable app needs PNGs — Android's launcher
- * and iOS's home screen will not take the SVG the manifest already lists — and
+ * WHY THIS IS HAND-ROLLED. An installable app needs PNGs - Android's launcher
+ * and iOS's home screen will not take the SVG the manifest already lists - and
  * every way of producing them has a cost:
  *
  *   - `sharp` / `canvas`: a native build in the dependency tree of an app whose
@@ -18,7 +18,7 @@
  *
  * So the mark's three paths are the single source of truth and this file turns
  * them into pixels: a cubic-bezier flattener, a scanline fill, and a PNG
- * encoder over node:zlib. Nothing here is general-purpose — it handles the
+ * encoder over node:zlib. Nothing here is general-purpose - it handles the
  * subset of SVG the mark actually uses (absolute M, C and Z) and refuses
  * anything else rather than guessing.
  */

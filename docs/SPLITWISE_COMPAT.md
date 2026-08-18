@@ -151,7 +151,7 @@ expenses are real features here now (`docs/PARITY.md`), and they are **native
 only**: filling these fields in would mean this wire growing a feature surface
 nobody has asked it for, and `repeats: true` on an expense a Splitwise client
 could not then manage is worse than a flat `false`. If a client ever genuinely
-needs `comments_count`, fill it from a COUNT — do not invent fields Splitwise
+needs `comments_count`, fill it from a COUNT - do not invent fields Splitwise
 never had.
 
 ### `POST /create_expense`
@@ -197,14 +197,14 @@ features are native and stay native. Comments, recurring expenses, expense
 search, CSV export and restore all exist (`docs/PARITY.md`) and none of them
 appear on this wire:
 
-- **comments** — `/api/v1/expenses/:id/comments`, plus the guest equivalent
-- **recurring** — `repeatInterval` on the native create/update
-- **search / filters** — query params on the native list endpoints. Note that
+- **comments** - `/api/v1/expenses/:id/comments`, plus the guest equivalent
+- **recurring** - `repeatInterval` on the native create/update
+- **search / filters** - query params on the native list endpoints. Note that
   `get_expenses` here already accepts Splitwise's own `dated_after` /
   `dated_before` / `group_id` / `friend_id`; that is the pre-existing shape and
   is not the native filter set.
-- **CSV** — `/api/v1/expenses.csv`
-- **restore** — `POST /api/v1/expenses/:id/restore` (Splitwise's `undelete_*`
+- **CSV** - `/api/v1/expenses.csv`
+- **restore** - `POST /api/v1/expenses/:id/restore` (Splitwise's `undelete_*`
   stays unimplemented)
 
 ## Pointing splitwise-to-toshl at this server

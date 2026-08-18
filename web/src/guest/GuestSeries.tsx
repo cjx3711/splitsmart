@@ -44,7 +44,12 @@ export function GuestSeries() {
         guestApi.expense(id),
         guestApi.expenses(),
       ]);
-      const templateId = seriesTemplateId(seed.id, seed.repeat_of, seed.repeat_interval);
+      const templateId = seriesTemplateId(
+        seed.id,
+        seed.repeat_of,
+        seed.repeat_interval,
+        seed.repeat_paused,
+      );
       if (!templateId) {
         setView(null);
         setMissing(true);
@@ -57,9 +62,17 @@ export function GuestSeries() {
         .sort(byDateAsc);
 
       const interval =
-        template && isRepeatInterval(template.repeat_interval) ? template.repeat_interval : null;
+        template && isRepeatInterval(template.repeat_interval)
+          ? template.repeat_interval
+          : template && isRepeatInterval(template.repeat_paused)
+            ? template.repeat_paused
+            : null;
       const stoppedReason: "deleted" | "ended" | null =
-        template === null ? "deleted" : interval === null ? "ended" : null;
+        template === null
+          ? "deleted"
+          : template.repeat_interval === null
+            ? "ended"
+            : null;
       const head = template ?? seed;
 
       setView({

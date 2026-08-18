@@ -1,12 +1,13 @@
 /**
- * Stop a repeating series without deleting any bill.
+ * Stop or resume a repeating series without deleting any bill.
  *
  * The first bill IS the schedule. Later bills only point at it (`repeat_of`), so
- * stopping always PATCHes that first row with `repeatInterval: null`. The copies
- * stay; they just stop arriving.
+ * both actions PATCH that first row: `repeatInterval: null` to stop, the paused
+ * interval to resume. Resume starts from now - the server will not backfill
+ * months that were missed while it was stopped.
  *
- * Recurrence is online-only (the scheduler owns `next_repeat`). The button is
- * wrapped in OnlineOnly and this write still goes through the outbox so a tap
+ * Recurrence is online-only (the scheduler owns `next_repeat`). The buttons are
+ * wrapped in OnlineOnly and the write still goes through the outbox so a tap
  * that races a drop is not lost.
  */
 import { useState } from "react";
@@ -16,9 +17,16 @@ import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { OnlineOnly } from "./OnlineOnly.tsx";
 import { useSync } from "./sync/SyncProvider.tsx";
 import { useLocal } from "./sync/useLocal.ts";
+import {
+  isRepeatInterval,
+  nextOccurrenceOnOrAfter,
+  type RepeatInterval,
+} from "../../src/domain/recurring.ts";
 
-/** Rebuild the write body from the stored template, with the schedule cleared. */
-export function writePayloadStoppingRepeat(row: LocalExpense): ExpenseWritePayload {
+function writePayloadFromTemplate(
+  row: LocalExpense,
+  repeatInterval: RepeatInterval | null,
+): ExpenseWritePayload {
   return {
     groupId: row.groupId,
     description: row.description,
@@ -36,8 +44,20 @@ export function writePayloadStoppingRepeat(row: LocalExpense): ExpenseWritePaylo
     ...itemizedFromMeta(row.splitMeta, row.splitType),
     isPayment: row.isPayment,
     paymentMethod: row.paymentMethod,
-    repeatInterval: null,
+    repeatInterval,
   };
+}
+
+/** Rebuild the write body from the stored template, with the schedule cleared. */
+export function writePayloadStoppingRepeat(row: LocalExpense): ExpenseWritePayload {
+  return writePayloadFromTemplate(row, null);
+}
+
+export function writePayloadResumingRepeat(
+  row: LocalExpense,
+  interval: RepeatInterval,
+): ExpenseWritePayload {
+  return writePayloadFromTemplate(row, interval);
 }
 
 function itemizedFromMeta(
@@ -67,18 +87,30 @@ export function useStopSeries(templateId: string | undefined) {
     (db) => (templateId ? db.expenses.get(templateId) : Promise.resolve(undefined)),
     [templateId],
   );
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<"stop" | "resume" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const pausedInterval =
+    template && isRepeatInterval(template.repeatPaused) ? template.repeatPaused : null;
   const live = Boolean(template && template.deletedAt === null && template.repeatInterval);
+  const paused = Boolean(template && template.deletedAt === null && !template.repeatInterval && pausedInterval);
+  const resumeOn =
+    template && pausedInterval
+      ? nextOccurrenceOnOrAfter(template.date, pausedInterval).slice(0, 10)
+      : null;
 
   function requestStop() {
     setError(null);
-    setConfirming(true);
+    setConfirming("stop");
   }
 
-  async function confirmStop() {
+  function requestResume() {
+    setError(null);
+    setConfirming("resume");
+  }
+
+  async function enqueue(payload: ExpenseWritePayload, failed: string) {
     if (!engine || !template) throw new Error("Not ready to save yet.");
     setBusy(true);
     try {
@@ -86,17 +118,42 @@ export function useStopSeries(templateId: string | undefined) {
         kind: "expense.update",
         id: template.id,
         baseVersion: template.version,
-        payload: writePayloadStoppingRepeat(template),
+        payload,
       });
-      setConfirming(false);
+      setConfirming(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not stop this series");
+      setError(err instanceof Error ? err.message : failed);
     } finally {
       setBusy(false);
     }
   }
 
-  return { live, confirming, setConfirming, requestStop, busy, error, confirmStop };
+  async function confirmStop() {
+    if (!template) throw new Error("Not ready to save yet.");
+    await enqueue(writePayloadStoppingRepeat(template), "Could not stop this series");
+  }
+
+  async function confirmResume() {
+    if (!template || !pausedInterval) throw new Error("Not ready to save yet.");
+    await enqueue(
+      writePayloadResumingRepeat(template, pausedInterval),
+      "Could not resume this series",
+    );
+  }
+
+  return {
+    live,
+    paused,
+    resumeOn,
+    confirming,
+    setConfirming,
+    requestStop,
+    requestResume,
+    busy,
+    error,
+    confirmStop,
+    confirmResume,
+  };
 }
 
 export function StopRepeatingButton({ onClick }: { onClick: () => void }) {
@@ -104,6 +161,16 @@ export function StopRepeatingButton({ onClick }: { onClick: () => void }) {
     <OnlineOnly what="Stopping a series">
       <button type="button" className="link" onClick={onClick}>
         Stop repeating
+      </button>
+    </OnlineOnly>
+  );
+}
+
+export function ResumeRepeatingButton({ onClick }: { onClick: () => void }) {
+  return (
+    <OnlineOnly what="Resuming a series">
+      <button type="button" className="link" onClick={onClick}>
+        Resume repeating
       </button>
     </OnlineOnly>
   );
@@ -125,16 +192,54 @@ export function StopSeriesDialog({
   return (
     <ConfirmDialog
       open={open}
-      title="Stop repeating?"
+      title="Stop repeating this series?"
       confirmLabel="Stop repeating"
       busyLabel="Stopping…"
       busy={busy}
       onClose={onClose}
       onConfirm={onConfirm}
     >
-      <p style={{ margin: 0 }}>No more bills will be created. The bills already made stay.</p>
+      <div className="notice">
+        No more bills will be created. If you turn repeating back on later, it starts from that
+        day - months that were missed while it was stopped will not be created.
+      </div>
+      <p style={{ margin: 0 }}>The bills already made stay.</p>
       {error && <p className="error">{error}</p>}
     </ConfirmDialog>
   );
 }
 
+export function ResumeSeriesDialog({
+  open,
+  busy,
+  error,
+  resumeOn,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  busy: boolean;
+  error?: string | null;
+  resumeOn: string | null;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  return (
+    <ConfirmDialog
+      open={open}
+      title="Resume repeating?"
+      confirmLabel="Resume repeating"
+      busyLabel="Resuming…"
+      busy={busy}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    >
+      <p style={{ margin: 0 }}>
+        {resumeOn
+          ? `The next bill will be ${resumeOn}. Months that were missed while this was stopped will not be created.`
+          : "The next bill will be created from today. Months that were missed while this was stopped will not be created."}
+      </p>
+      {error && <p className="error">{error}</p>}
+    </ConfirmDialog>
+  );
+}

@@ -29,7 +29,7 @@ import { logChange, logExpenseAudience, participantIds } from "./sync-log.ts";
 export interface CreateExpenseInput {
   /**
    * Client-minted primary key. Must be a valid ULID. A retry with the same id
-   * is a no-op that returns the existing row — that is the offline-first
+   * is a no-op that returns the existing row - that is the offline-first
    * idempotency story. Absent: the server mints one.
    */
   id?: string;
@@ -139,7 +139,7 @@ export interface ExpenseStateResult {
  * Checks `expectedVersion` against the stored row, inside the caller's
  * transaction.
  *
- * Absent means "I am not doing optimistic concurrency" — the ordinary
+ * Absent means "I am not doing optimistic concurrency" - the ordinary
  * online path, where the client read the row a moment ago and the last write
  * wins as it always has. Only the sync layer sends one.
  */
@@ -350,6 +350,11 @@ export async function updateExpense(
     // An occurrence can never become a template (schema CHECK), and editing a
     // template must not move bills that already happened: only `next_repeat`
     // moves, and only forward from the new date.
+    //
+    // Resume is different from first turning repeating on. Walking from the
+    // original bill date would put `next_repeat` months ago and the scheduler
+    // would backfill every skipped month. Resume starts from `now`.
+    const existingMeta = parseMetadata(existing.metadata);
     const existingInterval = isRepeatInterval(existing.repeat_interval)
       ? existing.repeat_interval
       : null;
@@ -363,13 +368,10 @@ export async function updateExpense(
         ? null
         : repeatInterval === existingInterval && existing.next_repeat !== null && date === existing.date
           ? existing.next_repeat
-          : existingInterval === null
-            ? // Starting or resuming: do not walk from a past bill date, or the
-              // scheduler would backfill every skipped month.
-              nextOccurrenceOnOrAfter(date, repeatInterval, now)
+          : existingInterval === null && isRepeatInterval(existingMeta.repeat_paused)
+            ? nextOccurrenceOnOrAfter(date, repeatInterval, now)
             : nextOccurrence(date, repeatInterval);
 
-    const existingMeta = parseMetadata(existing.metadata);
     const nextMeta: EntityMetadata = { ...(input.metadata ?? existingMeta) };
     if (repeatInterval === null && existingInterval !== null) {
       nextMeta.repeat_paused = existingInterval;
@@ -486,7 +488,7 @@ export async function updateExpense(
  *
  * The version bump is what makes delete-wins work rather than being a silent
  * rejection: a device holding a queued edit at the old version pushes it, gets a
- * conflict, and is told the row is a tombstone now — instead of quietly
+ * conflict, and is told the row is a tombstone now - instead of quietly
  * resurrecting somebody else's deletion.
  */
 export async function deleteExpense(
@@ -551,14 +553,14 @@ export async function deleteExpense(
  * The tombstone was always recoverable in principle; this is the path that makes
  * it recoverable in practice. Repayments are rebuilt from `expense_users` rather
  * than trusted, because they are a cache (rule 4) and the row has been sitting
- * outside every balance query since the delete — rebuilding is cheap and means a
+ * outside every balance query since the delete - rebuilding is cheap and means a
  * restored expense cannot come back with a stale derivation attached.
  *
  * Restoring twice is a no-op, so a double-tapped undo is not an error.
  *
  * A FIRST-CLASS WRITE, not an update that happens to clear `deleted_at`:
  * `updateExpense` refuses deleted rows and that stays. It bumps `version` for
- * the same reason delete does — otherwise the restored row still looks like the
+ * the same reason delete does - otherwise the restored row still looks like the
  * tombstone it replaced, and a stale edit at the old version would overwrite
  * somebody else's undo.
  */
@@ -641,7 +643,7 @@ export async function restoreExpense(
     await recordExpenseEvent(trx, { expenseId, actorId: restoredBy, event: { kind: "restored" } });
 
     // `upsert`: the row is live again. A tombstone is not a second identity, so
-    // there is nothing here for a client to un-delete separately — it replaces
+    // there is nothing here for a client to un-delete separately - it replaces
     // its local copy with this one and starts counting it again.
     await logChange(trx, {
       entity: "expense",
@@ -661,7 +663,7 @@ export async function restoreExpense(
  *
  * Lives here because rule 3 has no exceptions: `expenses` has exactly one writer,
  * including for a column the ledger does not read. It writes `metadata` and
- * `updated_at` and nothing else — no shares, no repayments, no activity.
+ * `updated_at` and nothing else - no shares, no repayments, no activity.
  *
  * `updated_at` is set explicitly rather than left alone, because the
  * `trg_expenses_updated_at` trigger stamps `datetime('now')` on any UPDATE that
@@ -732,7 +734,7 @@ export async function markImportSynced(
  * editing a bill: if a monthly tick bumped the version, everyone with a pending
  * offline typo fix on their rent template would get a conflict once a month, for
  * a change to a column they cannot even edit. It still writes a `sync_log` row,
- * because other devices do need the new `next_repeat` — it is what the UI reads
+ * because other devices do need the new `next_repeat` - it is what the UI reads
  * to say a series is behind. See docs/OFFLINE.md, "Scheduler".
  */
 export async function advanceRepeatSchedule(

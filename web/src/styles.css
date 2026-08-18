@@ -1936,6 +1936,12 @@ code {
   filter: none;
 }
 
+.mkt-gallery-card picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .mkt-gallery-card img {
   display: block;
   width: 100%;
@@ -1945,6 +1951,12 @@ code {
   background: #0b1012;
   pointer-events: none;
   user-select: none;
+}
+
+@media (max-width: 640px) {
+  .mkt-gallery-card {
+    aspect-ratio: 375 / 812;
+  }
 }
 
 .mkt-gallery-caption {
@@ -2047,6 +2059,13 @@ dialog.mkt-lightbox::backdrop {
   pointer-events: none;
 }
 
+.mkt-lightbox-figure picture {
+  display: block;
+  max-width: min(1280px, calc(100vw - 6.5rem));
+  max-height: calc(100vh - 6rem);
+  pointer-events: auto;
+}
+
 .mkt-lightbox-figure img {
   display: block;
   width: auto;
@@ -2057,7 +2076,6 @@ dialog.mkt-lightbox::backdrop {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
-  pointer-events: auto;
 }
 
 .mkt-lightbox-figure figcaption {
@@ -2394,6 +2412,10 @@ dialog.mkt-lightbox::backdrop {
   }
 
   .mkt-lightbox-figure {
+    max-width: calc(100vw - 2rem);
+  }
+
+  .mkt-lightbox-figure picture {
     max-width: calc(100vw - 2rem);
   }
 
