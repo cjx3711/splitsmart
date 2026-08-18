@@ -18,8 +18,11 @@ const SESSION_TTL_DAYS = 30;
 
 export interface AuthenticatedUser {
   id: string;
-  firstName: string;
-  lastName: string | null;
+  name: string;
+  nickname: string | null;
+  iconLetters: string | null;
+  iconEmoji: string | null;
+  iconHue: number | null;
   email: string | null;
   isGhost: boolean;
   defaultCurrency: string;
@@ -28,6 +31,45 @@ export interface AuthenticatedUser {
    * them; check `isGhost` before treating it as "needs verification".
    */
   emailVerifiedAt: string | null;
+}
+
+const AUTH_USER_COLUMNS = [
+  "users.id as id",
+  "users.name as name",
+  "users.nickname as nickname",
+  "users.icon_letters as iconLetters",
+  "users.icon_emoji as iconEmoji",
+  "users.icon_hue as iconHue",
+  "users.email as email",
+  "users.is_ghost as isGhost",
+  "users.default_currency as defaultCurrency",
+  "users.email_verified_at as emailVerifiedAt",
+] as const;
+
+function toAuthenticated(row: {
+  id: string;
+  name: string;
+  nickname: string | null;
+  iconLetters: string | null;
+  iconEmoji: string | null;
+  iconHue: number | null;
+  email: string | null;
+  isGhost: number;
+  defaultCurrency: string;
+  emailVerifiedAt: string | null;
+}): AuthenticatedUser {
+  return {
+    id: row.id,
+    name: row.name,
+    nickname: row.nickname,
+    iconLetters: row.iconLetters,
+    iconEmoji: row.iconEmoji,
+    iconHue: row.iconHue,
+    email: row.email,
+    isGhost: row.isGhost === 1,
+    defaultCurrency: row.defaultCurrency,
+    emailVerifiedAt: row.emailVerifiedAt,
+  };
 }
 
 export async function createSession(
@@ -56,13 +98,7 @@ export async function resolveSession(token: string): Promise<AuthenticatedUser |
     .selectFrom("sessions")
     .innerJoin("users", "users.id", "sessions.user_id")
     .select([
-      "users.id as id",
-      "users.first_name as firstName",
-      "users.last_name as lastName",
-      "users.email as email",
-      "users.is_ghost as isGhost",
-      "users.default_currency as defaultCurrency",
-      "users.email_verified_at as emailVerifiedAt",
+      ...AUTH_USER_COLUMNS,
       "sessions.id as sessionId",
       "sessions.expires_at as expiresAt",
     ])
@@ -85,15 +121,7 @@ export async function resolveSession(token: string): Promise<AuthenticatedUser |
     .execute()
     .catch(() => {});
 
-  return {
-    id: row.id,
-    firstName: row.firstName,
-    lastName: row.lastName,
-    email: row.email,
-    isGhost: row.isGhost === 1,
-    defaultCurrency: row.defaultCurrency,
-    emailVerifiedAt: row.emailVerifiedAt,
-  };
+  return toAuthenticated(row);
 }
 
 export async function destroySession(token: string): Promise<void> {
@@ -137,13 +165,7 @@ export async function resolveApiToken(token: string): Promise<AuthenticatedUser 
     .selectFrom("api_tokens")
     .innerJoin("users", "users.id", "api_tokens.user_id")
     .select([
-      "users.id as id",
-      "users.first_name as firstName",
-      "users.last_name as lastName",
-      "users.email as email",
-      "users.is_ghost as isGhost",
-      "users.default_currency as defaultCurrency",
-      "users.email_verified_at as emailVerifiedAt",
+      ...AUTH_USER_COLUMNS,
       "api_tokens.id as tokenId",
       "api_tokens.revoked_at as revokedAt",
       "api_tokens.expires_at as expiresAt",
@@ -163,15 +185,7 @@ export async function resolveApiToken(token: string): Promise<AuthenticatedUser 
     .execute()
     .catch(() => {});
 
-  return {
-    id: row.id,
-    firstName: row.firstName,
-    lastName: row.lastName,
-    email: row.email,
-    isGhost: row.isGhost === 1,
-    defaultCurrency: row.defaultCurrency,
-    emailVerifiedAt: row.emailVerifiedAt,
-  };
+  return toAuthenticated(row);
 }
 
 export async function revokeApiToken(id: string, userId: string): Promise<void> {

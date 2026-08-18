@@ -40,7 +40,14 @@ import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-f
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
 import { env } from "../../env.ts";
+import { displayName, MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
+import { logChange } from "../../domain/sync-log.ts";
+import {
+  hasIdentityPatch,
+  identityColumns,
+  identityPatchSchema,
+} from "./person-schema.ts";
 
 export const friendRoutes = new Hono<AppEnv>();
 friendRoutes.use("*", requireAuth);
@@ -101,10 +108,20 @@ friendRoutes.get("/", async (c) => {
   const [users, balances, explicitIds, breakdowns] = await Promise.all([
     db
       .selectFrom("users")
-      .select(["id", "email", "first_name", "last_name", "is_ghost", "default_currency"])
+      .select([
+        "id",
+        "email",
+        "name",
+        "nickname",
+        "icon_letters",
+        "icon_emoji",
+        "icon_hue",
+        "is_ghost",
+        "default_currency",
+      ])
       .where("id", "in", ids)
       .where("deleted_at", "is", null)
-      .orderBy("first_name")
+      .orderBy("name")
       .execute(),
     getPairwiseBalances(db, auth.id),
     listExplicitFriendIds(db, auth.id),
@@ -118,8 +135,7 @@ friendRoutes.get("/", async (c) => {
     friends: users.map((u) => ({
       id: u.id,
       email: u.email,
-      first_name: u.first_name,
-      last_name: u.last_name,
+      ...personSnake(u),
       is_ghost: u.is_ghost,
       // Only explicit friendships can be removed; the rest come from shared
       // groups and expenses and would reappear on the next page load.
@@ -131,8 +147,7 @@ friendRoutes.get("/", async (c) => {
 });
 
 const addFriendSchema = z.object({
-  firstName: z.string().min(1).max(100),
-  lastName: z.string().max(100).optional(),
+  name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
   // Optional on purpose: adding someone by name alone is a legitimate way to
   // track what they owe you without ever contacting them.
   email: z
@@ -153,7 +168,16 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
   const existing = input.email
     ? await db
         .selectFrom("users")
-        .select(["id", "email", "first_name", "last_name", "is_ghost"])
+        .select([
+          "id",
+          "email",
+          "name",
+          "nickname",
+          "icon_letters",
+          "icon_emoji",
+          "icon_hue",
+          "is_ghost",
+        ])
         .where("email", "=", input.email)
         .where("deleted_at", "is", null)
         .executeTakeFirst()
@@ -169,8 +193,8 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     await addFriendship(auth.id, existing.id);
 
     const invite = friendInviteEmail({
-      firstName: existing.first_name,
-      inviterName: auth.firstName,
+      name: displayName(existing),
+      inviterName: displayName(auth),
       // They already have an account, so the invite is just the front door.
       acceptUrl: `${env.APP_ORIGIN}/app`,
       isNewAccount: false,
@@ -182,8 +206,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
         friend: {
           id: existing.id,
           email: existing.email,
-          first_name: existing.first_name,
-          last_name: existing.last_name,
+          ...personSnake(existing),
           is_ghost: existing.is_ghost,
           is_explicit: 1,
           balances: await getBalanceBetween(db, auth.id, existing.id),
@@ -203,8 +226,7 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
       .insertInto("users")
       .values({
         id: ulid(),
-        first_name: input.firstName,
-        last_name: input.lastName ?? null,
+        name: input.name,
         // A ghost may carry an address it has not proved control of. Login
         // still refuses ghosts, and issueVerificationToken skips them, so this
         // never turns into an unverified-but-usable login.
@@ -212,7 +234,16 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
         default_currency: auth.defaultCurrency,
         is_ghost: 1,
       })
-      .returning(["id", "email", "first_name", "last_name", "is_ghost"])
+      .returning([
+        "id",
+        "email",
+        "name",
+        "nickname",
+        "icon_letters",
+        "icon_emoji",
+        "icon_hue",
+        "is_ghost",
+      ])
       .executeTakeFirstOrThrow();
 
     const link = await mintAccessLink(trx, {
@@ -229,8 +260,8 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
   let emailDelivered = false;
   if (input.email) {
     const invite = friendInviteEmail({
-      firstName: friend.first_name,
-      inviterName: auth.firstName,
+      name: displayName(friend),
+      inviterName: displayName(auth),
       acceptUrl: inviteUrl,
       isNewAccount: true,
     });
@@ -261,7 +292,17 @@ friendRoutes.get("/:id", async (c) => {
 
   const friend = await db
     .selectFrom("users")
-    .select(["id", "email", "first_name", "last_name", "is_ghost", "default_currency"])
+    .select([
+      "id",
+      "email",
+      "name",
+      "nickname",
+      "icon_letters",
+      "icon_emoji",
+      "icon_hue",
+      "is_ghost",
+      "default_currency",
+    ])
     .where("id", "=", friendId)
     .where("deleted_at", "is", null)
     .executeTakeFirst();
@@ -276,13 +317,114 @@ friendRoutes.get("/:id", async (c) => {
 
   return c.json({
     friend: {
-      ...friend,
+      id: friend.id,
+      email: friend.email,
+      ...personSnake(friend),
+      is_ghost: friend.is_ghost,
       is_explicit: explicitIds.includes(friendId),
       balances,
       breakdown: breakdowns.get(friendId) ?? [],
     },
   });
 });
+
+/**
+ * Edit a placeholder person's name and icon.
+ *
+ * Real accounts edit themselves at PATCH /auth/me. A ghost has no login, so
+ * the people who can already see them (friends, group-mates) may set the
+ * name, nickname, and icon they all share. Fan-out is via audience-addressed
+ * `user` log rows: a standalone `user` row otherwise only reaches its own
+ * subject, and ghosts do not sync.
+ */
+friendRoutes.patch(
+  "/:id",
+  zValidator("json", identityPatchSchema),
+  async (c) => {
+    const auth = c.get("user");
+    const friendId = c.req.param("id");
+    if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+
+    const input = c.req.valid("json");
+    if (!hasIdentityPatch(input)) {
+      return c.json({ error: "Nothing to update." }, 400);
+    }
+
+    const related = await listRelatedUserIds(db, auth.id);
+    if (!related.includes(friendId)) return c.json({ error: "Friend not found" }, 404);
+
+    const friend = await db
+      .selectFrom("users")
+      .select(["id", "is_ghost"])
+      .where("id", "=", friendId)
+      .where("deleted_at", "is", null)
+      .executeTakeFirst();
+
+    if (!friend) return c.json({ error: "Friend not found" }, 404);
+    if (friend.is_ghost !== 1) {
+      return c.json(
+        { error: "You can only edit placeholder people. They change their own name after they join." },
+        403,
+      );
+    }
+
+    const identity = identityColumns(input);
+    const audience = await listRelatedUserIds(db, friendId);
+
+    const updated = await transaction(async (trx) => {
+      const row = await trx
+        .updateTable("users")
+        .set({
+          ...identity,
+          updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+        })
+        .where("id", "=", friendId)
+        .returning([
+          "id",
+          "email",
+          "name",
+          "nickname",
+          "icon_letters",
+          "icon_emoji",
+          "icon_hue",
+          "is_ghost",
+          "default_currency",
+        ])
+        .executeTakeFirstOrThrow();
+
+      await logChange(
+        trx,
+        ...audience.map((id) => ({
+          entity: "user" as const,
+          entityId: friendId,
+          op: "upsert" as const,
+          actorUserId: auth.id,
+          audienceUserId: id,
+        })),
+      );
+
+      return row;
+    });
+
+    const [balances, explicitIds, breakdowns] = await Promise.all([
+      getBalanceBetween(db, auth.id, friendId),
+      listExplicitFriendIds(db, auth.id),
+      breakdownByUser(auth.id),
+    ]);
+
+    return c.json({
+      friend: {
+        id: updated.id,
+        email: updated.email,
+        ...personSnake(updated),
+        is_ghost: updated.is_ghost,
+        is_explicit: explicitIds.includes(friendId),
+        balances,
+        breakdown: breakdowns.get(friendId) ?? [],
+      },
+    });
+  },
+);
 
 /**
  * Expenses shared with one friend, across every group plus the one-on-one ones.

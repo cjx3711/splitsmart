@@ -29,8 +29,11 @@
  */
 export interface SyncUser {
   id: string;
-  firstName: string;
-  lastName: string | null;
+  name: string;
+  nickname: string | null;
+  iconLetters: string | null;
+  iconEmoji: string | null;
+  iconHue: number | null;
   email: string | null;
   isGhost: boolean;
   defaultCurrency: string;

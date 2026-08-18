@@ -45,6 +45,7 @@ import {
   type AccessLinkRecord,
   type GuestScope,
 } from "../../domain/access-links.ts";
+import { personCamel, personSnake } from "../../domain/person.ts";
 import { getGroupBalances, getBalanceBetween, simplifyDebts } from "../../domain/balances.ts";
 import {
   createExpense,
@@ -170,7 +171,7 @@ guestRoutes.get("/session", async (c) => {
   const me = scope
     ? await db
         .selectFrom("users")
-        .select(["id", "first_name", "last_name", "default_currency"])
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "default_currency"])
         .where("id", "=", scope.actingAs)
         .executeTakeFirst()
     : null;
@@ -187,7 +188,7 @@ guestRoutes.get("/session", async (c) => {
   const counterpart = scope?.counterpartId
     ? await db
         .selectFrom("users")
-        .select(["id", "first_name", "last_name"])
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
         .where("id", "=", scope.counterpartId)
         .executeTakeFirst()
     : null;
@@ -213,15 +214,14 @@ guestRoutes.get("/session", async (c) => {
     actingAs: me
       ? {
           id: me.id,
-          firstName: me.first_name,
-          lastName: me.last_name,
+          ...personCamel(me),
           defaultCurrency: me.default_currency,
         }
       : null,
     group,
     groups,
     counterpart: counterpart
-      ? { id: counterpart.id, firstName: counterpart.first_name, lastName: counterpart.last_name }
+      ? { id: counterpart.id, ...personCamel(counterpart) }
       : null,
   });
 });
@@ -352,7 +352,7 @@ async function visiblePeople(scope: GuestScope) {
 
   const rows = await db
     .selectFrom("users")
-    .select(["id", "first_name", "last_name", "is_ghost"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "is_ghost"])
     .where("id", "in", [...ids])
     .execute();
 
@@ -407,8 +407,15 @@ guestRoutes.get("/groups/:id", async (c) => {
     .selectFrom("group_members")
     .innerJoin("users", "users.id", "group_members.user_id")
     .select([
-      "users.id", "users.first_name", "users.last_name",
-      "users.is_ghost", "group_members.role", "group_members.joined_via",
+      "users.id",
+      "users.name",
+      "users.nickname",
+      "users.icon_letters",
+      "users.icon_emoji",
+      "users.icon_hue",
+      "users.is_ghost",
+      "group_members.role",
+      "group_members.joined_via",
     ])
     .where("group_members.group_id", "=", groupId)
     .where("group_members.left_at", "is", null)
@@ -441,7 +448,7 @@ guestRoutes.get("/friend", async (c) => {
 
   const counterpart = await db
     .selectFrom("users")
-    .select(["id", "first_name", "last_name"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
     .where("id", "=", scope.counterpartId)
     .executeTakeFirstOrThrow();
 
@@ -450,8 +457,7 @@ guestRoutes.get("/friend", async (c) => {
   return c.json({
     counterpart: {
       id: counterpart.id,
-      first_name: counterpart.first_name,
-      last_name: counterpart.last_name,
+      ...personSnake(counterpart),
     },
     balances: await getBalanceBetween(db, scope.actingAs, scope.counterpartId),
     expenses: await loadExpenses(visible, 200),

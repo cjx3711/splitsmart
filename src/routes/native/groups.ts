@@ -25,6 +25,7 @@ import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expen
 import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
+import { MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
 
 export const groupRoutes = new Hono<AppEnv>();
 groupRoutes.use("*", requireAuth);
@@ -142,8 +143,15 @@ groupRoutes.get("/:id", async (c) => {
     .selectFrom("group_members")
     .innerJoin("users", "users.id", "group_members.user_id")
     .select([
-      "users.id", "users.first_name", "users.last_name",
-      "users.is_ghost", "group_members.role", "group_members.joined_via",
+      "users.id",
+      "users.name",
+      "users.nickname",
+      "users.icon_letters",
+      "users.icon_emoji",
+      "users.icon_hue",
+      "users.is_ghost",
+      "group_members.role",
+      "group_members.joined_via",
     ])
     .where("group_members.group_id", "=", groupId)
     .where("group_members.left_at", "is", null)
@@ -280,7 +288,7 @@ groupRoutes.post(
  *
  *   { userId }               someone who already exists (a friend, or another
  *                            member of a group you share)
- *   { firstName, lastName? } a new PLACEHOLDER person, created here as a ghost
+ *   { name } a new PLACEHOLDER person, created here as a ghost
  *
  * Re-adding someone who left flips `left_at` back rather than inserting, so
  * their history in the group stays attached and no balance moves.
@@ -292,8 +300,7 @@ groupRoutes.post(
     z.union([
       z.object({ userId: ulidSchema }),
       z.object({
-        firstName: z.string().min(1).max(100),
-        lastName: z.string().max(100).optional(),
+        name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
       }),
     ]),
   ),
@@ -316,8 +323,7 @@ groupRoutes.post(
               .insertInto("users")
               .values({
                 id: ulid(),
-                first_name: input.firstName,
-                last_name: input.lastName ?? null,
+                name: input.name,
                 default_currency: (
                   await trx
                     .selectFrom("groups")
@@ -386,11 +392,30 @@ groupRoutes.post(
 
     const member = await db
       .selectFrom("users")
-      .select(["id", "first_name", "last_name", "is_ghost"])
+      .select([
+        "id",
+        "name",
+        "nickname",
+        "icon_letters",
+        "icon_emoji",
+        "icon_hue",
+        "is_ghost",
+      ])
       .where("id", "=", userId)
       .executeTakeFirstOrThrow();
 
-    return c.json({ member: { ...member, role: "member", joined_via: "added" } }, 201);
+    return c.json(
+      {
+        member: {
+          id: member.id,
+          ...personSnake(member),
+          is_ghost: member.is_ghost,
+          role: "member",
+          joined_via: "added",
+        },
+      },
+      201,
+    );
   },
 );
 

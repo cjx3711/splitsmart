@@ -12,15 +12,14 @@
  * Paths are relative, so react-router resolves them under the `/guest`
  * basename. See Breadcrumbs.tsx.
  */
+import { displayName } from "../api.ts";
 import type { Crumb } from "../Breadcrumbs.tsx";
 import type { GuestSession } from "./guestApi.ts";
 
 /** What the home crumb is called, given what the link is. */
 function homeCrumb(session: GuestSession): Crumb | null {
   if (session.kind !== "friend") return null;
-  const name = session.counterpart
-    ? [session.counterpart.firstName, session.counterpart.lastName].filter(Boolean).join(" ")
-    : "Home";
+  const name = session.counterpart ? displayName(session.counterpart) : "Home";
   return { label: `You and ${name}`, to: "/friend" };
 }
 
@@ -49,5 +48,21 @@ export function expenseCrumbs(
   }
 
   trail.push({ label: expense.title });
+  return trail;
+}
+
+export function seriesCrumbs(
+  session: GuestSession,
+  expense: {
+    expenseId: string;
+    groupId: string | null;
+    groupName: string | null;
+    title: string;
+  },
+): Crumb[] {
+  const trail = expenseCrumbs(session, expense);
+  const last = trail[trail.length - 1];
+  if (last) last.to = `/expenses/${expense.expenseId}`;
+  trail.push({ label: "Series" });
   return trail;
 }

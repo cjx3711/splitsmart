@@ -152,8 +152,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const local = attach(next.id);
       void setMeta(local, "profile", {
         id: next.id,
-        firstName: next.firstName,
-        lastName: next.lastName,
+        name: next.name,
+        nickname: next.nickname,
+        iconLetters: next.iconLetters,
+        iconEmoji: next.iconEmoji,
+        iconHue: next.iconHue,
         email: next.email,
         isGhost: next.isGhost,
         defaultCurrency: next.defaultCurrency,
@@ -194,8 +197,11 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         const local = attach(fresh.id);
         await setMeta(local, "profile", {
           id: fresh.id,
-          firstName: fresh.firstName,
-          lastName: fresh.lastName,
+          name: fresh.name,
+          nickname: fresh.nickname,
+          iconLetters: fresh.iconLetters,
+          iconEmoji: fresh.iconEmoji,
+          iconHue: fresh.iconHue,
           email: fresh.email,
           isGhost: fresh.isGhost,
           defaultCurrency: fresh.defaultCurrency,

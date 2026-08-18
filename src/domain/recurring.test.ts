@@ -22,6 +22,7 @@ import {
   nextOccurrence,
   repeatLabel,
   RecurrenceError,
+  seriesTemplateId,
 } from "./recurring.ts";
 
 describe("nextOccurrence", () => {
@@ -113,5 +114,19 @@ describe("scheduling", () => {
     assert.ok(isBehind("2026-05-01T00:00:00Z", now));
     assert.ok(isBehind("2026-05-10T12:00:00Z", now), "due exactly now counts as due");
     assert.ok(!isBehind("2026-06-01T00:00:00Z", now));
+  });
+});
+
+describe("seriesTemplateId", () => {
+  test("a template is identified by having an interval and no parent", () => {
+    assert.equal(seriesTemplateId("tmpl", null, "monthly"), "tmpl");
+  });
+
+  test("an occurrence points at the template, never at another occurrence", () => {
+    assert.equal(seriesTemplateId("bill", "tmpl", null), "tmpl");
+  });
+
+  test("a one-off is not in a series", () => {
+    assert.equal(seriesTemplateId("once", null, null), null);
   });
 });

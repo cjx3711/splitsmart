@@ -13,7 +13,7 @@ import { Amount, useFormatMoney } from "../money.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
-import { Avatar } from "../Avatar.tsx";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
@@ -154,9 +154,15 @@ export function GuestGroup() {
         <p className="empty">Everyone is settled up.</p>
       ) : (
         <div className="list">
-          {balances.map((entry) => (
+          {balances.map((entry) => {
+            const member = members.find((m) => m.id === entry.userId);
+            return (
             <div key={entry.userId} className="list-item">
-              <Avatar id={entry.userId} name={nameOf(entry.userId)} />
+              <Avatar
+                {...(member
+                  ? avatarFromRow(member)
+                  : { id: entry.userId, name: nameOf(entry.userId) })}
+              />
               <div className="list-item-body">
                 <div className="list-item-title">{nameOf(entry.userId)}</div>
               </div>
@@ -175,7 +181,8 @@ export function GuestGroup() {
                 <EstimatedTotal balances={entry.balances} preferredCurrency={me.defaultCurrency} />
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       <ConversionFootnote
@@ -195,7 +202,7 @@ export function GuestGroup() {
       <div className="list">
         {members.map((m) => (
           <div key={m.id} className="list-item">
-            <Avatar id={m.id} name={guestFullName(m)} />
+            <Avatar {...avatarFromRow(m)} />
             <div className="list-item-body">
               <div className="list-item-title">{m.id === me.id ? "You" : guestFullName(m)}</div>
               <div className="muted">

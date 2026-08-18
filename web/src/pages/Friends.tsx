@@ -8,9 +8,9 @@
  */
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, fullName, type Friend } from "../api.ts";
+import { api, displayName, type Friend } from "../api.ts";
 import { Ledger } from "../money.tsx";
-import { Avatar } from "../Avatar.tsx";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useSidebarRefresh } from "../App.tsx";
 import { useFriends, useMirrorReady } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
@@ -33,7 +33,7 @@ export function Friends() {
       refreshSidebar();
       if (result.stillVisible) {
         setError(
-          `${fullName(friend)} is still listed because you share a group or an expense. Removing a friend never changes a balance.`,
+          `${displayName(friend)} is still listed because you share a group or an expense. Removing a friend never changes a balance.`,
         );
       }
     } catch (err) {
@@ -74,13 +74,13 @@ export function Friends() {
         <div className="list">
           {friends.map((friend) => (
             <div key={friend.id} className="list-item">
-              <Avatar id={friend.id} name={fullName(friend)} />
+              <Avatar {...avatarFromRow(friend)} />
               <Link
                 to={`/friends/${friend.id}`}
                 className="list-item-body"
                 style={{ textDecoration: "none", color: "inherit" }}
               >
-                <div className="list-item-title">{fullName(friend)}</div>
+                <div className="list-item-title">{displayName(friend)}</div>
                 <div className="muted">
                   {friend.email ?? "No email"}
                   {friend.is_ghost === 1 && " · hasn't joined yet"}
@@ -92,7 +92,7 @@ export function Friends() {
                   <button
                     className="icon"
                     onClick={() => setRemoving(friend)}
-                    aria-label={`Remove ${fullName(friend)}`}
+                    aria-label={`Remove ${displayName(friend)}`}
                     title="Remove friend"
                   >
                     ✕
@@ -110,7 +110,7 @@ export function Friends() {
 
       <ConfirmDialog
         open={removing !== null}
-        title={removing ? `Remove ${fullName(removing)}?` : "Remove friend?"}
+        title={removing ? `Remove ${displayName(removing)}?` : "Remove friend?"}
         confirmLabel="Remove friend"
         busyLabel="Removing…"
         busy={busy}

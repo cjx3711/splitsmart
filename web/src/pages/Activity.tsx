@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type ActivityEntry } from "../api.ts";
+import { api, displayName, type ActivityEntry } from "../api.ts";
 import { Amount } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
@@ -93,12 +93,20 @@ export function Activity() {
                 ? "Someone"
                 : entry.actor.id === user?.id
                   ? "You"
-                  : [entry.actor.firstName, entry.actor.lastName].filter(Boolean).join(" ");
+                  : displayName(entry.actor);
             const verb = VERBS[entry.action] ?? entry.action;
 
             return (
               <div key={entry.id} className="list-item">
-                <Avatar id={entry.actor?.id ?? ""} name={actorName} size={30} />
+                <Avatar
+                  id={entry.actor?.id ?? ""}
+                  name={entry.actor?.name ?? actorName}
+                  nickname={entry.actor?.nickname}
+                  iconLetters={entry.actor?.iconLetters}
+                  iconEmoji={entry.actor?.iconEmoji}
+                  iconHue={entry.actor?.iconHue}
+                  size={30}
+                />
                 <div className="list-item-body">
                   <div>
                     <strong>{actorName}</strong> {verb}

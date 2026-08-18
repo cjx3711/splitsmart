@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, fullName, type GroupMember, type ExpenseQuery } from "../api.ts";
+import { api, displayName, type GroupMember, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { AddMemberForm } from "../AddMemberForm.tsx";
@@ -20,9 +20,15 @@ import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
-import { Avatar } from "../Avatar.tsx";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
+import {
+  PersonIdentityForm,
+  draftFromPerson,
+  identityPayload,
+  type IdentityDraft,
+} from "../PersonIdentityForm.tsx";
 import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { ulid } from "../../../src/domain/ulid.ts";
@@ -32,7 +38,11 @@ export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
+  const [identity, setIdentity] = useState<IdentityDraft | null>(null);
+  const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
@@ -53,8 +63,12 @@ export function GroupDetail() {
   const nameOf = makeLookup(members, user.id);
   const people = members.map((m) => ({
     id: m.id,
-    label: m.id === user.id ? "You" : fullName(m),
+    label: m.id === user.id ? "You" : displayName(m),
   }));
+  const avatarFor = (userId: string) => {
+    const member = members.find((m) => m.id === userId);
+    return member ? avatarFromRow(member) : { id: userId, name: nameOf(userId) };
+  };
 
   // Currencies this group actually holds balances in, with its default first so
   // a group that is fully settled still offers something sensible.
@@ -105,7 +119,7 @@ export function GroupDetail() {
         kind: "group_member" as const,
         groupId: group.id,
         userId: m.id,
-        label: `${fullName(m)} only`,
+        label: `${displayName(m)} only`,
         note: "Opens straight as them, with no picker.",
       })),
   ];
@@ -136,6 +150,41 @@ export function GroupDetail() {
         initialGroupId={group.id}
         onClose={() => setOpenDialog(null)}
       />
+
+      <Modal
+        open={openDialog === "identity"}
+        title={identityMember ? `Edit ${displayName(identityMember)}` : "Edit name"}
+        onClose={() => setOpenDialog(null)}
+      >
+        {identity && identityMember && (
+          <form
+            className="stack"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const payload = identityPayload(identity);
+              if (!payload.name) return;
+              setIdentityBusy(true);
+              setIdentityError(null);
+              void api
+                .updateFriend(identityMember.id, payload)
+                .then(() => {
+                  syncNow();
+                  setOpenDialog(null);
+                })
+                .catch((err) =>
+                  setIdentityError(err instanceof Error ? err.message : "Could not save"),
+                )
+                .finally(() => setIdentityBusy(false));
+            }}
+          >
+            {identityError && <p className="error">{identityError}</p>}
+            <PersonIdentityForm id={identityMember.id} value={identity} onChange={setIdentity} />
+            <button type="submit" disabled={identityBusy || !identity.name.trim()}>
+              {identityBusy ? "Saving…" : "Save"}
+            </button>
+          </form>
+        )}
+      </Modal>
 
       <Modal
         open={openDialog === "settle"}
@@ -232,7 +281,7 @@ export function GroupDetail() {
         <div className="list">
           {balances.map((entry) => (
             <div key={entry.userId} className="list-item">
-              <Avatar id={entry.userId} name={nameOf(entry.userId)} />
+              <Avatar {...avatarFor(entry.userId)} />
               <div className="list-item-body">
                 <div className="list-item-title">{nameOf(entry.userId)}</div>
               </div>
@@ -308,14 +357,29 @@ export function GroupDetail() {
       <div className="list">
         {members.map((m) => (
           <div key={m.id} className="list-item">
-            <Avatar id={m.id} name={fullName(m)} />
+            <Avatar {...avatarFromRow(m)} />
             <div className="list-item-body">
-              <div className="list-item-title">{m.id === user.id ? "You" : fullName(m)}</div>
+              <div className="list-item-title">{m.id === user.id ? "You" : displayName(m)}</div>
               <div className="muted">
                 {m.role}
                 {m.is_ghost === 1 ? " · guest" : " · has an account"}
               </div>
             </div>
+            {m.is_ghost === 1 && (
+              <OnlineOnly what="Editing a placeholder's name">
+                <button
+                  className="link"
+                  onClick={() => {
+                    setIdentityMember(m);
+                    setIdentity(draftFromPerson(m));
+                    setIdentityError(null);
+                    setOpenDialog("identity");
+                  }}
+                >
+                  Edit
+                </button>
+              </OnlineOnly>
+            )}
             {isOwner && m.id !== user.id && (
               <OnlineOnly what="Removing someone from a group">
                 <button
@@ -344,7 +408,7 @@ export function GroupDetail() {
         open={removingMember !== null}
         title={
           removingMember
-            ? `Remove ${fullName(removingMember)} from ${group.name}?`
+            ? `Remove ${displayName(removingMember)} from ${group.name}?`
             : "Remove member?"
         }
         confirmLabel="Remove member"

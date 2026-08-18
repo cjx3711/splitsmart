@@ -86,7 +86,7 @@ before(async () => {
       id: ownerId,
       email: "owner@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Olive",
+      name: "Olive",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -99,7 +99,7 @@ before(async () => {
       id: claimedId,
       email: "claimed@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Clara",
+      name: "Clara",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -108,13 +108,13 @@ before(async () => {
   aliceId = ulid();
   await db
     .insertInto("users")
-    .values({ id: aliceId, first_name: "Alice", default_currency: "USD", is_ghost: 1 })
+    .values({ id: aliceId, name: "Alice", default_currency: "USD", is_ghost: 1 })
     .execute();
 
   bobId = ulid();
   await db
     .insertInto("users")
-    .values({ id: bobId, first_name: "Bob", default_currency: "USD", is_ghost: 1 })
+    .values({ id: bobId, name: "Bob", default_currency: "USD", is_ghost: 1 })
     .execute();
 
   sharedGroupId = await makeGroup("Shared", [ownerId, aliceId, bobId, claimedId]);
@@ -411,7 +411,7 @@ describe("expired, revoked, and claimed", () => {
     const ghost = ulid();
     await db
       .insertInto("users")
-      .values({ id: ghost, first_name: "Soon", default_currency: "USD", is_ghost: 1 })
+      .values({ id: ghost, name: "Soon", default_currency: "USD", is_ghost: 1 })
       .execute();
     const groupId = await makeGroup("Temporary", [ownerId, ghost]);
     const secret = await mint({ kind: "group_member", groupId, userId: ghost });

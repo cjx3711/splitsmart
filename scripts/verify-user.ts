@@ -27,19 +27,19 @@ function main(): void {
   if (arg === "--list") {
     const rows = db
       .prepare(
-        `SELECT id, email, first_name, created_at
+        `SELECT id, email, name, created_at
          FROM users
          WHERE is_ghost = 0 AND email_verified_at IS NULL AND deleted_at IS NULL
          ORDER BY created_at`,
       )
-      .all() as Array<{ id: string; email: string; first_name: string; created_at: string }>;
+      .all() as Array<{ id: string; email: string; name: string; created_at: string }>;
 
     if (rows.length === 0) {
       console.log("No unverified accounts.");
     } else {
       console.log(`${rows.length} unverified account(s):\n`);
       for (const row of rows) {
-        console.log(`  ${row.id}\t${row.email}\t${row.first_name}\t(created ${row.created_at})`);
+        console.log(`  ${row.id}\t${row.email}\t${row.name}\t(created ${row.created_at})`);
       }
     }
     db.close();
@@ -48,11 +48,11 @@ function main(): void {
 
   const user = db
     .prepare(
-      `SELECT id, email, first_name, email_verified_at, is_ghost
+      `SELECT id, email, name, email_verified_at, is_ghost
        FROM users WHERE email = ? AND deleted_at IS NULL`,
     )
     .get(arg) as
-    | { id: string; email: string; first_name: string; email_verified_at: string | null; is_ghost: number }
+    | { id: string; email: string; name: string; email_verified_at: string | null; is_ghost: number }
     | undefined;
 
   if (!user) {

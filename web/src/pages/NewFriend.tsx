@@ -5,7 +5,7 @@
  */
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { api, fullName } from "../api.ts";
+import { api, displayName } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { CopyLinkButton } from "../LinkPanel.tsx";
@@ -15,8 +15,7 @@ export function NewFriend() {
   const refreshSidebar = useSidebarRefresh();
   const online = useOnline();
 
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,19 +31,17 @@ export function NewFriend() {
 
     try {
       const response = await api.addFriend({
-        firstName: firstName.trim(),
-        lastName: lastName.trim() || undefined,
+        name: name.trim(),
         email: email.trim() || undefined,
       });
       setResult({
         id: response.friend.id,
-        name: fullName(response.friend),
+        name: displayName(response.friend),
         existing: response.existingAccount,
         delivered: response.emailDelivered,
         inviteUrl: response.inviteUrl,
       });
-      setFirstName("");
-      setLastName("");
+      setName("");
       setEmail("");
       refreshSidebar();
     } catch (err) {
@@ -99,27 +96,17 @@ export function NewFriend() {
           </div>
         )}
 
-        <div className="form-grid">
-          <div>
-            <label htmlFor="firstName">First name</label>
-            <input
-              id="firstName"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              placeholder="Grace"
-              autoFocus
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="lastName">Last name</label>
-            <input
-              id="lastName"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              placeholder="Ng"
-            />
-          </div>
+        <div>
+          <label htmlFor="friendName">Name</label>
+          <input
+            id="friendName"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Grace Ng"
+            autoFocus
+            required
+            autoComplete="name"
+          />
         </div>
 
         <div>
@@ -139,7 +126,7 @@ export function NewFriend() {
         </div>
 
         <div>
-          <button type="submit" disabled={busy || !firstName.trim()} className="inline">
+          <button type="submit" disabled={busy || !name.trim()} className="inline">
             {busy ? "Adding…" : "Add friend"}
           </button>
         </div>

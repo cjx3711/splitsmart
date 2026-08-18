@@ -181,7 +181,7 @@ DELETE /api/v1/comments/:id
 ```
 
 List returns live user *and* system comments, oldest first, with author
-`{ id, firstName, lastName }`. Guests get the same three routes under
+`{ id, name, nickname, iconLetters, iconEmoji, iconHue }`. Guests get the same three routes under
 `/api/v1/guest/...`, scoped with `expenseInScope`. A guest may comment as
 the person the link acts as, and may delete only their own user comments.
 System comments are not deletable.

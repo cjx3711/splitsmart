@@ -56,10 +56,11 @@ export function ApiDocs() {
       </ul>
       <Endpoint method="POST" path="/api/v1/auth/register" auth="public">
         <p>Create an account and a session.</p>
-        <Code>{`{ "email": "you@example.com", "password": "at-least-8", "firstName": "Alex",
-  "lastName": "optional", "defaultCurrency": "USD" }`}</Code>
+        <Code>{`{ "email": "you@example.com", "password": "at-least-8", "name": "Alex Chen",
+  "nickname": "Alex", "defaultCurrency": "USD" }`}</Code>
         <p>
-          <code>201</code> with <code>{`{ user, emailVerified, verificationEmailSent }`}</code>.
+          <code>nickname</code> is optional. <code>201</code> with{" "}
+          <code>{`{ user, emailVerified, verificationEmailSent }`}</code>.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/auth/login" auth="public">
@@ -73,16 +74,20 @@ export function ApiDocs() {
         <p>Clears the session cookie. <code>{`{ ok: true }`}</code></p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/auth/me">
-        <Code>{`{ "user": { "id": 1, "email": "you@example.com", "firstName": "Alex",
-  "lastName": null, "isGhost": false, "defaultCurrency": "USD",
+        <Code>{`{ "user": { "id": "01ARZ…", "email": "you@example.com", "name": "Alex Chen",
+  "nickname": null, "iconLetters": null, "iconEmoji": null, "iconHue": null,
+  "isGhost": false, "defaultCurrency": "USD",
   "emailVerified": true, "needsEmailVerification": false } }`}</Code>
       </Endpoint>
       <Endpoint method="PATCH" path="/api/v1/auth/me">
-        <Code>{`{ "defaultCurrency": "JPY" }`}</Code>
+        <Code>{`{ "name": "Alex Chen", "nickname": "Alex", "iconLetters": "AC",
+  "iconEmoji": null, "iconHue": 205, "defaultCurrency": "JPY" }`}</Code>
         <p>
-          Sets the preferred currency (expense-entry default and display
-          conversions). Must be a code from{" "}
-          <code>GET /api/v1/categories/currencies</code>. Returns the same{" "}
+          Any subset of those fields. Name, nickname, letters, emoji and hue
+          are how you look in the app; currency is the expense-entry default
+          and display conversions. Letters are at most two graphemes; hue is
+          0–359 or <code>null</code> (hashed from your id). Must be a currency
+          from <code>GET /api/v1/categories/currencies</code>. Returns the same{" "}
           <code>{`{ user }`}</code> shape as GET. Does not convert any stored
           balances.
         </p>
@@ -156,7 +161,7 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/groups/:id/members">
-        <Code>{`{ "userId": "01ARZ…" }  or  { "firstName": "Jordan" }`}</Code>
+        <Code>{`{ "userId": "01ARZ…" }  or  { "name": "Jordan" }`}</Code>
         <p>
           Adds an existing person, or creates a new placeholder. Opening a link
           does not create members; someone with an account puts them there.
@@ -197,13 +202,22 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/friends">
-        <Code>{`{ "firstName": "Hubert", "lastName": "Lim", "email": "optional@example.com" }`}</Code>
+        <Code>{`{ "name": "Hubert Lim", "email": "optional@example.com" }`}</Code>
         <p>
           Name alone is enough to track a debt. An email creates a ghost and
           sends (or returns) an invite. Ghosts cannot call this.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/friends/:id" />
+      <Endpoint method="PATCH" path="/api/v1/friends/:id">
+        <Code>{`{ "name": "Hubert", "nickname": "Hub", "iconLetters": null,
+  "iconEmoji": "🦊", "iconHue": 32 }`}</Code>
+        <p>
+          Same identity fields as <code>PATCH /api/v1/auth/me</code>, but only
+          for placeholder people (ghosts) you are related to. A real account
+          edits themselves. Guests cannot call this.
+        </p>
+      </Endpoint>
       <Endpoint method="GET" path="/api/v1/friends/:id/expenses" />
       <Endpoint method="POST" path="/api/v1/friends/:id/expenses">
         <p>One-on-one expense. Participants must be exactly the two of you.</p>

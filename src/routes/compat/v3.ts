@@ -50,8 +50,7 @@ async function decimalPlaces(): Promise<DecimalPlacesLookup> {
 
 const USER_COLUMNS = [
   "id",
-  "first_name",
-  "last_name",
+  "name",
   "email",
   "avatar_url",
   "default_currency",
@@ -60,8 +59,7 @@ const USER_COLUMNS = [
 
 type UserRow = {
   id: string;
-  first_name: string;
-  last_name: string | null;
+  name: string;
   email: string | null;
   avatar_url: string | null;
   default_currency: string;
@@ -71,8 +69,8 @@ type UserRow = {
 function toSerializableUser(user: UserRow): SerializableUser {
   return {
     id: user.id,
-    first_name: user.first_name,
-    last_name: user.last_name,
+    first_name: user.name,
+    last_name: null,
     email: user.email,
     avatar_url: user.avatar_url,
     default_currency: user.default_currency,
@@ -274,8 +272,7 @@ compatV3.get("/get_expenses", async (c) => {
         "expense_users.paid_share_minor",
         "expense_users.owed_share_minor",
         "users.id as u_id",
-        "users.first_name",
-        "users.last_name",
+        "users.name",
         "users.email",
         "users.avatar_url",
         "users.default_currency",
@@ -325,8 +322,8 @@ compatV3.get("/get_expenses", async (c) => {
         owed_share_minor: s.owed_share_minor,
         user: {
           id: s.u_id,
-          first_name: s.first_name,
-          last_name: s.last_name,
+          first_name: s.name,
+          last_name: null,
           email: s.email,
           avatar_url: s.avatar_url,
           default_currency: s.default_currency,
@@ -443,8 +440,8 @@ compatV3.post("/create_expense", async (c) => {
       .innerJoin("users", "users.id", "expense_users.user_id")
       .select([
         "users.id as user_id", "expense_users.paid_share_minor",
-        "expense_users.owed_share_minor", "users.id as u_id", "users.first_name",
-        "users.last_name", "users.email", "users.avatar_url",
+        "expense_users.owed_share_minor", "users.id as u_id", "users.name",
+        "users.email", "users.avatar_url",
         "users.default_currency", "users.is_ghost",
       ])
       .where("expense_users.expense_id", "=", expenseId)
@@ -472,7 +469,7 @@ compatV3.post("/create_expense", async (c) => {
             paid_share_minor: s.paid_share_minor,
             owed_share_minor: s.owed_share_minor,
             user: {
-              id: s.u_id, first_name: s.first_name, last_name: s.last_name,
+              id: s.u_id, first_name: s.name, last_name: null,
               email: s.email, avatar_url: s.avatar_url,
               default_currency: s.default_currency, is_ghost: s.is_ghost,
             },

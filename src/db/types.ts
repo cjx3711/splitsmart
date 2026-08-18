@@ -31,8 +31,11 @@ export interface UsersTable {
   email: string | null;
   password_hash: string | null;
   email_verified_at: string | null;
-  first_name: string;
-  last_name: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
   avatar_url: string | null;
   default_currency: Generated<string>;
   is_ghost: Generated<number>;

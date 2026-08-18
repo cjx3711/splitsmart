@@ -75,7 +75,7 @@ async function registerUser(): Promise<{ id: string; email: string; cookie: stri
   const res = await app.request("/api/v1/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password: "hunter2hunter2", firstName: "Test" }),
+    body: JSON.stringify({ email, password: "hunter2hunter2", name: "Test" }),
   });
   assert.equal(res.status, 201);
 
@@ -111,7 +111,7 @@ describe("registration issues a verification token", () => {
     const res = await app.request("/api/v1/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password: "hunter2hunter2", firstName: "Test" }),
+      body: JSON.stringify({ email, password: "hunter2hunter2", name: "Test" }),
     });
 
     const body = (await res.json()) as { verificationEmailSent: boolean };
@@ -289,7 +289,7 @@ describe("ghosts", () => {
     const withoutEmail = ulid();
     await db
       .insertInto("users")
-      .values({ id: withoutEmail, first_name: "Ghosty", is_ghost: 1 })
+      .values({ id: withoutEmail, name: "Ghosty", is_ghost: 1 })
       .execute();
 
     const withEmail = ulid();
@@ -297,7 +297,7 @@ describe("ghosts", () => {
       .insertInto("users")
       .values({
         id: withEmail,
-        first_name: "Invited",
+        name: "Invited",
         email: "invited-ghost@example.com",
         is_ghost: 1,
       })

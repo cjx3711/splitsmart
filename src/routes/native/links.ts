@@ -179,7 +179,7 @@ async function withPeople(links: LinkSummary[]) {
   const people = ids.length
     ? await db
         .selectFrom("users")
-        .select(["id", "first_name", "last_name"])
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
         .where("id", "in", ids)
         .execute()
     : [];
@@ -190,8 +190,11 @@ async function withPeople(links: LinkSummary[]) {
     person: link.userId
       ? {
           id: link.userId,
-          firstName: byId.get(link.userId)?.first_name ?? null,
-          lastName: byId.get(link.userId)?.last_name ?? null,
+          name: byId.get(link.userId)?.name ?? null,
+          nickname: byId.get(link.userId)?.nickname ?? null,
+          iconLetters: byId.get(link.userId)?.icon_letters ?? null,
+          iconEmoji: byId.get(link.userId)?.icon_emoji ?? null,
+          iconHue: byId.get(link.userId)?.icon_hue ?? null,
         }
       : null,
   }));

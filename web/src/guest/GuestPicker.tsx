@@ -59,7 +59,7 @@ export function GuestPicker() {
             className="list-item guest-pick"
             onClick={() => void choose(person.id)}
           >
-            <Avatar id={person.id} name={guestFullName(person)} />
+            <Avatar {...person} />
             <div className="list-item-body">
               <div className="list-item-title">{guestFullName(person)}</div>
             </div>

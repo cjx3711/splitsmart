@@ -99,7 +99,7 @@ before(async () => {
         id,
         email: `${name.toLowerCase()}@example.com`,
         password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-        first_name: name,
+        name,
         default_currency: "JPY",
         is_ghost: 0,
       })
@@ -435,7 +435,7 @@ describe("POST /expenses: the generic endpoint", () => {
         id: strangerId,
         email: "dave@example.com",
         password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-        first_name: "Dave",
+        name: "Dave",
         default_currency: "JPY",
         is_ghost: 0,
       })

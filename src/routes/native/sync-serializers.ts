@@ -42,8 +42,11 @@ export type {
 
 const USER_COLUMNS = [
   "id",
-  "first_name",
-  "last_name",
+  "name",
+  "nickname",
+  "icon_letters",
+  "icon_emoji",
+  "icon_hue",
   "email",
   "is_ghost",
   "default_currency",
@@ -53,8 +56,11 @@ const USER_COLUMNS = [
 
 type UserRow = {
   id: string;
-  first_name: string;
-  last_name: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
   email: string | null;
   is_ghost: number;
   default_currency: string;
@@ -65,8 +71,11 @@ type UserRow = {
 export function toSyncUser(row: UserRow): SyncUser {
   return {
     id: row.id,
-    firstName: row.first_name,
-    lastName: row.last_name,
+    name: row.name,
+    nickname: row.nickname,
+    iconLetters: row.icon_letters,
+    iconEmoji: row.icon_emoji,
+    iconHue: row.icon_hue,
     email: row.email,
     isGhost: row.is_ghost === 1,
     defaultCurrency: row.default_currency,

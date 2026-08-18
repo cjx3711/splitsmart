@@ -11,8 +11,8 @@
  * they need `stopPropagation` to keep the row underneath from also navigating.
  */
 import { Link, useNavigate } from "react-router-dom";
-import { Fragment } from "react";
-import { fullName, type ExpenseSummary, type GroupMember } from "./api.ts";
+import { Fragment, type ReactNode } from "react";
+import { displayName, type ExpenseSummary, type GroupMember } from "./api.ts";
 import { Amount } from "./money.tsx";
 import { SyncBadge } from "./SyncStatusBar.tsx";
 
@@ -21,14 +21,14 @@ export interface PersonLookup {
 }
 
 export function makeLookup(
-  members: Array<GroupMember | { id: string; first_name: string; last_name: string | null }>,
+  members: Array<GroupMember | { id: string; name: string; nickname?: string | null }>,
   currentUserId: string,
 ): PersonLookup {
   const byId = new Map(members.map((m) => [m.id, m]));
   return (userId) => {
     if (userId === currentUserId) return "You";
     const member = byId.get(userId);
-    return member ? fullName(member) : `User ${userId}`;
+    return member ? displayName(member) : `User ${userId}`;
   };
 }
 
@@ -39,6 +39,7 @@ export function ExpenseList({
   showGroup = false,
   personLinks = true,
   empty = "Nothing yet.",
+  after,
 }: {
   expenses: ExpenseSummary[];
   currentUserId: string;
@@ -52,10 +53,12 @@ export function ExpenseList({
    */
   personLinks?: boolean;
   empty?: string;
+  /** Extra row(s) rendered inside the list, e.g. an upcoming bill on a series. */
+  after?: ReactNode;
 }) {
   const navigate = useNavigate();
 
-  if (expenses.length === 0) return <p className="empty">{empty}</p>;
+  if (expenses.length === 0 && !after) return <p className="empty">{empty}</p>;
 
   return (
     <div className="list">
@@ -131,6 +134,11 @@ export function ExpenseList({
                     series
                   </span>
                 )}
+                {expense.deleted_at && (
+                  <span className="tag muted" title="Deleted. Open it to undo.">
+                    deleted
+                  </span>
+                )}
                 <Amount minor={expense.cost_minor} currency={expense.currency_code} />
               </div>
               {(expense.comment_count ?? 0) > 0 && (
@@ -148,6 +156,7 @@ export function ExpenseList({
           </div>
         );
       })}
+      {after}
     </div>
   );
 }

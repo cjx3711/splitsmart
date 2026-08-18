@@ -25,6 +25,7 @@ import { sql, type RawBuilder } from "kysely";
 import type { DB } from "../db/index.ts";
 import { db, transaction } from "../db/index.ts";
 import { formatAmount } from "./money.ts";
+import { displayName, personCamel } from "./person.ts";
 import { isUlid, ulid } from "./ulid.ts";
 import { serializeMetadata, type EntityMetadata } from "./metadata.ts";
 import { logChange } from "./sync-log.ts";
@@ -59,7 +60,7 @@ export interface CommentRecord {
   kind: CommentKind;
   content: string;
   createdAt: string;
-  author: { id: string; firstName: string; lastName: string | null };
+  author: { id: string } & ReturnType<typeof personCamel>;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,8 +128,11 @@ export async function listComments(
       "comments.content",
       "comments.created_at",
       "users.id as author_id",
-      "users.first_name",
-      "users.last_name",
+      "users.name",
+      "users.nickname",
+      "users.icon_letters",
+      "users.icon_emoji",
+      "users.icon_hue",
     ])
     .where("comments.expense_id", "=", expenseId)
     .where("comments.deleted_at", "is", null)
@@ -142,7 +146,7 @@ export async function listComments(
     kind: r.kind as CommentKind,
     content: r.content,
     createdAt: r.created_at,
-    author: { id: r.author_id, firstName: r.first_name, lastName: r.last_name },
+    author: { id: r.author_id, ...personCamel(r) },
   }));
 }
 
@@ -509,8 +513,8 @@ export async function snapshotExpense(
     .innerJoin("users", "users.id", "expense_users.user_id")
     .select([
       "users.id",
-      "users.first_name",
-      "users.last_name",
+      "users.name",
+      "users.nickname",
       "expense_users.owed_share_minor",
     ])
     .where("expense_users.expense_id", "=", expenseId)
@@ -527,7 +531,7 @@ export async function snapshotExpense(
     repeat: expense.repeat_interval,
     shares: shares
       .map((s) => ({
-        name: [s.first_name, s.last_name].filter(Boolean).join(" "),
+        name: displayName(s),
         owed: `${formatAmount(s.owed_share_minor, decimals)} ${expense.currency_code}`,
       }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
@@ -557,13 +561,11 @@ export async function recordExpenseEvent(
   try {
     const actor = await trx
       .selectFrom("users")
-      .select(["first_name", "last_name"])
+      .select(["name", "nickname"])
       .where("id", "=", input.actorId)
       .executeTakeFirst();
 
-    const who = actor
-      ? [actor.first_name, actor.last_name].filter(Boolean).join(" ")
-      : "Somebody";
+    const who = actor ? displayName(actor) : "Somebody";
 
     let content: string;
     if (input.event.kind === "updated") {

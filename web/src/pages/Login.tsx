@@ -24,7 +24,8 @@ export function Login() {
   const next = searchParams.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
+  const [name, setName] = useState("");
+  const [nickname, setNickname] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +41,12 @@ export function Login() {
       const { user } =
         mode === "login"
           ? await api.login(email, password)
-          : await api.register({ email, password, firstName });
+          : await api.register({
+              email,
+              password,
+              name,
+              nickname: nickname.trim() || null,
+            });
       setUser(user);
       // Only in-app paths, never an absolute URL: `next` comes from the query
       // string, so an unchecked value here would be an open redirect.
@@ -61,15 +67,29 @@ export function Login() {
         {error && <p className="error">{error}</p>}
 
         {mode === "register" && (
-          <div>
-            <label htmlFor="firstName">Name</label>
-            <input
-              id="firstName"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              required
-            />
-          </div>
+          <>
+            <div>
+              <label htmlFor="name">Name</label>
+              <input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoComplete="name"
+              />
+            </div>
+            <div>
+              <label htmlFor="nickname">Nickname</label>
+              <input
+                id="nickname"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                maxLength={40}
+                autoComplete="nickname"
+                placeholder="Optional. Shown in lists instead of the full name."
+              />
+            </div>
+          </>
         )}
         <div>
           <label htmlFor="email">Email</label>
@@ -104,7 +124,9 @@ export function Login() {
           {mode === "login" ? "Create an account" : "Log in instead"}
         </button>
         <p className="field-hint" style={{ margin: 0 }}>
-          Sent a guest link? Open that link instead; it needs no account.
+          {mode === "register"
+            ? "Sent a guest link? Create an account to claim that link."
+            : "Sent a guest link? Open that link instead; it needs no account."}
         </p>
       </div>
     </div>

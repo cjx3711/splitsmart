@@ -22,8 +22,11 @@ interface ActivityRow {
   payload: string | null;
   created_at: string;
   actor_id: string | null;
-  actor_first_name: string | null;
-  actor_last_name: string | null;
+  actor_name: string | null;
+  actor_nickname: string | null;
+  actor_icon_letters: string | null;
+  actor_icon_emoji: string | null;
+  actor_icon_hue: number | null;
   group_id: string | null;
   group_name: string | null;
   expense_id: string | null;
@@ -41,8 +44,11 @@ activityRoutes.get("/", async (c) => {
   const rows = await sql<ActivityRow>`
     SELECT a.id, a.action, a.payload, a.created_at,
            actor.id         AS actor_id,
-           actor.first_name AS actor_first_name,
-           actor.last_name  AS actor_last_name,
+           actor.name       AS actor_name,
+           actor.nickname   AS actor_nickname,
+           actor.icon_letters AS actor_icon_letters,
+           actor.icon_emoji AS actor_icon_emoji,
+           actor.icon_hue   AS actor_icon_hue,
            a.group_id,
            g.name           AS group_name,
            a.expense_id,
@@ -75,8 +81,11 @@ activityRoutes.get("/", async (c) => {
       actor: r.actor_id
         ? {
             id: r.actor_id,
-            firstName: r.actor_first_name ?? "",
-            lastName: r.actor_last_name,
+            name: r.actor_name ?? "",
+            nickname: r.actor_nickname,
+            iconLetters: r.actor_icon_letters,
+            iconEmoji: r.actor_icon_emoji,
+            iconHue: r.actor_icon_hue,
           }
         : null,
       group: r.group_id ? { id: r.group_id, name: r.group_name ?? "" } : null,

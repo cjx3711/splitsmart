@@ -5,6 +5,12 @@ import { useAuth } from "../App.tsx";
 import { CurrencySelect } from "../CurrencySelect.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { OnlineOnly, useOnline } from "../OnlineOnly.tsx";
+import {
+  PersonIdentityForm,
+  draftFromPerson,
+  identityPayload,
+  type IdentityDraft,
+} from "../PersonIdentityForm.tsx";
 
 /**
  * Account settings and API tokens.
@@ -25,6 +31,12 @@ export function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
   const [revokingBusy, setRevokingBusy] = useState(false);
+  const [identity, setIdentity] = useState<IdentityDraft | null>(null);
+  const [identityBusy, setIdentityBusy] = useState(false);
+
+  useEffect(() => {
+    if (user) setIdentity(draftFromPerson(user));
+  }, [user]);
 
   async function load() {
     try {
@@ -58,11 +70,48 @@ export function Settings() {
 
       <div className="card">
         <div className="muted">Signed in as</div>
-        <strong>
-          {user?.firstName} {user?.lastName}
-        </strong>
+        <strong>{user?.nickname?.trim() || user?.name}</strong>
+        {user?.nickname?.trim() && user?.name !== user.nickname.trim() && (
+          <div className="muted">{user.name}</div>
+        )}
         <div className="muted">{user?.email ?? "Guest account (no email)"}</div>
       </div>
+
+      <h2>Name and icon</h2>
+      <p className="muted">
+        One name, not first and last. A nickname is what other people see in
+        lists. The icon can be letters, an emoji, and a colour.
+      </p>
+      {user && identity && (
+        <form
+          className="card stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const payload = identityPayload(identity);
+            if (!payload.name) return;
+            setIdentityBusy(true);
+            void api
+              .updateMe(payload)
+              .then((result) => {
+                setUser(result.user);
+                setIdentity(draftFromPerson(result.user));
+              })
+              .catch((err) =>
+                setError(err instanceof Error ? err.message : "Could not save name"),
+              )
+              .finally(() => setIdentityBusy(false));
+          }}
+        >
+          <OnlineOnly what="Changing your name and icon">
+            <PersonIdentityForm id={user.id} value={identity} onChange={setIdentity} />
+            <div>
+              <button type="submit" className="inline" disabled={identityBusy || !identity.name.trim()}>
+                {identityBusy ? "Saving…" : "Save name and icon"}
+              </button>
+            </div>
+          </OnlineOnly>
+        </form>
+      )}
 
       <h2>Preferred currency</h2>
       <p className="muted">

@@ -13,14 +13,14 @@
  */
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { fullName, type ExpenseQuery } from "../api.ts";
+import { displayName, api, type ExpenseQuery } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
-import { Avatar } from "../Avatar.tsx";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { useFriend, useFriendExpenses, useFriends } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
@@ -28,16 +28,26 @@ import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { LinkPanel } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
+import {
+  PersonIdentityForm,
+  draftFromPerson,
+  identityPayload,
+  type IdentityDraft,
+} from "../PersonIdentityForm.tsx";
+import { OnlineOnly } from "../OnlineOnly.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
+  const [identity, setIdentity] = useState<IdentityDraft | null>(null);
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
   const [settleCurrency, setSettleCurrency] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
-  const { engine } = useSync();
+  const { engine, syncNow } = useSync();
 
   const loaded = useFriend(id);
   const expenses = useFriendExpenses(id, filters)?.expenses ?? [];
@@ -48,15 +58,15 @@ export function FriendDetail() {
 
   const friend = loaded.friend;
 
-  const name = fullName(friend);
+  const name = displayName(friend);
   const people = [
     { id: user.id, label: "You" },
     { id: friend.id, label: name },
   ];
   const nameOf = makeLookup(
     [
-      { id: user.id, first_name: user.firstName, last_name: user.lastName },
-      { id: friend.id, first_name: friend.first_name, last_name: friend.last_name },
+      { id: user.id, name: user.name, nickname: user.nickname },
+      friend,
       ...allFriends,
     ],
     user.id,
@@ -87,16 +97,33 @@ export function FriendDetail() {
 
       <div className="page-head">
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Avatar id={friend.id} name={name} size={44} />
+          <Avatar {...avatarFromRow(friend)} size={44} />
           <div>
             <h1>{name}</h1>
             <p className="muted" style={{ margin: 0 }}>
+              {friend.nickname?.trim() && friend.nickname.trim() !== friend.name
+                ? `${friend.name} · `
+                : ""}
               {friend.email ?? "No email"}
               {friend.is_ghost === 1 && " · hasn't joined yet"}
             </p>
           </div>
         </div>
         <div className="page-actions">
+          {friend.is_ghost === 1 && (
+            <OnlineOnly what="Editing a placeholder's name">
+              <button
+                className="secondary"
+                onClick={() => {
+                  setIdentity(draftFromPerson(friend));
+                  setIdentityError(null);
+                  setOpenDialog("identity");
+                }}
+              >
+                Edit name
+              </button>
+            </OnlineOnly>
+          )}
           <button className="secondary" onClick={() => setOpenDialog("settle")}>
             Settle up
           </button>
@@ -111,6 +138,41 @@ export function FriendDetail() {
         onClose={() => setOpenDialog(null)}
 
       />
+
+      <Modal
+        open={openDialog === "identity"}
+        title={`Edit ${name}`}
+        onClose={() => setOpenDialog(null)}
+      >
+        {identity && (
+          <form
+            className="stack"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const payload = identityPayload(identity);
+              if (!payload.name) return;
+              setIdentityBusy(true);
+              setIdentityError(null);
+              void api
+                .updateFriend(friend.id, payload)
+                .then(() => {
+                  syncNow();
+                  setOpenDialog(null);
+                })
+                .catch((err) =>
+                  setIdentityError(err instanceof Error ? err.message : "Could not save"),
+                )
+                .finally(() => setIdentityBusy(false));
+            }}
+          >
+            {identityError && <p className="error">{identityError}</p>}
+            <PersonIdentityForm id={friend.id} value={identity} onChange={setIdentity} />
+            <button type="submit" disabled={identityBusy || !identity.name.trim()}>
+              {identityBusy ? "Saving…" : "Save"}
+            </button>
+          </form>
+        )}
+      </Modal>
 
       <Modal
         open={openDialog === "settle"}

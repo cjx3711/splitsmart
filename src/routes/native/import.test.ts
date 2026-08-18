@@ -321,8 +321,7 @@ before(async () => {
       id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Alice",
-      last_name: "Anderson",
+      name: "Alice Anderson",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -337,8 +336,7 @@ before(async () => {
       id: bobId,
       email: "bob@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Bob",
-      last_name: "Brown",
+      name: "Bob Brown",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -440,8 +438,8 @@ describe("friends", () => {
     assert.equal(Date.parse(carolRow.created_at), Date.parse("2021-04-01T00:00:00Z"));
 
     const friends = await get("/friends");
-    const names = friends.body.friends.map((f: any) => f.first_name).sort();
-    assert.deepEqual(names, ["Bob", "Carol"]);
+    const names = friends.body.friends.map((f: any) => f.name).sort();
+    assert.deepEqual(names, ["Bob Brown", "Carol Clark"]);
     assert.ok(friends.body.friends.every((f: any) => f.is_explicit));
 
     // Bob is still Bob: no duplicate row, and no ghost shadowing his account.
@@ -695,10 +693,10 @@ describe("comments", () => {
     // An author nobody had seen became a placeholder rather than being dropped.
     const dave = await db
       .selectFrom("users")
-      .select(["id", "first_name", "is_ghost"])
+      .select(["id", "name", "is_ghost"])
       .where("id", "=", comments[0]!.user_id)
       .executeTakeFirstOrThrow();
-    assert.equal(dave.first_name, "Dave");
+    assert.equal(dave.name, "Dave Doe");
     assert.equal(dave.is_ghost, 1);
   });
 
@@ -805,7 +803,7 @@ describe("guests", () => {
       .insertInto("users")
       .values({
         id: ghostId,
-        first_name: "Ghost",
+        name: "Ghost",
         is_ghost: 1,
         default_currency: "USD",
       })

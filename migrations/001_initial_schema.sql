@@ -80,8 +80,13 @@ CREATE TABLE users (
   password_hash      TEXT,                     -- see src/auth/password.ts for format
   email_verified_at  TEXT,
 
-  first_name         TEXT NOT NULL,
-  last_name          TEXT,
+  -- One name, not first/last. Nickname is an optional shorter form used in
+  -- lists when set. Icon fields are appearance only; balances never read them.
+  name               TEXT NOT NULL,
+  nickname           TEXT,
+  icon_letters       TEXT,
+  icon_emoji         TEXT,
+  icon_hue           INTEGER,
   avatar_url         TEXT,
 
   default_currency   TEXT NOT NULL DEFAULT 'USD' REFERENCES currencies(code),
@@ -103,6 +108,7 @@ CREATE TABLE users (
   CHECK (LENGTH(id) = 26),
   CHECK (json_valid(metadata)),
   CHECK (json_type(metadata) = 'object'),
+  CHECK (icon_hue IS NULL OR (icon_hue >= 0 AND icon_hue <= 359)),
   -- A real (non-ghost) account must be able to authenticate.
   CHECK (is_ghost = 1 OR (email IS NOT NULL AND password_hash IS NOT NULL)),
   -- A ghost must not carry credentials it cannot use.

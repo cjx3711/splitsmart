@@ -21,6 +21,7 @@
  * which is the honest outcome rather than a stale one.
  */
 import { deriveRepayments } from "../../../src/domain/split.ts";
+import { displayName } from "../../../src/domain/person.ts";
 import { simplifyDebts } from "../../../src/domain/settle.ts";
 import {
   csvDocument,
@@ -31,6 +32,11 @@ import {
   matchesFilters,
   type ExpenseFilters,
 } from "../../../src/domain/expense-query.ts";
+import {
+  isRepeatInterval,
+  seriesTemplateId,
+  type RepeatInterval,
+} from "../../../src/domain/recurring.ts";
 import type {
   ApiUser,
   Comment,
@@ -99,6 +105,11 @@ function keep(expense: LocalExpense, filters: ExpenseFilters): boolean {
 function byDateDesc(a: LocalExpense, b: LocalExpense): number {
   if (a.date !== b.date) return a.date < b.date ? 1 : -1;
   return a.id < b.id ? 1 : -1;
+}
+
+/** Oldest first. A series is a timeline, so the starting bill sits at the top. */
+function byDateAsc(a: LocalExpense, b: LocalExpense): number {
+  return -byDateDesc(a, b);
 }
 
 // ---------------------------------------------------------------------------
@@ -262,10 +273,6 @@ function groupBalances(moves: Movement[], groupId: string): Array<{ userId: stri
 // People
 // ---------------------------------------------------------------------------
 
-function fullNameOf(user: SyncUser): string {
-  return [user.firstName, user.lastName].filter(Boolean).join(" ");
-}
-
 /**
  * Everyone the caller can see: explicit friendships, plus everyone they share a
  * live group membership or an expense with.
@@ -313,8 +320,11 @@ export async function localProfile(db: LocalDb): Promise<ApiUser | null> {
   return {
     id: profile.id,
     email: profile.email,
-    firstName: profile.firstName,
-    lastName: profile.lastName,
+    name: profile.name,
+    nickname: profile.nickname,
+    iconLetters: profile.iconLetters,
+    iconEmoji: profile.iconEmoji,
+    iconHue: profile.iconHue,
     isGhost: profile.isGhost,
     defaultCurrency: profile.defaultCurrency,
   };
@@ -376,8 +386,11 @@ export async function localGroup(
     .filter((m) => m.leftAt === null)
     .map((m) => ({
       id: m.userId,
-      first_name: m.user?.firstName ?? "",
-      last_name: m.user?.lastName ?? null,
+      name: m.user?.name ?? "",
+      nickname: m.user?.nickname ?? null,
+      icon_letters: m.user?.iconLetters ?? null,
+      icon_emoji: m.user?.iconEmoji ?? null,
+      icon_hue: m.user?.iconHue ?? null,
       is_ghost: m.user?.isGhost ? 1 : 0,
       role: m.role,
       joined_via: m.joinedVia,
@@ -451,7 +464,7 @@ export async function localFriends(
   );
 
   const friends = users
-    .sort((a, b) => a.firstName.localeCompare(b.firstName))
+    .sort((a, b) => displayName(a).localeCompare(displayName(b)))
     .map((user) => toApiFriend(user, balances, breakdowns, explicit, groupNames));
 
   return { friends };
@@ -507,8 +520,11 @@ function toApiFriend(
   return {
     id: user.id,
     email: user.email,
-    first_name: user.firstName,
-    last_name: user.lastName,
+    name: user.name,
+    nickname: user.nickname,
+    icon_letters: user.iconLetters,
+    icon_emoji: user.iconEmoji,
+    icon_hue: user.iconHue,
     is_ghost: user.isGhost ? 1 : 0,
     // Only explicit friendships can be removed. The derived ones come from shared
     // groups and expenses and would reappear on the next load.
@@ -596,6 +612,7 @@ async function toSummaries(db: LocalDb, rows: LocalExpense[]): Promise<ExpenseSu
     comment_count: counts.get(row.id) ?? 0,
     repeat_interval: row.repeatInterval,
     repeat_of: row.repeatOf,
+    deleted_at: row.deletedAt,
     shares: row.shares.map((s) => ({
       user_id: s.userId,
       paid_share_minor: s.paidShareMinor,
@@ -603,6 +620,57 @@ async function toSummaries(db: LocalDb, rows: LocalExpense[]): Promise<ExpenseSu
     })),
     syncState: row.syncState,
   }));
+}
+
+/**
+ * Every bill in the series this expense belongs to: the template plus the
+ * copies that point at it, oldest first, including tombstones.
+ *
+ * Returns null when the id is unknown or is not part of a series. A deleted
+ * template still returns the bills it already made, with `stopped` set — that
+ * is the state deleting the first bill produces, and the series page has to
+ * show it rather than 404.
+ */
+export async function localSeries(
+  db: LocalDb,
+  expenseId: string,
+): Promise<{
+  templateId: string;
+  title: string;
+  groupId: string | null;
+  groupName: string | null;
+  interval: RepeatInterval | null;
+  nextRepeat: string | null;
+  /** Why new bills are not coming. Null while the schedule is still live. */
+  stoppedReason: "deleted" | "ended" | null;
+  bills: ExpenseSummary[];
+} | null> {
+  const seed = await db.expenses.get(expenseId);
+  if (!seed) return null;
+
+  const templateId = seriesTemplateId(seed.id, seed.repeatOf, seed.repeatInterval);
+  if (!templateId) return null;
+
+  const template = await db.expenses.get(templateId);
+  const children = await db.expenses.where("repeatOf").equals(templateId).toArray();
+  const rows = [...(template ? [template] : []), ...children].sort(byDateAsc);
+  const head = template ?? seed;
+  const interval = isRepeatInterval(head.repeatInterval) ? head.repeatInterval : null;
+  const stoppedReason: "deleted" | "ended" | null =
+    !template || template.deletedAt !== null ? "deleted" : interval === null ? "ended" : null;
+
+  const group = head.groupId === null ? null : await db.groups.get(head.groupId);
+
+  return {
+    templateId,
+    title: head.isPayment ? "Settle up" : head.description,
+    groupId: head.groupId,
+    groupName: group?.name ?? null,
+    interval,
+    nextRepeat: stoppedReason ? null : (template?.nextRepeat ?? null),
+    stoppedReason,
+    bills: await toSummaries(db, rows),
+  };
 }
 
 async function commentCounts(db: LocalDb, expenseIds: string[]): Promise<Map<string, number>> {
@@ -697,8 +765,11 @@ export async function localComments(
       createdAt: row.createdAt,
       author: {
         id: row.userId,
-        firstName: row.author?.firstName ?? "",
-        lastName: row.author?.lastName ?? null,
+        name: row.author?.name ?? "",
+        nickname: row.author?.nickname ?? null,
+        iconLetters: row.author?.iconLetters ?? null,
+        iconEmoji: row.author?.iconEmoji ?? null,
+        iconHue: row.author?.iconHue ?? null,
       },
     })),
   };
@@ -746,7 +817,7 @@ export async function localExpenseCsv(
       people: summary.shares.map((share) => {
         const user = users.get(share.user_id);
         return {
-          name: user ? fullNameOf(user) : share.user_id,
+          name: user ? displayName(user) : share.user_id,
           paidMinor: share.paid_share_minor,
           owedMinor: share.owed_share_minor,
         };

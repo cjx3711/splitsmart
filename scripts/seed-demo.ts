@@ -63,8 +63,8 @@ function daysAgo(days: number): string {
 async function ensureUser(
   email: string,
   profile: {
-    firstName: string;
-    lastName?: string;
+    name: string;
+    nickname?: string | null;
     defaultCurrency?: string;
     password?: string;
   },
@@ -84,8 +84,8 @@ async function ensureUser(
       id: seedUlid(),
       email,
       password_hash: await hashPassword(profile.password ?? DEFAULT_PASSWORD),
-      first_name: profile.firstName,
-      last_name: profile.lastName ?? null,
+      name: profile.name,
+      nickname: profile.nickname?.trim() || null,
       default_currency: profile.defaultCurrency ?? "USD",
       is_ghost: 0,
       email_verified_at: new Date().toISOString(),
@@ -97,8 +97,8 @@ async function ensureUser(
 }
 
 async function createGhost(
-  firstName: string,
-  lastName: string,
+  name: string,
+  nickname: string | null,
   defaultCurrency = "USD",
 ): Promise<string> {
   const id = seedUlid();
@@ -106,8 +106,8 @@ async function createGhost(
     .insertInto("users")
     .values({
       id,
-      first_name: firstName,
-      last_name: lastName,
+      name,
+      nickname,
       default_currency: defaultCurrency,
       is_ghost: 1,
     })
@@ -155,14 +155,13 @@ async function main(): Promise<void> {
   const email = process.argv[2] ?? DEFAULT_EMAIL;
 
   const userId = await ensureUser(email, {
-    firstName: "Test",
-    lastName: "User",
+    name: "Test User",
     defaultCurrency: "USD",
   });
 
   const user = await db
     .selectFrom("users")
-    .select("first_name")
+    .select("name")
     .where("id", "=", userId)
     .executeTakeFirstOrThrow();
 
@@ -181,110 +180,110 @@ async function main(): Promise<void> {
 
   // Real accounts (can log in with password123). Created oldest-first so the
   // sidebar's ULID ordering surfaces the later names as "latest".
-  const jamieId = await ensureUser("jamie@example.com", {
-    firstName: "Jamie",
-    lastName: "Lee",
+  const jjId = await ensureUser("jj@example.com", {
+    name: "Lee Jin Jie",
+    nickname: "JJ",
   });
-  const samId = await ensureUser("sam@example.com", {
-    firstName: "Sam",
-    lastName: "Rivera",
+  const ahBengId = await ensureUser("ahbeng@example.com", {
+    name: "Tan Ah Beng",
+    nickname: "Ah Beng",
   });
-  const taylorId = await ensureUser("taylor@example.com", {
-    firstName: "Taylor",
-    lastName: "Kim",
+  const taroId = await ensureUser("taro@example.com", {
+    name: "Tanaka Taro",
+    nickname: "Taro",
   });
-  const morganId = await ensureUser("morgan@example.com", {
-    firstName: "Morgan",
-    lastName: "Chen",
+  const jasId = await ensureUser("jas@example.com", {
+    name: "Jasmine Lim Jia Hui",
+    nickname: "Jas",
   });
-  const rileyId = await ensureUser("riley@example.com", {
-    firstName: "Riley",
-    lastName: "Brooks",
+  const danialId = await ensureUser("danial@example.com", {
+    name: "Muhammad Danial",
+    nickname: "Danial",
   });
-  const caseyId = await ensureUser("casey@example.com", {
-    firstName: "Casey",
-    lastName: "Walsh",
+  const melId = await ensureUser("mel@example.com", {
+    name: "Melvin Tan Wei Ming",
+    nickname: "Mel",
   });
-  const jordanId = await ensureUser("jordan@example.com", {
-    firstName: "Jordan",
-    lastName: "Lee",
+  const aisyahId = await ensureUser("aisyah@example.com", {
+    name: "Nur Aisyah",
+    nickname: "Aisyah",
   });
 
   // Guest placeholders (no login). Also oldest-first.
-  const alexId = await createGhost("Alex", "Kim", "JPY");
-  const quinnId = await createGhost("Quinn", "Miller");
-  const reeseId = await createGhost("Reese", "Johnson");
-  const parkerId = await createGhost("Parker", "Davis");
-  const sageId = await createGhost("Sage", "Williams");
-  const blakeId = await createGhost("Blake", "Hart");
-  const drewId = await createGhost("Drew", "Nguyen");
-  const averyId = await createGhost("Avery", "Patel");
+  const hanaId = await createGhost("Yamada Hanako", "Hana", "JPY");
+  const gerryId = await createGhost("Gerald Teo Jia Hao", "Gerry");
+  const priyaId = await createGhost("Priya Nair", "Priya");
+  const yukiId = await createGhost("Sato Yuki", "Yuki");
+  const ahLianId = await createGhost("Tan Ah Lian", "Ah Lian");
+  const johnId = await createGhost("John Smith", "John");
+  const jenId = await createGhost("Jennifer Johnson", "Jen");
+  const jamesId = await createGhost("James Smith", "James");
 
   // Explicit friendships (removable in the UI).
-  for (const friendId of [samId, morganId, rileyId, caseyId, jordanId, blakeId, drewId, averyId]) {
+  for (const friendId of [ahBengId, jasId, danialId, melId, aisyahId, johnId, jenId, jamesId]) {
     await addFriendship(userId, friendId);
   }
 
   // Groups oldest-first so the sidebar shows the five newest names.
   const bookClubId = await createGroup(userId, "Book Club", "other", "USD", [
     userId,
-    morganId,
-    rileyId,
+    jasId,
+    danialId,
   ]);
   const lunchClubId = await createGroup(userId, "Office Lunch Club", "work", "USD", [
     userId,
-    caseyId,
-    jordanId,
-    taylorId,
+    melId,
+    aisyahId,
+    taroId,
   ]);
   const apartmentId = await createGroup(
     userId,
     "Apartment 4B",
     "home",
     "USD",
-    [userId, jamieId],
+    [userId, jjId],
     true,
   );
   const gameNightId = await createGroup(userId, "Game Night Crew", "sports", "USD", [
     userId,
-    quinnId,
-    reeseId,
-    parkerId,
+    gerryId,
+    priyaId,
+    yukiId,
   ]);
   const bbqId = await createGroup(userId, "Summer BBQ", "outing", "USD", [
     userId,
-    sageId,
-    samId,
+    ahLianId,
+    ahBengId,
   ]);
   const campingId = await createGroup(userId, "Yosemite Camping", "trip", "USD", [
     userId,
-    drewId,
-    averyId,
-    blakeId,
+    jenId,
+    jamesId,
+    johnId,
   ]);
   const weddingId = await createGroup(userId, "Jess & Marco's Wedding", "event", "USD", [
     userId,
-    morganId,
-    rileyId,
-    caseyId,
-    jordanId,
+    jasId,
+    danialId,
+    melId,
+    aisyahId,
   ]);
   const hackathonId = await createGroup(userId, "Hackathon Squad", "project", "USD", [
     userId,
-    taylorId,
-    parkerId,
-    sageId,
+    taroId,
+    yukiId,
+    ahLianId,
   ]);
   const skiTripId = await createGroup(userId, "Ski Trip 2026", "trip", "USD", [
     userId,
-    jamieId,
-    samId,
+    jjId,
+    ahBengId,
   ]);
   const tokyoId = await createGroup(userId, "Weekend in Tokyo", "trip", "JPY", [
     userId,
-    jamieId,
-    samId,
-    alexId,
+    jjId,
+    ahBengId,
+    hanaId,
   ]);
 
   // Tokyo trip
@@ -299,9 +298,9 @@ async function main(): Promise<void> {
     createdBy: userId,
     participants: [
       { userId, paidMinor: 4800 },
-      { userId: jamieId, paidMinor: 0 },
-      { userId: samId, paidMinor: 0 },
-      { userId: alexId, paidMinor: 0 },
+      { userId: jjId, paidMinor: 0 },
+      { userId: ahBengId, paidMinor: 0 },
+      { userId: hanaId, paidMinor: 0 },
     ],
   });
   await createExpense({
@@ -312,12 +311,12 @@ async function main(): Promise<void> {
     date: "2026-08-11",
     categoryId: 40,
     splitType: "equal",
-    createdBy: jamieId,
+    createdBy: jjId,
     participants: [
       { userId, paidMinor: 0 },
-      { userId: jamieId, paidMinor: 9600 },
-      { userId: samId, paidMinor: 0 },
-      { userId: alexId, paidMinor: 0 },
+      { userId: jjId, paidMinor: 9600 },
+      { userId: ahBengId, paidMinor: 0 },
+      { userId: hanaId, paidMinor: 0 },
     ],
   });
 
@@ -333,12 +332,12 @@ async function main(): Promise<void> {
     createdBy: userId,
     participants: [
       { userId, paidMinor: 8743 },
-      { userId: jamieId, paidMinor: 0 },
+      { userId: jjId, paidMinor: 0 },
     ],
   });
   await createPayment({
     fromUserId: userId,
-    toUserId: jamieId,
+    toUserId: jjId,
     amountMinor: 5000,
     currencyCode: "USD",
     groupId: apartmentId,
@@ -359,8 +358,8 @@ async function main(): Promise<void> {
     createdBy: userId,
     participants: [
       { userId, paidMinor: 42000 },
-      { userId: jamieId, paidMinor: 0 },
-      { userId: samId, paidMinor: 0 },
+      { userId: jjId, paidMinor: 0 },
+      { userId: ahBengId, paidMinor: 0 },
     ],
   });
 
@@ -373,13 +372,13 @@ async function main(): Promise<void> {
     date: "2026-06-01",
     categoryId: 47,
     splitType: "equal",
-    createdBy: morganId,
+    createdBy: jasId,
     participants: [
       { userId, paidMinor: 0 },
-      { userId: morganId, paidMinor: 32500 },
-      { userId: rileyId, paidMinor: 0 },
-      { userId: caseyId, paidMinor: 0 },
-      { userId: jordanId, paidMinor: 0 },
+      { userId: jasId, paidMinor: 32500 },
+      { userId: danialId, paidMinor: 0 },
+      { userId: melId, paidMinor: 0 },
+      { userId: aisyahId, paidMinor: 0 },
     ],
   });
 
@@ -392,12 +391,12 @@ async function main(): Promise<void> {
     date: "2026-07-22",
     categoryId: 13,
     splitType: "equal",
-    createdBy: caseyId,
+    createdBy: melId,
     participants: [
       { userId, paidMinor: 0 },
-      { userId: caseyId, paidMinor: 15640 },
-      { userId: jordanId, paidMinor: 0 },
-      { userId: taylorId, paidMinor: 0 },
+      { userId: melId, paidMinor: 15640 },
+      { userId: aisyahId, paidMinor: 0 },
+      { userId: taroId, paidMinor: 0 },
     ],
   });
 
@@ -413,7 +412,7 @@ async function main(): Promise<void> {
     createdBy: userId,
     participants: [
       { userId, paidMinor: 1850 },
-      { userId: samId, paidMinor: 0 },
+      { userId: ahBengId, paidMinor: 0 },
     ],
   });
 
@@ -429,7 +428,7 @@ async function main(): Promise<void> {
     createdBy: userId,
     participants: [
       { userId, paidMinor: 12000 },
-      { userId: blakeId, paidMinor: 0 },
+      { userId: johnId, paidMinor: 0 },
     ],
   });
 
@@ -451,7 +450,7 @@ async function main(): Promise<void> {
     createdBy: userId,
     participants: [
       { userId, paidMinor: 180_000 },
-      { userId: jamieId, paidMinor: 0 },
+      { userId: jjId, paidMinor: 0 },
     ],
   });
 
@@ -464,11 +463,11 @@ async function main(): Promise<void> {
     categoryId: 13,
     splitType: "equal",
     repeatInterval: "weekly",
-    createdBy: caseyId,
+    createdBy: melId,
     participants: [
       { userId, paidMinor: 0 },
-      { userId: caseyId, paidMinor: 2400 },
-      { userId: jordanId, paidMinor: 0 },
+      { userId: melId, paidMinor: 2400 },
+      { userId: aisyahId, paidMinor: 0 },
     ],
   });
 
@@ -486,7 +485,7 @@ async function main(): Promise<void> {
   // real edit, which is the only way they are ever created.
   await createComment({
     expenseId: ramenId,
-    userId: jamieId,
+    userId: jjId,
     content: "Worth the queue. I'll get the next one.",
     createdAt: `${daysAgo(7)}T09:12:00Z`,
   });
@@ -498,13 +497,13 @@ async function main(): Promise<void> {
   });
   await createComment({
     expenseId: sushiId,
-    userId: jordanId,
-    content: "Taylor wasn't there for the second round — should we split that separately?",
+    userId: aisyahId,
+    content: "Taro wasn't there for the second round — should we split that separately?",
     createdAt: `${daysAgo(20)}T12:40:00Z`,
   });
   await createComment({
     expenseId: groceriesId,
-    userId: jamieId,
+    userId: jjId,
     content: "Did this include the laundry stuff?",
     createdAt: `${daysAgo(12)}T18:05:00Z`,
   });
@@ -522,7 +521,7 @@ async function main(): Promise<void> {
     splitType: "equal",
     participants: [
       { userId, paidMinor: 9_243 },
-      { userId: jamieId, paidMinor: 0 },
+      { userId: jjId, paidMinor: 0 },
     ],
     updatedBy: userId,
   });
@@ -531,10 +530,10 @@ async function main(): Promise<void> {
     mintAccessLink(trx, { kind: "group", groupId: tokyoId, createdBy: userId }),
   );
   const friendLink = await transaction((trx) =>
-    mintAccessLink(trx, { kind: "friend", userId: alexId, createdBy: userId }),
+    mintAccessLink(trx, { kind: "friend", userId: hanaId, createdBy: userId }),
   );
 
-  console.log(`Seeded demo data for ${email} (${user.first_name}):`);
+  console.log(`Seeded demo data for ${email} (${user.name}):`);
   console.log(`  Login:    ${email} / ${DEFAULT_PASSWORD}`);
   console.log("  Friends:  15 (7 real accounts, 8 guest placeholders)");
   console.log("  Groups:   10 (sidebar shows the 5 newest)");

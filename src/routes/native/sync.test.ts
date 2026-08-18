@@ -52,7 +52,7 @@ async function realUser(name: string, email: string): Promise<string> {
       id,
       email,
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: name,
+      name,
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -64,7 +64,7 @@ async function ghostUser(name: string): Promise<string> {
   const id = ulid();
   await db
     .insertInto("users")
-    .values({ id, first_name: name, default_currency: "USD", is_ghost: 1 })
+    .values({ id, name, default_currency: "USD", is_ghost: 1 })
     .execute();
   return id;
 }
@@ -800,7 +800,7 @@ describe("catch-up", () => {
     // a way to attach a stranger's account to your ledger by guessing a ULID.
     await as(aliceToken, "/friends", {
       method: "POST",
-      body: JSON.stringify({ firstName: "Joiner", email: "joiner@example.com" }),
+      body: JSON.stringify({ name: "Joiner", email: "joiner@example.com" }),
     });
 
     // Three bills and a thread, all written before the joiner exists as a member.

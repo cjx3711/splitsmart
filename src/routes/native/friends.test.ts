@@ -50,8 +50,7 @@ before(async () => {
       id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Alice",
-      last_name: "Anderson",
+      name: "Alice Anderson",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -63,8 +62,7 @@ before(async () => {
     .insertInto("users")
     .values({
       id: bobId,
-      first_name: "Bob",
-      last_name: "Brown",
+      name: "Bob Brown",
       default_currency: "USD",
       is_ghost: 1,
     })
@@ -174,7 +172,7 @@ describe("adding a friend", () => {
   test("creates a real user row that can be named on an expense", async () => {
     const res = await authed("/api/v1/friends", {
       method: "POST",
-      body: JSON.stringify({ firstName: "Carol", lastName: "Chen" }),
+      body: JSON.stringify({ name: "Carol Chen" }),
     });
     assert.equal(res.status, 201);
 
@@ -213,7 +211,7 @@ describe("adding a friend", () => {
         id: daveId,
         email: "dave@example.com",
         password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-        first_name: "Dave",
+        name: "Dave",
         default_currency: "USD",
         is_ghost: 0,
       })
@@ -222,17 +220,17 @@ describe("adding a friend", () => {
     const res = await authed("/api/v1/friends", {
       method: "POST",
       // A different name on purpose: theirs must win over whatever was typed.
-      body: JSON.stringify({ firstName: "Davey", email: "dave@example.com" }),
+      body: JSON.stringify({ name: "Davey", email: "dave@example.com" }),
     });
 
     const body = (await res.json()) as {
-      friend: { id: string; first_name: string };
+      friend: { id: string; name: string };
       existingAccount: boolean;
       inviteUrl?: string;
     };
     assert.equal(body.existingAccount, true);
     assert.equal(body.friend.id, daveId);
-    assert.equal(body.friend.first_name, "Dave");
+    assert.equal(body.friend.name, "Dave");
     // They log in as themselves; a guest link would be a way to impersonate a
     // real account, which access-links.ts refuses to mint.
     assert.equal(body.inviteUrl, undefined);
@@ -241,7 +239,7 @@ describe("adding a friend", () => {
   test("refuses your own address", async () => {
     const res = await authed("/api/v1/friends", {
       method: "POST",
-      body: JSON.stringify({ firstName: "Me", email: "alice@example.com" }),
+      body: JSON.stringify({ name: "Me", email: "alice@example.com" }),
     });
     assert.equal(res.status, 400);
   });
@@ -249,7 +247,7 @@ describe("adding a friend", () => {
   test("the invite link reaches the placeholder, and only the placeholder", async () => {
     const added = await authed("/api/v1/friends", {
       method: "POST",
-      body: JSON.stringify({ firstName: "Erin", email: "erin@example.com" }),
+      body: JSON.stringify({ name: "Erin", email: "erin@example.com" }),
     });
     const { friend, inviteUrl } = (await added.json()) as {
       friend: { id: string };
@@ -285,7 +283,7 @@ describe("one-on-one expenses", () => {
   before(async () => {
     const res = await authed("/api/v1/friends", {
       method: "POST",
-      body: JSON.stringify({ firstName: "Frank" }),
+      body: JSON.stringify({ name: "Frank" }),
     });
     frankId = ((await res.json()) as { friend: { id: string } }).friend.id;
   });
@@ -358,6 +356,50 @@ describe("one-on-one expenses", () => {
       bob?.breakdown.map((b) => [b.groupId, b.groupName]),
       [[groupId, "Test Trip"]],
     );
+  });
+});
+
+describe("editing a placeholder", () => {
+  test("a related account can set a ghost's name and icon", async () => {
+    const res = await authed(`/api/v1/friends/${bobId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: "Robert Brown",
+        nickname: "Bobby",
+        iconEmoji: "🦊",
+        iconHue: 32,
+      }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      friend: { name: string; nickname: string | null; icon_emoji: string | null; icon_hue: number | null };
+    };
+    assert.equal(body.friend.name, "Robert Brown");
+    assert.equal(body.friend.nickname, "Bobby");
+    assert.equal(body.friend.icon_emoji, "🦊");
+    assert.equal(body.friend.icon_hue, 32);
+  });
+
+  test("refuses to edit a real account", async () => {
+    const daveId = ulid();
+    await db
+      .insertInto("users")
+      .values({
+        id: daveId,
+        email: "dave-edit@example.com",
+        password_hash: "scrypt$131072$8$1$AAAA$AAAA",
+        name: "Dave",
+        default_currency: "USD",
+        is_ghost: 0,
+      })
+      .execute();
+    await addFriendship(aliceId, daveId);
+
+    const res = await authed(`/api/v1/friends/${daveId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "David" }),
+    });
+    assert.equal(res.status, 403);
   });
 });
 

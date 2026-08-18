@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api, type ClaimCandidates, type ClaimPreview } from "../api.ts";
+import { api, displayName, type ClaimCandidates, type ClaimPreview } from "../api.ts";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth, useSidebarRefresh } from "../App.tsx";
 
@@ -175,7 +175,7 @@ export function Claim() {
 
       <div className="list">
         {candidates.candidates.map((person) => {
-          const name = [person.firstName, person.lastName].filter(Boolean).join(" ");
+          const name = displayName(person);
           return (
             <button
               key={person.id}
@@ -184,7 +184,14 @@ export function Claim() {
               onClick={() => setChosen(person.id)}
               aria-pressed={person.id === chosen}
             >
-              <Avatar id={person.id} name={name} />
+              <Avatar
+                id={person.id}
+                name={person.name}
+                nickname={person.nickname}
+                iconLetters={person.iconLetters}
+                iconEmoji={person.iconEmoji}
+                iconHue={person.iconHue}
+              />
               <div className="list-item-body">
                 <div className="list-item-title">{name}</div>
               </div>
@@ -223,7 +230,7 @@ export function Claim() {
  * button rather than discover it in a balance later.
  */
 function ClaimSummary({ preview }: { preview: ClaimPreview }) {
-  const name = preview.person.firstName;
+  const name = displayName(preview.person);
   const { overlappingCount, transferredCount, overlapping } = preview;
 
   return (

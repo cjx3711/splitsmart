@@ -14,12 +14,12 @@ import { makeLookup } from "../ExpenseList.tsx";
 import { Modal } from "../Modal.tsx";
 import { reconstructExpenseForm } from "../reopenExpense.ts";
 import { CommentThread } from "../CommentThread.tsx";
-import { RepeatNote } from "../RepeatNote.tsx";
+import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { GuestExpenseDialog } from "./GuestExpenseDialog.tsx";
 import { expenseCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
-import { guestApi, guestFullName } from "./guestApi.ts";
+import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
 
 export function GuestExpense() {
   const { id } = useParams<{ id: string }>();
@@ -29,9 +29,7 @@ export function GuestExpense() {
   const { decimalsFor } = useCurrencies();
 
   const [expense, setExpense] = useState<ExpenseDetailData | null>(null);
-  const [people, setPeople] = useState<
-    Array<{ id: string; first_name: string; last_name: string | null }>
-  >([]);
+  const [people, setPeople] = useState<GuestVisiblePerson[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -81,6 +79,7 @@ export function GuestExpense() {
 
   const nameOf = makeLookup(people, me.id);
   const title = expense.is_payment === 1 ? "Settle up" : expense.description;
+  const deleteSeriesNote = seriesDeleteNote(expense);
 
   // Only the people already on the bill, plus anyone in the same group. The
   // server decides for real; this just stops the picker offering a refusal.
@@ -126,12 +125,11 @@ export function GuestExpense() {
             {expense.details}
           </p>
         )}
-        {/* No link back to the template: the guest shell has no page for one, and
-            creating or changing a series is logged-in only. See docs/PARITY.md. */}
         <RepeatNote
           repeatInterval={expense.repeat_interval}
           nextRepeat={expense.next_repeat}
           repeatOf={expense.repeat_of}
+          seriesHref={`/expenses/${expense.id}/series`}
         />
       </div>
 
@@ -185,13 +183,25 @@ export function GuestExpense() {
 
       <Modal
         open={confirmingDelete}
-        title={`Delete "${title}"?`}
+        title={
+          deleteSeriesNote?.kind === "template"
+            ? `Delete "${title}" and stop the series?`
+            : `Delete "${title}"?`
+        }
         onClose={() => setConfirmingDelete(false)}
       >
         <div className="stack">
           <p style={{ margin: 0 }}>
             This removes it from every balance it affects. This can't be undone.
           </p>
+          {deleteSeriesNote?.kind === "template" && (
+            <div className="notice">{deleteSeriesNote.text}</div>
+          )}
+          {deleteSeriesNote?.kind === "occurrence" && (
+            <p className="muted" style={{ margin: 0 }}>
+              {deleteSeriesNote.text}
+            </p>
+          )}
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button
               className="secondary"
@@ -201,7 +211,11 @@ export function GuestExpense() {
               Cancel
             </button>
             <button onClick={() => void handleDelete()} disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete expense"}
+              {deleting
+                ? "Deleting…"
+                : deleteSeriesNote?.kind === "template"
+                  ? "Delete and stop series"
+                  : "Delete expense"}
             </button>
           </div>
         </div>

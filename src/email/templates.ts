@@ -11,7 +11,7 @@
  */
 
 interface VerificationEmail {
-  firstName: string;
+  name: string;
   verifyUrl: string;
   expiresInHours: number;
 }
@@ -21,12 +21,12 @@ export function verificationEmail(input: VerificationEmail): {
   htmlBody: string;
   textBody: string;
 } {
-  const { firstName, verifyUrl, expiresInHours } = input;
+  const { name, verifyUrl, expiresInHours } = input;
 
   return {
     subject: "Confirm your SplitSmart email address",
 
-    textBody: `Hi ${firstName},
+    textBody: `Hi ${name},
 
 Confirm your email address to finish setting up your SplitSmart account:
 
@@ -42,7 +42,7 @@ If you didn't create a SplitSmart account, you can ignore this email.
   <body style="margin:0;padding:24px;background:#f6f7f9;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:#16191d;line-height:1.5;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #dfe3e8;border-radius:8px;padding:32px;">
       <h1 style="margin:0 0 16px;font-size:20px;">Confirm your email</h1>
-      <p style="margin:0 0 16px;">Hi ${escapeHtml(firstName)},</p>
+      <p style="margin:0 0 16px;">Hi ${escapeHtml(name)},</p>
       <p style="margin:0 0 24px;">
         Confirm your email address to finish setting up your SplitSmart account.
       </p>
@@ -70,7 +70,7 @@ If you didn't create a SplitSmart account, you can ignore this email.
 
 interface FriendInviteEmail {
   /** The person being invited. Ghosts always have one, even without an email. */
-  firstName: string;
+  name: string;
   /** Who added them. */
   inviterName: string;
   /**
@@ -88,7 +88,7 @@ export function friendInviteEmail(input: FriendInviteEmail): {
   htmlBody: string;
   textBody: string;
 } {
-  const { firstName, inviterName, acceptUrl, isNewAccount } = input;
+  const { name, inviterName, acceptUrl, isNewAccount } = input;
 
   const lead = isNewAccount
     ? `${inviterName} added you on SplitSmart, a shared ledger for splitting expenses. Open the link below to see what the two of you have split — no account or password needed, as long as the link has not expired.`
@@ -107,7 +107,7 @@ This link expires in 3 months. You can use it anytime before then. ${inviterName
   return {
     subject: `${inviterName} added you on SplitSmart`,
 
-    textBody: `Hi ${firstName},
+    textBody: `Hi ${name},
 
 ${lead}
 
@@ -121,7 +121,7 @@ If you weren't expecting this, you can ignore this email.
   <body style="margin:0;padding:24px;background:#f6f7f9;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:#16191d;line-height:1.5;">
     <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #dfe3e8;border-radius:8px;padding:32px;">
       <h1 style="margin:0 0 16px;font-size:20px;">You're on SplitSmart</h1>
-      <p style="margin:0 0 16px;">Hi ${escapeHtml(firstName)},</p>
+      <p style="margin:0 0 16px;">Hi ${escapeHtml(name)},</p>
       <p style="margin:0 0 24px;">${escapeHtml(lead)}</p>
       <p style="margin:0 0 24px;">
         <a href="${escapeAttribute(acceptUrl)}"

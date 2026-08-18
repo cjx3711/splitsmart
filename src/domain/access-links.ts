@@ -25,6 +25,7 @@ import { db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
 import { ulid } from "./ulid.ts";
+import { personCamel } from "./person.ts";
 
 export type LinkKind = "group" | "group_member" | "friend";
 
@@ -313,8 +314,11 @@ export function failureMessage(reason: LinkFailure): string {
 
 export interface ActablePerson {
   id: string;
-  firstName: string;
-  lastName: string | null;
+  name: string;
+  nickname: string | null;
+  iconLetters: string | null;
+  iconEmoji: string | null;
+  iconHue: number | null;
 }
 
 /**
@@ -331,28 +335,26 @@ export async function listActablePeople(
     if (!link.userId) return [];
     const one = await database
       .selectFrom("users")
-      .select(["id", "first_name", "last_name"])
+      .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
       .where("id", "=", link.userId)
       .where("is_ghost", "=", 1)
       .where("deleted_at", "is", null)
       .executeTakeFirst();
-    return one
-      ? [{ id: one.id, firstName: one.first_name, lastName: one.last_name }]
-      : [];
+    return one ? [{ id: one.id, ...personCamel(one) }] : [];
   }
 
   const rows = await database
     .selectFrom("group_members")
     .innerJoin("users", "users.id", "group_members.user_id")
-    .select(["users.id", "users.first_name", "users.last_name"])
+    .select(["users.id", "users.name", "users.nickname", "users.icon_letters", "users.icon_emoji", "users.icon_hue"])
     .where("group_members.group_id", "=", link.groupId!)
     .where("group_members.left_at", "is", null)
     .where("users.is_ghost", "=", 1)
     .where("users.deleted_at", "is", null)
-    .orderBy("users.first_name")
+    .orderBy("users.name")
     .execute();
 
-  return rows.map((r) => ({ id: r.id, firstName: r.first_name, lastName: r.last_name }));
+  return rows.map((r) => ({ id: r.id, ...personCamel(r) }));
 }
 
 /**

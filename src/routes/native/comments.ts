@@ -40,11 +40,7 @@ export function serializeComment(comment: CommentRecord) {
     kind: comment.kind,
     content: comment.content,
     createdAt: comment.createdAt,
-    author: {
-      id: comment.author.id,
-      firstName: comment.author.firstName,
-      lastName: comment.author.lastName,
-    },
+    author: comment.author,
   };
 }
 

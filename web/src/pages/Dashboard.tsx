@@ -10,9 +10,9 @@
  * additive to the stack, not a replacement for it.
  */
 import { Link } from "react-router-dom";
-import { fullName, type Friend, type CurrencyAmount } from "../api.ts";
+import { displayName, type Friend, type CurrencyAmount } from "../api.ts";
 import { Amount, Amounts, sumByCurrency } from "../money.tsx";
-import { Avatar } from "../Avatar.tsx";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { useFriends } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
@@ -151,9 +151,9 @@ function PeopleList({
 
         return (
           <Link key={person.id} to={`/friends/${person.id}`} className="list-item">
-            <Avatar id={person.id} name={fullName(person)} />
+            <Avatar {...avatarFromRow(person)} />
             <div className="list-item-body">
-              <div className="list-item-title">{fullName(person)}</div>
+              <div className="list-item-title">{displayName(person)}</div>
               <div className={direction}>
                 {direction === "positive" ? "owes you " : "you owe "}
                 <Amounts balances={relevant} absolute />

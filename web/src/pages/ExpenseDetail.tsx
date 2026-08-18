@@ -15,12 +15,13 @@
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { fullName } from "../api.ts";
 import { Amount } from "../money.tsx";
 import { makeLookup } from "../ExpenseList.tsx";
 import { EditExpenseDialog } from "../EditExpenseDialog.tsx";
 import { CommentThread } from "../CommentThread.tsx";
-import { RepeatNote } from "../RepeatNote.tsx";
+import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
+import { seriesTemplateId } from "../../../src/domain/recurring.ts";
+import { StopRepeatingButton, StopSeriesDialog, useStopSeries } from "../stopSeries.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { SyncBadge } from "../SyncStatusBar.tsx";
@@ -43,6 +44,14 @@ export function ExpenseDetail() {
   const loaded = useExpense(id);
   const friends = useFriends()?.friends ?? [];
   const local = useLocalExpenseRow(id);
+  const templateId = loaded?.expense
+    ? (seriesTemplateId(
+        loaded.expense.id,
+        loaded.expense.repeat_of,
+        loaded.expense.repeat_interval,
+      ) ?? undefined)
+    : undefined;
+  const stop = useStopSeries(templateId);
 
   if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
   if (loaded === null) return <p className="empty">This expense is not on this device.</p>;
@@ -96,6 +105,7 @@ export function ExpenseDetail() {
 
   const nameOf = makeLookup(friends, user.id);
   const title = expense.is_payment === 1 ? "Settle up" : expense.description;
+  const deleteSeriesNote = seriesDeleteNote(expense);
 
   // The group used to be repeated in the meta line below; the trail carries it
   // now, and one link per destination is enough.
@@ -167,7 +177,12 @@ export function ExpenseDetail() {
               nextRepeat={expense.next_repeat}
               repeatOf={expense.repeat_of}
               seriesCount={expense.series_count}
-              templateHref={(templateId) => `/expenses/${templateId}`}
+              seriesHref={`/expenses/${expense.id}/series`}
+              stop={
+                stop.live ? (
+                  <StopRepeatingButton onClick={stop.requestStop} />
+                ) : undefined
+              }
             />
           </div>
 
@@ -205,8 +220,12 @@ export function ExpenseDetail() {
 
       <ConfirmDialog
         open={confirmingDelete}
-        title={`Delete "${title}"?`}
-        confirmLabel="Delete expense"
+        title={
+          deleteSeriesNote?.kind === "template"
+            ? `Delete "${title}" and stop the series?`
+            : `Delete "${title}"?`
+        }
+        confirmLabel={deleteSeriesNote?.kind === "template" ? "Delete and stop series" : "Delete expense"}
         busyLabel="Deleting…"
         busy={busy}
         onClose={() => setConfirmingDelete(false)}
@@ -215,7 +234,23 @@ export function ExpenseDetail() {
         <p style={{ margin: 0 }}>
           This takes it out of every balance it affects. You can undo it straight afterwards.
         </p>
+        {deleteSeriesNote?.kind === "template" && (
+          <div className="notice">{deleteSeriesNote.text}</div>
+        )}
+        {deleteSeriesNote?.kind === "occurrence" && (
+          <p className="muted" style={{ margin: 0 }}>
+            {deleteSeriesNote.text}
+          </p>
+        )}
       </ConfirmDialog>
+
+      <StopSeriesDialog
+        open={stop.confirming}
+        busy={stop.busy}
+        error={stop.error}
+        onClose={() => stop.setConfirming(false)}
+        onConfirm={stop.confirmStop}
+      />
     </>
   );
 }

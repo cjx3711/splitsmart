@@ -43,7 +43,7 @@ async function makeAccount(name: string): Promise<{ id: string; token: string }>
       id,
       email: `${name}-${id}@example.com`.toLowerCase(),
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: name,
+      name,
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -55,7 +55,7 @@ async function makeGhost(name: string): Promise<string> {
   const id = ulid();
   await db
     .insertInto("users")
-    .values({ id, first_name: name, default_currency: "USD", is_ghost: 1 })
+    .values({ id, name, default_currency: "USD", is_ghost: 1 })
     .execute();
   return id;
 }

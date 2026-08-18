@@ -14,6 +14,7 @@
  */
 import type { DB } from "../db/index.ts";
 import { formatAmount } from "./money.ts";
+import { displayName } from "./person.ts";
 
 /** Header row, in order. Changing this changes anybody's saved import mapping. */
 export const CSV_COLUMNS = [
@@ -164,8 +165,8 @@ export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promi
         "expense_users.expense_id",
         "expense_users.paid_share_minor",
         "expense_users.owed_share_minor",
-        "users.first_name",
-        "users.last_name",
+        "users.name",
+        "users.nickname",
       ])
       .where("expense_users.expense_id", "in", ids)
       .execute(),
@@ -208,7 +209,7 @@ export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promi
       repeatInterval: expense.repeat_interval,
       repeatOf: expense.repeat_of,
       people: (sharesByExpense.get(expense.id) ?? []).map((share) => ({
-        name: fullName(share),
+        name: displayName(share),
         paidMinor: share.paid_share_minor,
         owedMinor: share.owed_share_minor,
       })),
@@ -216,6 +217,3 @@ export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promi
   );
 }
 
-function fullName(person: { first_name: string; last_name: string | null }): string {
-  return [person.first_name, person.last_name].filter(Boolean).join(" ");
-}

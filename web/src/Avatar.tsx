@@ -1,34 +1,38 @@
 /**
- * Initial avatars.
+ * Person avatars.
  *
- * Colour is derived from the user id, so the same person is the same colour on
- * every screen and across reloads without storing anything. There is no avatar
- * upload in this codebase (see CLAUDE.md, "No file uploads") and this is not a
- * placeholder for one.
+ * Letters, an optional emoji, and a colour. Colour defaults to a hash of the
+ * user id so the same person is the same colour on every screen without storing
+ * anything. There is no avatar upload in this codebase (see CLAUDE.md, "No file
+ * uploads") and this is not a placeholder for one.
  */
-export function Avatar({
-  name,
-  id,
-  size = 34,
-}: {
-  name: string;
-  id: string;
-  size?: number;
-}) {
-  // Hash the ULID so the same person is the same colour on every screen
-  // without storing anything. Consecutive integer ids used to be spread with
-  // the golden angle; a string hash of the randomness bits does the same job.
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  const hue = hash % 360;
+import {
+  avatarBackground,
+  avatarHue,
+  iconLettersOf,
+} from "../../src/domain/person.ts";
 
-  const initials =
-    name
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "?";
+export type AvatarPerson = {
+  id: string;
+  name: string;
+  nickname?: string | null;
+  iconLetters?: string | null;
+  iconEmoji?: string | null;
+  iconHue?: number | null;
+};
+
+export function Avatar({
+  id,
+  name,
+  nickname = null,
+  iconLetters = null,
+  iconEmoji = null,
+  iconHue = null,
+  size = 34,
+}: AvatarPerson & { size?: number }) {
+  const hue = avatarHue({ id, iconHue });
+  const emoji = iconEmoji?.trim();
+  const letters = iconLettersOf({ name, nickname, iconLetters });
 
   return (
     <span
@@ -37,11 +41,30 @@ export function Avatar({
       style={{
         width: size,
         height: size,
-        fontSize: size * 0.4,
-        background: `linear-gradient(150deg, hsl(${hue} 62% 68%), hsl(${(hue + 26) % 360} 58% 52%))`,
+        fontSize: emoji ? size * 0.52 : size * 0.4,
+        background: avatarBackground(hue),
       }}
     >
-      {initials}
+      {emoji || letters}
     </span>
   );
+}
+
+/** Map a snake_case person row onto Avatar props. */
+export function avatarFromRow(person: {
+  id: string;
+  name: string;
+  nickname?: string | null;
+  icon_letters?: string | null;
+  icon_emoji?: string | null;
+  icon_hue?: number | null;
+}): AvatarPerson {
+  return {
+    id: person.id,
+    name: person.name,
+    nickname: person.nickname,
+    iconLetters: person.icon_letters,
+    iconEmoji: person.icon_emoji,
+    iconHue: person.icon_hue,
+  };
 }

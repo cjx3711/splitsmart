@@ -13,12 +13,12 @@ import { Amount, useFormatMoney } from "../money.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
-import { Avatar } from "../Avatar.tsx";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { GroupTypeIcon } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { GuestExpenseDialog } from "./GuestExpenseDialog.tsx";
 import { useGuest } from "./GuestApp.tsx";
-import { guestApi, guestFullName } from "./guestApi.ts";
+import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
 
 export function GuestFriend() {
   const { session } = useGuest();
@@ -27,16 +27,17 @@ export function GuestFriend() {
 
   const [counterpart, setCounterpart] = useState<{
     id: string;
-    first_name: string;
-    last_name: string | null;
+    name: string;
+    nickname: string | null;
+    icon_letters: string | null;
+    icon_emoji: string | null;
+    icon_hue: number | null;
   } | null>(null);
   const [balances, setBalances] = useState<CurrencyAmount[]>([]);
   const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
   // The expense list spans groups, so it names people who are neither of the
   // two on this page. Without them, a payer renders as "User 01ARZ3...".
-  const [people, setPeople] = useState<
-    Array<{ id: string; first_name: string; last_name: string | null }>
-  >([]);
+  const [people, setPeople] = useState<GuestVisiblePerson[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
 
@@ -69,11 +70,11 @@ export function GuestFriend() {
     people.length > 0
       ? people
       : [
-          { id: me.id, first_name: me.firstName, last_name: me.lastName },
+          { id: me.id, name: me.name, nickname: me.nickname },
           {
             id: counterpart.id,
-            first_name: counterpart.first_name,
-            last_name: counterpart.last_name,
+            name: counterpart.name,
+            nickname: counterpart.nickname,
           },
         ],
     me.id,
@@ -89,7 +90,7 @@ export function GuestFriend() {
     <>
       <div className="page-head">
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <Avatar id={counterpart.id} name={name} size={44} />
+          <Avatar {...avatarFromRow(counterpart)} size={44} />
           <div>
             <h1>You and {name}</h1>
             <p className="muted" style={{ margin: 0 }}>

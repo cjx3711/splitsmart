@@ -13,6 +13,7 @@
  * address bar as soon as it has read it, the same way the landing page does.
  */
 import { useState } from "react";
+import { displayName } from "../api.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { readGuestLink } from "./guestStorage.ts";
 
@@ -30,7 +31,7 @@ export function ClaimBanner() {
   return (
     <div className="banner guest-banner">
       <span>
-        You are using this as <strong>{session.actingAs.firstName}</strong>, with a link. Create an
+        You are using this as <strong>{displayName(session.actingAs)}</strong>, with a link. Create an
         account to keep it: everything you have already split stays yours.
       </span>
       <span className="banner-actions">

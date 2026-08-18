@@ -103,3 +103,19 @@ export function isBehind(nextRepeat: string, now: Date = new Date()): boolean {
   const due = new Date(nextRepeat);
   return !Number.isNaN(due.getTime()) && due.getTime() <= now.getTime();
 }
+
+/**
+ * The template this expense belongs to, or null if it is not in a series.
+ *
+ * The template's own id plus `repeat_of` IS the bundle: there is no series
+ * table. An occurrence points at the template; the template points at nothing.
+ */
+export function seriesTemplateId(
+  id: string,
+  repeatOf: string | null | undefined,
+  repeatInterval: string | null | undefined,
+): string | null {
+  if (repeatOf) return repeatOf;
+  if (repeatInterval) return id;
+  return null;
+}

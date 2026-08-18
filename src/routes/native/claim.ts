@@ -31,6 +31,7 @@ import {
 } from "../../domain/access-links.ts";
 import { previewMerge, mergeUsers, MergeError } from "../../domain/merge.ts";
 import { ulidSchema } from "./expense-schema.ts";
+import { personCamel } from "../../domain/person.ts";
 
 export const claimRoutes = new Hono<AppEnv>();
 claimRoutes.use("*", requireAuth);
@@ -142,7 +143,7 @@ claimRoutes.post("/preview", zValidator("json", claimSchema), async (c) => {
 
   const person = await db
     .selectFrom("users")
-    .select(["id", "first_name", "last_name"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
     .where("id", "=", userId)
     .executeTakeFirst();
   if (!person) return c.json({ error: "That person no longer exists" }, 404);
@@ -150,7 +151,7 @@ claimRoutes.post("/preview", zValidator("json", claimSchema), async (c) => {
   const preview = await previewMerge(db, userId, auth.id);
 
   return c.json({
-    person: { id: person.id, firstName: person.first_name, lastName: person.last_name },
+    person: { id: person.id, ...personCamel(person) },
     // The list is for the "a handful" case; the count is what always matters.
     // Ten descriptions is a paragraph, not a confirmation.
     overlapping: preview.overlapping.slice(0, 10),

@@ -18,6 +18,7 @@ import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
 import { sendEmail } from "./postmark.ts";
 import { verificationEmail } from "./templates.ts";
+import { displayName } from "../domain/person.ts";
 
 const TOKEN_TTL_HOURS = 24;
 
@@ -45,7 +46,7 @@ export type IssueOutcome =
 export async function issueVerificationToken(userId: string): Promise<IssueOutcome> {
   const user = await db
     .selectFrom("users")
-    .select(["id", "email", "first_name", "email_verified_at", "is_ghost"])
+    .select(["id", "email", "name", "nickname", "email_verified_at", "is_ghost"])
     .where("id", "=", userId)
     .where("deleted_at", "is", null)
     .executeTakeFirst();
@@ -99,7 +100,7 @@ export async function issueVerificationToken(userId: string): Promise<IssueOutco
   });
 
   const message = verificationEmail({
-    firstName: user.first_name,
+    name: displayName(user),
     // Under /app: the verification screen is part of the logged-in shell.
     // See docs/GUEST.md, "Two shells".
     verifyUrl: `${env.APP_ORIGIN}/app/verify/${token}`,

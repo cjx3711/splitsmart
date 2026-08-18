@@ -110,7 +110,7 @@ before(async () => {
       id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Alice",
+      name: "Alice",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -123,7 +123,7 @@ before(async () => {
       id: bobId,
       email: "bob@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Bob",
+      name: "Bob",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -132,7 +132,7 @@ before(async () => {
   ghostId = ulid();
   await db
     .insertInto("users")
-    .values({ id: ghostId, first_name: "Ghost", default_currency: "USD", is_ghost: 1 })
+    .values({ id: ghostId, name: "Ghost", default_currency: "USD", is_ghost: 1 })
     .execute();
 
   groupId = ulid();

@@ -47,8 +47,7 @@ before(async () => {
       id: aliceId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Alice",
-      last_name: "Anderson",
+      name: "Alice Anderson",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -61,8 +60,7 @@ before(async () => {
     .insertInto("users")
     .values({
       id: bobId,
-      first_name: "Bob",
-      last_name: "Brown",
+      name: "Bob Brown",
       default_currency: "USD",
       is_ghost: 1,
     })
@@ -159,7 +157,7 @@ describe("compat: get_current_user", () => {
     assert.equal(typeof body.user.id, "string");
     assert.ok(isUlid(body.user.id as string));
     assert.ok(body.user.email, "user.email must be truthy");
-    assert.equal(body.user.first_name, "Alice");
+    assert.equal(body.user.first_name, "Alice Anderson");
     assert.equal(body.user.default_currency, "USD");
   });
 });
@@ -174,7 +172,7 @@ describe("compat: get_friends", () => {
 
     const bob = body.friends[0]!;
     assert.equal(bob.id, bobId);
-    assert.equal(bob.first_name, "Bob");
+    assert.equal(bob.first_name, "Bob Brown");
     assert.ok(Array.isArray(bob.balance), "balance must be an array");
     assert.equal(bob.balance[0].currency_code, "USD");
     // Alice is owed 15.00, as a decimal STRING, like Splitwise.
@@ -361,7 +359,7 @@ describe("compat: create_expense", () => {
       .insertInto("users")
       .values({
         id: outsiderId,
-        first_name: "Outsider",
+        name: "Outsider",
         default_currency: "USD",
         is_ghost: 1,
       })

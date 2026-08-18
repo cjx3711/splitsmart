@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { LuSettings } from "react-icons/lu";
-import { fullName } from "./api.ts";
+import { displayName } from "./api.ts";
 import { useAuth } from "./App.tsx";
 import { useFriends, useGroups } from "./localData.ts";
 import { Avatar } from "./Avatar.tsx";
@@ -36,7 +36,7 @@ export function Sidebar({ className }: { className: string }) {
     [groups, query],
   );
   const filteredFriends = useMemo(
-    () => friends.filter((f) => fullName(f).toLowerCase().includes(query)),
+    () => friends.filter((f) => displayName(f).toLowerCase().includes(query)),
     [friends, query],
   );
   const sidebarGroups = useMemo(() => {
@@ -50,16 +50,22 @@ export function Sidebar({ className }: { className: string }) {
   const hasMoreGroups = !query && filteredGroups.length > SIDEBAR_GROUP_LIMIT;
   const hasMoreFriends = !query && filteredFriends.length > SIDEBAR_FRIEND_LIMIT;
 
-  const displayName = user
-    ? [user.firstName, user.lastName].filter(Boolean).join(" ")
-    : "";
+  const shownName = user ? displayName(user) : "";
 
   return (
     <nav className={className} aria-label="Main">
       {user && (
         <div className="sidebar-user">
-          <Avatar id={user.id} name={displayName} size={32} />
-          <span className="sidebar-user-name">{user.firstName}</span>
+          <Avatar
+            id={user.id}
+            name={user.name}
+            nickname={user.nickname}
+            iconLetters={user.iconLetters}
+            iconEmoji={user.iconEmoji}
+            iconHue={user.iconHue}
+            size={32}
+          />
+          <span className="sidebar-user-name">{shownName}</span>
           <NavLink
             to="/settings"
             className={({ isActive }) => (isActive ? "sidebar-settings active" : "sidebar-settings")}
@@ -135,7 +141,7 @@ export function Sidebar({ className }: { className: string }) {
           sidebarFriends.map((f) => (
             <NavLink key={f.id} to={`/friends/${f.id}`} className={navClass}>
               <span className={f.is_ghost === 0 ? "dot dot--joined" : "dot"} />
-              <span className="nav-item-label">{fullName(f)}</span>
+              <span className="nav-item-label">{displayName(f)}</span>
             </NavLink>
           ))
         )}

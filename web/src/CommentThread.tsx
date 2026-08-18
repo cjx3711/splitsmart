@@ -22,7 +22,7 @@
  * No markdown, and no rich text: a comment on a restaurant bill is a sentence.
  */
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import type { Comment } from "./api.ts";
+import { displayName, type Comment } from "./api.ts";
 import { Avatar } from "./Avatar.tsx";
 import { useComments } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
@@ -141,7 +141,7 @@ export function CommentThread({
             const mine = comment.author.id === currentUserId;
             const name = mine
               ? "You"
-              : [comment.author.firstName, comment.author.lastName].filter(Boolean).join(" ");
+              : displayName(comment.author);
 
             if (comment.kind === "system") {
               return (
@@ -156,7 +156,15 @@ export function CommentThread({
 
             return (
               <div key={comment.id} className="comment">
-                <Avatar id={comment.author.id} name={name} size={30} />
+                <Avatar
+                  id={comment.author.id}
+                  name={comment.author.name}
+                  nickname={comment.author.nickname}
+                  iconLetters={comment.author.iconLetters}
+                  iconEmoji={comment.author.iconEmoji}
+                  iconHue={comment.author.iconHue}
+                  size={30}
+                />
                 <div className="comment-main">
                   <div className="comment-meta">
                     <strong>{name}</strong>

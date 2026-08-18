@@ -19,6 +19,7 @@ import { Routes, Route, Navigate, Link, useNavigate, useParams } from "react-rou
 import { CurrencyProvider } from "../money.tsx";
 import { Logo } from "../Logo.tsx";
 import { Footer } from "../Footer.tsx";
+import { displayName } from "../api.ts";
 import {
   guestApi,
   GuestLinkError,
@@ -36,6 +37,7 @@ import {
 import { GuestGroup } from "./GuestGroup.tsx";
 import { GuestFriend } from "./GuestFriend.tsx";
 import { GuestExpense } from "./GuestExpense.tsx";
+import { GuestSeries } from "./GuestSeries.tsx";
 import { GuestPicker } from "./GuestPicker.tsx";
 import { ClaimBanner } from "./ClaimBanner.tsx";
 
@@ -207,7 +209,7 @@ function Shell() {
         <div className="topbar-right">
           {session.actingAs && (
             <span className="muted">
-              {session.actingAs.firstName}
+              {displayName(session.actingAs)}
               {session.canRepick && (
                 <>
                   {" "}
@@ -232,6 +234,7 @@ function Shell() {
           />
           <Route path="/groups/:id" element={<Guarded><GuestGroup /></Guarded>} />
           <Route path="/friend" element={<Guarded><GuestFriend /></Guarded>} />
+          <Route path="/expenses/:id/series" element={<Guarded><GuestSeries /></Guarded>} />
           <Route path="/expenses/:id" element={<Guarded><GuestExpense /></Guarded>} />
           {/*
             The shared ExpenseList links people to /friends/:id, which is a

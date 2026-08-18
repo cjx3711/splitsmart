@@ -18,7 +18,7 @@ export const BASELINE_DOM = join(ROOT, "smoke", "baselines", "dom");
 
 export const ACCOUNTS = {
   user: { email: "test@example.com", password: "password123" },
-  jamie: { email: "jamie@example.com", password: "password123" },
+  jj: { email: "jj@example.com", password: "password123" },
 } as const;
 
 export type Account = keyof typeof ACCOUNTS;

@@ -53,7 +53,7 @@ yarn seed:demo              # a demo account: groups, comments, a repeat series
 
 `yarn test` covers the logic. `docs/AI_SMOKE_TESTS.md` covers the part a unit
 test cannot see: Playwright drives a seeded app, screenshots every important
-screen (desktop and mobile, including Jamie's view of the same groups), runs a
+screen (desktop and mobile, including JJ's view of the same groups), runs a
 handful of click-through flows, and diffs PNG + DOM against committed
 baselines. The `ai-smoke-test` skill starts that suite and only looks at a
 browser if something already failed. It reports and never repairs, so a red

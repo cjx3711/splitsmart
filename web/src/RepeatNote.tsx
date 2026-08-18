@@ -6,17 +6,16 @@
  *
  *   template     "Repeats monthly, next on 1 March", plus how many bills it has
  *                produced so far, so a series that is generating twice is visible.
- *   behind       the next bill was due in the past. The scheduler catches up ONE
- *                occurrence per tick on purpose (a stack of three months of rent
- *                dated today would be worse), so a gap is a real state the UI has
- *                to admit to rather than hide.
+ *   behind       the next bill was due in the past. Said as "will be created
+ *                soon" rather than explaining the scheduler.
  *   occurrence   this bill came out of a series, and editing it edits THIS BILL,
- *                not the schedule. Said out loud, with a link to the template.
+ *                not the schedule. Said out loud, with a link to every bill.
  *
- * Shared by the logged-in and guest expense pages. Guests see occurrences —
- * they are ordinary expenses — but cannot create or change a template, so the
- * link back to one is only rendered when the caller supplies a route for it.
+ * Shared by the logged-in and guest expense pages. Stop repeating lives in this
+ * mark, not in a separate control: later bills point at the first one, and the
+ * button always ends that first bill's schedule.
  */
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { isBehind, repeatLabel, type RepeatInterval } from "../../src/domain/recurring.ts";
 
@@ -25,15 +24,18 @@ export function RepeatNote({
   nextRepeat,
   repeatOf,
   seriesCount = 0,
-  templateHref,
+  seriesHref,
+  stop,
 }: {
   repeatInterval: RepeatInterval | null | undefined;
   nextRepeat: string | null | undefined;
   repeatOf: string | null | undefined;
   /** Bills this template has generated. Ignored unless this IS a template. */
   seriesCount?: number;
-  /** Where "the series" lives, for an occurrence. Omit to render plain text. */
-  templateHref?: (templateId: string) => string;
+  /** Where every bill in the series is listed. Omit to render without a link. */
+  seriesHref?: string;
+  /** Stop repeating, without deleting this bill. Logged-in only. */
+  stop?: ReactNode;
 }) {
   if (repeatInterval) {
     const behind = nextRepeat ? isBehind(nextRepeat) : false;
@@ -53,30 +55,64 @@ export function RepeatNote({
         </p>
         {behind && nextRepeat && (
           <p className="muted" style={{ margin: "0.3rem 0 0" }}>
-            This series is behind: the bill for {nextRepeat.slice(0, 10)} has not been created yet.
-            One is added per hour until it catches up, each dated the day it was due, rather than
-            all at once dated today.
+            The bill for {nextRepeat.slice(0, 10)} will be created soon.
           </p>
         )}
+        {seriesHref && (
+          <p style={{ margin: "0.3rem 0 0" }}>
+            <Link to={seriesHref}>View all bills in this series</Link>
+          </p>
+        )}
+        {stop && <p style={{ margin: "0.3rem 0 0" }}>{stop}</p>}
       </div>
     );
   }
 
   if (repeatOf) {
     return (
-      <p className="muted" style={{ margin: "0.4rem 0 0" }}>
-        One of a repeating series. Editing this changes this bill only, not the ones still to come
-        {templateHref ? (
-          <>
-            {" "}
-            — <Link to={templateHref(repeatOf)}>open the series</Link>.
-          </>
-        ) : (
-          "."
-        )}
-      </p>
+      <div className="card">
+        <span className="eyebrow">Series</span>
+        <p style={{ margin: "0.3rem 0 0" }}>
+          One of a repeating series. Editing this changes this bill only, not the ones still to come
+          {seriesHref ? (
+            <>
+              {" "}
+              — <Link to={seriesHref}>view all bills</Link>.
+            </>
+          ) : (
+            "."
+          )}
+        </p>
+        {stop && <p style={{ margin: "0.3rem 0 0" }}>{stop}</p>}
+      </div>
     );
   }
 
+  return null;
+}
+
+/**
+ * Extra copy on the delete confirmation, when this bill is part of a series.
+ *
+ * The first bill IS the schedule, so deleting it is the destructive way to stop
+ * repeating — that case is a warning, not a footnote. An occurrence is just a
+ * bill, so the rest of the series continues.
+ */
+export function seriesDeleteNote(expense: {
+  repeat_interval?: string | null;
+  repeat_of?: string | null;
+}): { kind: "template" | "occurrence"; text: string } | null {
+  if (expense.repeat_interval) {
+    return {
+      kind: "template",
+      text: "This is the first bill of the series. Deleting it stops new bills from being created. The bills already made stay.",
+    };
+  }
+  if (expense.repeat_of) {
+    return {
+      kind: "occurrence",
+      text: "This is one bill in a repeating series. Deleting it does not stop the rest.",
+    };
+  }
   return null;
 }

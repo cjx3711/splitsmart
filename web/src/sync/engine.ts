@@ -650,10 +650,22 @@ export class SyncEngine {
       splitMeta: provisionalSplitMeta(payload) ?? options.base?.splitMeta ?? null,
       isPayment: options.isPayment,
       paymentMethod: payload.paymentMethod ?? options.base?.paymentMethod ?? null,
-      // Recurrence is server-owned. The repeat control is online-only, and a client
-      // never sends or invents `nextRepeat`.
-      repeatInterval: options.base?.repeatInterval ?? null,
-      nextRepeat: options.base?.nextRepeat ?? null,
+      // Recurrence is server-owned for `next_repeat`, but an explicit
+      // `repeatInterval` on the write is a decision this device just made and
+      // has to show immediately: otherwise Stop repeating looks like a no-op
+      // until the next pull. Never invent a next date; the scheduler does that.
+      repeatInterval:
+        payload.repeatInterval !== undefined
+          ? payload.repeatInterval
+          : (options.base?.repeatInterval ?? null),
+      nextRepeat:
+        payload.repeatInterval === null
+          ? null
+          : payload.repeatInterval !== undefined &&
+              (payload.repeatInterval !== options.base?.repeatInterval ||
+                payload.date !== options.base?.date)
+            ? null
+            : (options.base?.nextRepeat ?? null),
       repeatOf: options.base?.repeatOf ?? null,
       version: options.base?.version ?? 1,
       createdBy: options.base?.createdBy ?? this.selfId,

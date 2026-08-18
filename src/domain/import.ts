@@ -175,8 +175,7 @@ export class PersonResolver {
           id,
           created_at: createdAt,
           metadata: metadataFromSplitwise(person.id),
-          first_name: displayFirstName(person),
-          last_name: person.last_name ?? null,
+          name: splitwiseDisplayName(person),
           // A ghost may carry an unverified address; login refuses ghosts outright
           // so this can never become a working credential. See CLAUDE.md.
           email: person.email ?? null,
@@ -198,7 +197,7 @@ export class PersonResolver {
     return {
       splitwiseId: person.id,
       localUserId,
-      name: [displayFirstName(person), person.last_name].filter(Boolean).join(" "),
+      name: splitwiseDisplayName(person),
       email: person.email ?? null,
       matchedBy,
     };
@@ -225,11 +224,11 @@ export class PersonResolver {
 }
 
 /** Splitwise allows a blank first name; the column does not. */
-function displayFirstName(person: SplitwiseUser): string {
+function splitwiseDisplayName(person: SplitwiseUser): string {
   const first = person.first_name?.trim();
-  if (first) return first;
   const last = person.last_name?.trim();
-  if (last) return last;
+  const joined = [first, last].filter(Boolean).join(" ");
+  if (joined) return joined;
   return person.email?.split("@")[0] ?? `Splitwise user ${person.id}`;
 }
 
@@ -420,7 +419,7 @@ export async function previewImport(
   return {
     splitwiseAccount: {
       id: swMe.id,
-      name: [displayFirstName(swMe), swMe.last_name].filter(Boolean).join(" "),
+      name: splitwiseDisplayName(swMe),
       email: swMe.email ?? null,
     },
     counts: {

@@ -41,8 +41,7 @@ before(async () => {
       id: userId,
       email: "alice@example.com",
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: "Alice",
-      last_name: "Anderson",
+      name: "Alice Anderson",
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -76,7 +75,7 @@ describe("PATCH /api/v1/auth/me", () => {
     assert.equal(body.user.defaultCurrency, "JPY");
     assert.equal(body.user.id, userId);
     assert.equal(body.user.email, "alice@example.com");
-    assert.equal(body.user.firstName, "Alice");
+    assert.equal(body.user.name, "Alice Anderson");
     assert.equal(body.user.isGhost, false);
     assert.equal(typeof body.user.emailVerified, "boolean");
     assert.equal(typeof body.user.needsEmailVerification, "boolean");
@@ -118,5 +117,30 @@ describe("PATCH /api/v1/auth/me", () => {
       body: JSON.stringify({ defaultCurrency: "USD" }),
     });
     assert.equal(res.status, 401);
+  });
+
+  test("updates name, nickname and icon and returns them on GET /me", async () => {
+    const res = await authed("/api/v1/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: "Tanaka Yuki",
+        nickname: "Yuki",
+        iconLetters: "雪",
+        iconEmoji: "🌸",
+        iconHue: 48,
+      }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { user: Record<string, unknown> };
+    assert.equal(body.user.name, "Tanaka Yuki");
+    assert.equal(body.user.nickname, "Yuki");
+    assert.equal(body.user.iconLetters, "雪");
+    assert.equal(body.user.iconEmoji, "🌸");
+    assert.equal(body.user.iconHue, 48);
+
+    const me = await authed("/api/v1/auth/me");
+    const meBody = (await me.json()) as { user: Record<string, unknown> };
+    assert.equal(meBody.user.nickname, "Yuki");
+    assert.equal(meBody.user.iconHue, 48);
   });
 });

@@ -13,6 +13,7 @@
  * computeSplit() to preview a split instead of reimplementing its rounding.
  * See web/src/SplitEditor.tsx.
  */
+import { displayName as personDisplayName } from "../../src/domain/person.ts";
 import type { SplitItem, SplitType } from "../../src/domain/split.ts";
 import type { RepeatInterval } from "../../src/domain/recurring.ts";
 import type {
@@ -31,8 +32,11 @@ export type { SplitItem, SplitType, RepeatInterval };
 export interface ApiUser {
   id: string;
   email: string | null;
-  firstName: string;
-  lastName: string | null;
+  name: string;
+  nickname: string | null;
+  iconLetters: string | null;
+  iconEmoji: string | null;
+  iconHue: number | null;
   isGhost: boolean;
   defaultCurrency: string;
   emailVerified?: boolean;
@@ -55,8 +59,11 @@ export interface CurrencyAmount {
 
 export interface GroupMember {
   id: string;
-  first_name: string;
-  last_name: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
   is_ghost: number;
   role: string;
   joined_via: string;
@@ -73,8 +80,11 @@ export interface FriendBreakdown {
 export interface Friend {
   id: string;
   email: string | null;
-  first_name: string;
-  last_name: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
   is_ghost: number;
   /** Only explicit friendships can be removed. */
   is_explicit: boolean | number;
@@ -99,6 +109,11 @@ export interface ExpenseSummary {
   repeat_interval?: string | null;
   /** Set on an occurrence: the template it came from. */
   repeat_of?: string | null;
+  /**
+   * Present when the row is a tombstone. Ordinary lists omit deleted bills;
+   * the series page includes them so a deleted one is still reachable to undo.
+   */
+  deleted_at?: string | null;
   shares: Array<{
     user_id: string;
     paid_share_minor: number;
@@ -153,14 +168,28 @@ export interface Comment {
   kind: "user" | "system";
   content: string;
   createdAt: string;
-  author: { id: string; firstName: string; lastName: string | null };
+  author: {
+    id: string;
+    name: string;
+    nickname: string | null;
+    iconLetters: string | null;
+    iconEmoji: string | null;
+    iconHue: number | null;
+  };
 }
 
 export interface ActivityEntry {
   id: string;
   action: string;
   createdAt: string;
-  actor: { id: string; firstName: string; lastName: string | null } | null;
+  actor: {
+    id: string;
+    name: string;
+    nickname: string | null;
+    iconLetters: string | null;
+    iconEmoji: string | null;
+    iconHue: number | null;
+  } | null;
   group: { id: string; name: string } | null;
   expense: {
     id: string;
@@ -195,7 +224,14 @@ export interface AccessLink {
   expired: boolean;
   /** Copyable guest URL. Null only for links minted before token_secret existed. */
   url: string | null;
-  person: { id: string; firstName: string | null; lastName: string | null } | null;
+  person: {
+    id: string;
+    name: string | null;
+    nickname: string | null;
+    iconLetters: string | null;
+    iconEmoji: string | null;
+    iconHue: number | null;
+  } | null;
 }
 
 export interface ClaimCandidates {
@@ -206,11 +242,25 @@ export interface ClaimCandidates {
   status: "already_member" | "claimable" | "none";
   kind?: "group" | "group_member" | "friend";
   group: { id: string; name: string } | null;
-  candidates: Array<{ id: string; firstName: string; lastName: string | null }>;
+  candidates: Array<{
+    id: string;
+    name: string;
+    nickname: string | null;
+    iconLetters: string | null;
+    iconEmoji: string | null;
+    iconHue: number | null;
+  }>;
 }
 
 export interface ClaimPreview {
-  person: { id: string; firstName: string; lastName: string | null };
+  person: {
+    id: string;
+    name: string;
+    nickname: string | null;
+    iconLetters: string | null;
+    iconEmoji: string | null;
+    iconHue: number | null;
+  };
   /** Capped at ten by the server; the count below is the whole truth. */
   overlapping: Array<{ id: string; description: string; date: string }>;
   overlappingCount: number;
@@ -410,8 +460,8 @@ export const api = {
   register: (input: {
     email: string;
     password: string;
-    firstName: string;
-    lastName?: string;
+    name: string;
+    nickname?: string | null;
     defaultCurrency?: string;
   }) => request<{ user: ApiUser }>("/auth/register", { method: "POST", body: JSON.stringify(input) }),
 
@@ -435,8 +485,14 @@ export const api = {
 
   me: () => request<{ user: ApiUser }>("/auth/me"),
 
-  updateMe: (input: { defaultCurrency: string }) =>
-    request<{ user: ApiUser }>("/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
+  updateMe: (input: {
+    defaultCurrency?: string;
+    name?: string;
+    nickname?: string | null;
+    iconLetters?: string | null;
+    iconEmoji?: string | null;
+    iconHue?: number | null;
+  }) => request<{ user: ApiUser }>("/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
 
   listTokens: () =>
     request<{ tokens: Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }> }>(
@@ -471,7 +527,7 @@ export const api = {
 
   addGroupMember: (
     groupId: string,
-    input: { userId: string } | { firstName: string; lastName?: string },
+    input: { userId: string } | { name: string },
   ) =>
     request<{ member: GroupMember }>(`/groups/${groupId}/members`, {
       method: "POST",
@@ -566,7 +622,18 @@ export const api = {
 
   getFriend: (id: string) => request<{ friend: Friend }>(`/friends/${id}`),
 
-  addFriend: (input: { firstName: string; lastName?: string; email?: string }) =>
+  updateFriend: (
+    id: string,
+    input: {
+      name?: string;
+      nickname?: string | null;
+      iconLetters?: string | null;
+      iconEmoji?: string | null;
+      iconHue?: number | null;
+    },
+  ) => request<{ friend: Friend }>(`/friends/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+
+  addFriend: (input: { name: string; email?: string }) =>
     request<{
       friend: Friend;
       /** True when the address already belonged to a SplitSmart account. */
@@ -833,9 +900,12 @@ export function parseMoney(input: string, decimalPlaces: number): number {
   return negative ? -minor : minor;
 }
 
-export function fullName(person: {
-  first_name: string;
-  last_name: string | null;
-}): string {
-  return [person.first_name, person.last_name].filter(Boolean).join(" ");
+/** Nickname if set, otherwise the name. */
+export function displayName(person: { name: string; nickname?: string | null }): string {
+  return personDisplayName(person);
+}
+
+/** @deprecated Use displayName. Kept as an alias for call sites mid-migration. */
+export function fullName(person: { name: string; nickname?: string | null }): string {
+  return displayName(person);
 }

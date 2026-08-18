@@ -66,7 +66,7 @@ async function realUser(name: string, email: string): Promise<string> {
       id,
       email,
       password_hash: "scrypt$131072$8$1$AAAA$AAAA",
-      first_name: name,
+      name,
       default_currency: "USD",
       is_ghost: 0,
     })
@@ -109,7 +109,7 @@ before(async () => {
   ghostId = ulid();
   await db
     .insertInto("users")
-    .values({ id: ghostId, first_name: "Ghost", default_currency: "USD", is_ghost: 1 })
+    .values({ id: ghostId, name: "Ghost", default_currency: "USD", is_ghost: 1 })
     .execute();
 
   groupId = ulid();
@@ -173,7 +173,7 @@ describe("writing and reading a thread", () => {
     assert.equal(posted.body.comment.content, "I paid the tip in cash", "content is trimmed");
     assert.equal(posted.body.comment.kind, "user");
     assert.equal(posted.body.comment.author.id, aliceId);
-    assert.equal(posted.body.comment.author.firstName, "Alice");
+    assert.equal(posted.body.comment.author.name, "Alice");
 
     const listed = await as(bobToken, `/expenses/${expenseId}/comments`);
     assert.equal(listed.status, 200);

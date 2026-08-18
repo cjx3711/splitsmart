@@ -18,7 +18,7 @@
  * downloading works offline.
  */
 import { useEffect, useState } from "react";
-import { type ExpenseQuery, type Friend, type Group } from "./api.ts";
+import { displayName, type ExpenseQuery, type Friend, type Group } from "./api.ts";
 import { useCategories } from "./categories.tsx";
 import { useAuth } from "./App.tsx";
 import { useLocalDb } from "./sync/SyncProvider.tsx";
@@ -118,7 +118,7 @@ export function ExpenseFilters({
           <option value="">Anyone</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>
-              {[p.first_name, p.last_name].filter(Boolean).join(" ")}
+              {displayName(p)}
             </option>
           ))}
         </select>

@@ -111,21 +111,21 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await dialog(page).getByRole("button", { name: "Percentages" }).click();
 
       await dialog(page).getByLabel("You: percentage").fill("50");
-      await dialog(page).getByLabel("Morgan Chen: percentage").fill("20");
-      await dialog(page).getByLabel("Riley Brooks: percentage").fill("0");
+      await dialog(page).getByLabel("Jas: percentage").fill("20");
+      await dialog(page).getByLabel("Danial: percentage").fill("0");
       await dialog(page).locator(".split-problem").waitFor({ timeout: 5_000 });
       const percentMsg = (await dialog(page).locator(".split-problem").innerText()).trim();
       if (!/expected 100/i.test(percentMsg)) {
         throw new Error(`percent problem was ${JSON.stringify(percentMsg)}`);
       }
 
-      await dialog(page).getByLabel("Riley Brooks: percentage").fill("30");
+      await dialog(page).getByLabel("Danial: percentage").fill("30");
       await dialog(page).locator(".split-problem").waitFor({ state: "hidden", timeout: 5_000 });
 
       await dialog(page).getByRole("button", { name: "Exact amounts" }).click();
       await dialog(page).getByLabel("You: exact amount").fill("10.00");
-      await dialog(page).getByLabel("Morgan Chen: exact amount").fill("10.00");
-      await dialog(page).getByLabel("Riley Brooks: exact amount").fill("10.00");
+      await dialog(page).getByLabel("Jas: exact amount").fill("10.00");
+      await dialog(page).getByLabel("Danial: exact amount").fill("10.00");
       await dialog(page).locator(".split-problem").waitFor({ timeout: 5_000 });
       const exactMsg = (await dialog(page).locator(".split-problem").innerText()).trim();
       if (!/add up/i.test(exactMsg)) {
@@ -196,7 +196,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       });
       await page.goto(guestUrl("group", ctx.base), { waitUntil: "domcontentloaded" });
       await page.getByText("Which one are you?").waitFor({ timeout: 15_000 });
-      await clickNamed(page, "Alex Kim");
+      await clickNamed(page, "Hana");
       await page.getByText("Ramen at Ichiran").waitFor({ timeout: 15_000 });
       await settle(page);
       if (leaked.length > 0) {
@@ -208,7 +208,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
           throw new Error(`guest shell leaked ${JSON.stringify(forbidden)}`);
         }
       }
-      return "Alex Kim saw Weekend in Tokyo expenses; no Settings/Import; no requests to /api/v1/ outside /guest/.";
+      return "Hana saw Weekend in Tokyo expenses; no Settings/Import; no requests to /api/v1/ outside /guest/.";
     },
   },
   {
@@ -248,28 +248,28 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await dialog(page).getByRole("button", { name: "Add expense" }).click();
       await page.getByText("Smoke test paint").first().waitFor({ timeout: 15_000 });
 
-      const jamieCtx = await newContext(ctx.browser, VIEWPORTS.desktop, CAPTURE_PARAMS);
-      const jamie = await jamieCtx.newPage();
+      const jjCtx = await newContext(ctx.browser, VIEWPORTS.desktop, CAPTURE_PARAMS);
+      const jj = await jjCtx.newPage();
       try {
-        await signIn(jamie, "jamie", ctx.base);
-        await settle(jamie);
-        await clickNamed(jamie, "Groups");
-        await clickNamed(jamie, "Apartment 4B");
-        await jamie.getByText("Smoke test paint").first().waitFor({ timeout: 15_000 });
-        const body = await jamie.locator("body").innerText();
-        if (!/owes /.test(body) && !/gets back /.test(body)) {
-          throw new Error("Jamie's apartment page has no directed balances");
+        await signIn(jj, "jj", ctx.base);
+        await settle(jj);
+        await clickNamed(jj, "Groups");
+        await clickNamed(jj, "Apartment 4B");
+        await jj.getByText("Smoke test paint").first().waitFor({ timeout: 15_000 });
+        const body = await jj.locator("body").innerText();
+        if (!/you owe|owes you|gets back/.test(body.toLowerCase())) {
+          throw new Error("JJ's apartment page has no directed balances");
         }
-        // Test User paid 40, split equally: Jamie owes 20 more. The row should
+        // Test User paid 40, split equally: JJ owes 20 more. The row should
         // not present the same "gets back" direction Test User just saw.
-        const youRow = jamie.locator(".list-item").filter({ hasText: "You" }).first();
+        const youRow = jj.locator(".list-item").filter({ hasText: "You" }).first();
         const youText = await youRow.innerText();
-        if (/You/.test(youText) && /gets back /.test(youText) && !/owes /.test(youText)) {
-          throw new Error(`Jamie (who did not pay) reads as creditor: ${youText.replace(/\s+/g, " ")}`);
+        if (/you get back|gets back/i.test(youText) && !/you owe/i.test(youText)) {
+          throw new Error(`JJ (who did not pay) reads as creditor: ${youText.replace(/\s+/g, " ")}`);
         }
-        return "Test User saved Smoke test paint (40.00 USD) in Apartment 4B; Jamie's session listed it with a directed balance.";
+        return "Test User saved Smoke test paint (40.00 USD) in Apartment 4B; JJ's session listed it with a directed balance.";
       } finally {
-        await jamieCtx.close();
+        await jjCtx.close();
       }
     },
   },

@@ -127,21 +127,21 @@ const CHECKS: Check[] = [
     name: "real_users_can_authenticate",
     description: "Non-ghost users must have both an email and a password hash",
     sql: `
-      SELECT id, first_name FROM users
+      SELECT id, name FROM users
       WHERE is_ghost = 0 AND (email IS NULL OR password_hash IS NULL)
     `,
   },
   {
     name: "ghosts_have_no_password",
     description: "Ghost accounts must not carry credentials they cannot use",
-    sql: `SELECT id, first_name FROM users WHERE is_ghost = 1 AND password_hash IS NOT NULL`,
+    sql: `SELECT id, name FROM users WHERE is_ghost = 1 AND password_hash IS NOT NULL`,
   },
   {
     name: "merged_users_are_retired",
     description:
       "A user consumed by a claim must be soft-deleted, not left walking around",
     sql: `
-      SELECT id, first_name FROM users
+      SELECT id, name FROM users
       WHERE merged_into_user_id IS NOT NULL AND deleted_at IS NULL
     `,
   },

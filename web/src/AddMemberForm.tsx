@@ -12,7 +12,7 @@
  *   a new placeholder name  a ghost created here, reachable by a guest link
  */
 import { useEffect, useState, type FormEvent } from "react";
-import { api, fullName, type Friend } from "./api.ts";
+import { api, displayName, type Friend } from "./api.ts";
 
 export function AddMemberForm({
   groupId,
@@ -55,12 +55,8 @@ export function AddMemberForm({
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const [firstName, ...rest] = trimmed.split(/\s+/);
     await add(() =>
-      api.addGroupMember(groupId, {
-        firstName: firstName ?? trimmed,
-        lastName: rest.join(" ") || undefined,
-      }),
+      api.addGroupMember(groupId, { name: trimmed }),
     );
     setName("");
   }
@@ -82,7 +78,7 @@ export function AddMemberForm({
                 disabled={busy}
                 onClick={() => void add(() => api.addGroupMember(groupId, { userId: f.id }))}
               >
-                + {fullName(f)}
+                + {displayName(f)}
               </button>
             ))}
           </div>
@@ -96,7 +92,7 @@ export function AddMemberForm({
             id="newMemberName"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Jordan Lee"
+            placeholder="Jordan"
           />
           <p className="field-hint">
             Creates a placeholder person. Send them a guest link below and they

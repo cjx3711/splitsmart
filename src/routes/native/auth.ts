@@ -26,14 +26,20 @@ import {
 } from "../../email/verification.ts";
 import { logChange } from "../../domain/sync-log.ts";
 import { ulid } from "../../domain/ulid.ts";
+import { MAX_NAME_LENGTH, personCamel } from "../../domain/person.ts";
+import {
+  hasIdentityPatch,
+  identityColumns,
+  identityPatchSchema,
+} from "./person-schema.ts";
 
 export const authRoutes = new Hono<AppEnv>();
 
 const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  firstName: z.string().min(1).max(100),
-  lastName: z.string().max(100).optional(),
+  name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
+  nickname: identityPatchSchema.shape.nickname,
   defaultCurrency: z.string().length(3).toUpperCase().default("USD"),
 });
 
@@ -79,12 +85,21 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
         id: ulid(),
         email: input.email,
         password_hash: await hashPassword(input.password),
-        first_name: input.firstName,
-        last_name: input.lastName ?? null,
+        name: input.name,
+        nickname: input.nickname ?? null,
         default_currency: input.defaultCurrency,
         is_ghost: 0,
       })
-      .returning(["id", "email", "first_name", "last_name", "default_currency"])
+      .returning([
+        "id",
+        "email",
+        "name",
+        "nickname",
+        "icon_letters",
+        "icon_emoji",
+        "icon_hue",
+        "default_currency",
+      ])
       .executeTakeFirstOrThrow();
   });
 
@@ -116,8 +131,17 @@ authRoutes.post(
     const user = await db
       .selectFrom("users")
       .select([
-        "id", "email", "password_hash", "first_name", "last_name",
-        "default_currency", "is_ghost", "email_verified_at",
+        "id",
+        "email",
+        "password_hash",
+        "name",
+        "nickname",
+        "icon_letters",
+        "icon_emoji",
+        "icon_hue",
+        "default_currency",
+        "is_ghost",
+        "email_verified_at",
       ])
       .where("email", "=", email)
       .where("deleted_at", "is", null)
@@ -254,28 +278,44 @@ authRoutes.get("/me", requireAuth, async (c) => {
   return c.json({ user: meUser(c.get("user")) });
 });
 
-const patchMeSchema = z.object({
-  defaultCurrency: z.string().length(3).toUpperCase(),
+const patchMeSchema = identityPatchSchema.extend({
+  defaultCurrency: z.string().length(3).toUpperCase().optional(),
 });
 
 authRoutes.patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c) => {
   const auth = c.get("user");
   const input = c.req.valid("json");
 
-  const currency = await db
-    .selectFrom("currencies")
-    .select("code")
-    .where("code", "=", input.defaultCurrency)
-    .executeTakeFirst();
-
-  if (!currency) {
-    return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
+  if (input.defaultCurrency === undefined && !hasIdentityPatch(input)) {
+    return c.json({ error: "Nothing to update." }, 400);
   }
+
+  let defaultCurrency = auth.defaultCurrency;
+  if (input.defaultCurrency !== undefined) {
+    const currency = await db
+      .selectFrom("currencies")
+      .select("code")
+      .where("code", "=", input.defaultCurrency)
+      .executeTakeFirst();
+
+    if (!currency) {
+      return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
+    }
+    defaultCurrency = input.defaultCurrency;
+  }
+
+  const identity = identityColumns(input);
 
   await transaction(async (trx) => {
     await trx
       .updateTable("users")
-      .set({ default_currency: input.defaultCurrency })
+      .set({
+        ...identity,
+        ...(input.defaultCurrency !== undefined
+          ? { default_currency: input.defaultCurrency }
+          : {}),
+        updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+      })
       .where("id", "=", auth.id)
       .execute();
 
@@ -286,7 +326,18 @@ authRoutes.patch("/me", requireAuth, zValidator("json", patchMeSchema), async (c
     await logChange(trx, { entity: "user", entityId: auth.id, actorUserId: auth.id });
   });
 
-  return c.json({ user: meUser({ ...auth, defaultCurrency: input.defaultCurrency }) });
+  return c.json({
+    user: meUser({
+      ...auth,
+      defaultCurrency,
+      name: identity.name ?? auth.name,
+      nickname: identity.nickname !== undefined ? identity.nickname : auth.nickname,
+      iconLetters:
+        identity.icon_letters !== undefined ? identity.icon_letters : auth.iconLetters,
+      iconEmoji: identity.icon_emoji !== undefined ? identity.icon_emoji : auth.iconEmoji,
+      iconHue: identity.icon_hue !== undefined ? identity.icon_hue : auth.iconHue,
+    }),
+  });
 });
 
 // --- API tokens -------------------------------------------------------------
@@ -326,8 +377,11 @@ function meUser(user: AuthenticatedUser) {
   return {
     id: user.id,
     email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
+    name: user.name,
+    nickname: user.nickname,
+    iconLetters: user.iconLetters,
+    iconEmoji: user.iconEmoji,
+    iconHue: user.iconHue,
     isGhost: user.isGhost,
     defaultCurrency: user.defaultCurrency,
     emailVerified: user.emailVerifiedAt !== null,
@@ -339,15 +393,17 @@ function meUser(user: AuthenticatedUser) {
 function toPublicUser(user: {
   id: string;
   email: string | null;
-  first_name: string;
-  last_name: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
   default_currency: string;
 }) {
   return {
     id: user.id,
     email: user.email,
-    firstName: user.first_name,
-    lastName: user.last_name,
+    ...personCamel(user),
     defaultCurrency: user.default_currency,
   };
 }

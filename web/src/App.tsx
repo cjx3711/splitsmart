@@ -23,6 +23,7 @@ import { NewFriend } from "./pages/NewFriend.tsx";
 import { FriendDetail } from "./pages/FriendDetail.tsx";
 import { AllExpenses } from "./pages/AllExpenses.tsx";
 import { ExpenseDetail } from "./pages/ExpenseDetail.tsx";
+import { Series } from "./pages/Series.tsx";
 import { Activity } from "./pages/Activity.tsx";
 import { Claim } from "./pages/Claim.tsx";
 import { Settings } from "./pages/Settings.tsx";
@@ -101,6 +102,7 @@ function Shell() {
       <Route path="/friends/new" element={<Protected><NewFriend /></Protected>} />
       <Route path="/friends/:id" element={<Protected><FriendDetail /></Protected>} />
       <Route path="/expenses" element={<Protected><AllExpenses /></Protected>} />
+      <Route path="/expenses/:id/series" element={<Protected><Series /></Protected>} />
       <Route path="/expenses/:id" element={<Protected><ExpenseDetail /></Protected>} />
       <Route path="/activity" element={<Protected><Activity /></Protected>} />
       {/* Writes the server refused or overtook. Non-negotiable: an expense that

@@ -15,13 +15,14 @@
  *   GuestOfflineError fetch itself failed. NOT a cached ledger; a
  *                     needs-connection screen. See docs/GUEST.md.
  */
-import type {
-  Comment,
-  Currency,
-  CurrencyAmount,
-  ExpenseInput,
-  ExpenseSummary,
-  ExpenseDetail,
+import {
+  displayName,
+  type Comment,
+  type Currency,
+  type CurrencyAmount,
+  type ExpenseInput,
+  type ExpenseSummary,
+  type ExpenseDetail,
 } from "../api.ts";
 import { readActingAs, readGuestLink } from "./guestStorage.ts";
 
@@ -101,8 +102,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export interface GuestPerson {
   id: string;
-  firstName: string;
-  lastName: string | null;
+  name: string;
+  nickname: string | null;
+  iconLetters: string | null;
+  iconEmoji: string | null;
+  iconHue: number | null;
 }
 
 export interface GuestGroupSummary {
@@ -131,22 +135,32 @@ export interface GuestSession {
 
 export interface GuestMember {
   id: string;
-  first_name: string;
-  last_name: string | null;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
   is_ghost: number;
   role: string;
   joined_via: string;
 }
+
+export type GuestVisiblePerson = {
+  id: string;
+  name: string;
+  nickname: string | null;
+  icon_letters: string | null;
+  icon_emoji: string | null;
+  icon_hue: number | null;
+  is_ghost: number;
+};
 
 export const guestApi = {
   session: () => request<GuestSession>("/session"),
 
   currencies: () => request<{ currencies: Currency[] }>("/currencies"),
 
-  people: () =>
-    request<{ people: Array<{ id: string; first_name: string; last_name: string | null; is_ghost: number }> }>(
-      "/people",
-    ),
+  people: () => request<{ people: GuestVisiblePerson[] }>("/people"),
 
   group: (id: string) =>
     request<{
@@ -166,7 +180,14 @@ export const guestApi = {
 
   friend: () =>
     request<{
-      counterpart: { id: string; first_name: string; last_name: string | null };
+      counterpart: {
+        id: string;
+        name: string;
+        nickname: string | null;
+        icon_letters: string | null;
+        icon_emoji: string | null;
+        icon_hue: number | null;
+      };
       balances: CurrencyAmount[];
       expenses: ExpenseSummary[];
     }>("/friend"),
@@ -211,13 +232,6 @@ export const guestApi = {
   deleteComment: (id: string) => request<{ ok: boolean }>(`/comments/${id}`, { method: "DELETE" }),
 };
 
-export function guestFullName(person: {
-  first_name?: string;
-  last_name?: string | null;
-  firstName?: string;
-  lastName?: string | null;
-}): string {
-  return [person.first_name ?? person.firstName, person.last_name ?? person.lastName]
-    .filter(Boolean)
-    .join(" ");
+export function guestFullName(person: { name: string; nickname?: string | null }): string {
+  return displayName(person);
 }

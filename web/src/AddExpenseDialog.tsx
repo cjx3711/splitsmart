@@ -20,7 +20,7 @@
  * trip with people you have already added.
  */
 import { useEffect, useState } from "react";
-import { fullName } from "./api.ts";
+import { displayName } from "./api.ts";
 import { Modal } from "./Modal.tsx";
 import { ExpenseForm } from "./ExpenseForm.tsx";
 import type { Person } from "./PeoplePicker.tsx";
@@ -69,14 +69,14 @@ export function AddExpenseDialog({
       ? null
       : groupView.members.map((m) => ({
           id: m.id,
-          label: m.id === user.id ? "You" : fullName(m),
+          label: m.id === user.id ? "You" : displayName(m),
         }));
 
   const you: Person = { id: user.id, label: "You" };
   const candidates: Person[] =
     groupId !== null
       ? (members ?? [you])
-      : [you, ...friends.map((f) => ({ id: f.id, label: fullName(f) }))];
+      : [you, ...friends.map((f) => ({ id: f.id, label: displayName(f) }))];
 
   const initialParticipantIds =
     groupId !== null

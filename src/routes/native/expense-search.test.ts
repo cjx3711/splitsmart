@@ -55,7 +55,7 @@ async function person(name: string, email?: string): Promise<string> {
       ...(email
         ? { email, password_hash: "scrypt$131072$8$1$AAAA$AAAA", is_ghost: 0 }
         : { is_ghost: 1 }),
-      first_name: name,
+      name,
       default_currency: "USD",
     })
     .execute();

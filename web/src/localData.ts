@@ -32,6 +32,7 @@ import {
   localGroupExpenses,
   localGroups,
   localSettleSuggestions,
+  localSeries,
 } from "./db/queries.ts";
 import type { ExpenseQuery } from "./api.ts";
 
@@ -110,6 +111,13 @@ export function useFriendExpenses(friendId: string | undefined, filters: Expense
 export function useExpense(expenseId: string | undefined) {
   return useLocal(
     (db) => (expenseId ? localExpense(db, expenseId) : Promise.resolve(undefined)),
+    [expenseId],
+  );
+}
+
+export function useSeries(expenseId: string | undefined) {
+  return useLocal(
+    (db) => (expenseId ? localSeries(db, expenseId) : Promise.resolve(undefined)),
     [expenseId],
   );
 }

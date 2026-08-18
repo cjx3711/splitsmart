@@ -8,7 +8,7 @@ something already failed.
 
 `yarn test` is the suite you trust for logic. This one tells you the app is
 still usable: JPY has no decimal point, the leftover cent of a 31.00 split
-landed on someone, the sidebar survives a phone viewport, Jamie sees the
+landed on someone, the sidebar survives a phone viewport, JJ sees the
 expense Test User just added.
 
 **The agent that starts this fixes nothing.** See the `ai-smoke-test` skill.
@@ -56,8 +56,8 @@ yarn smoke:server    # serve it on 5644/5645 (yarn smoke starts this for you)
 `yarn smoke:reset` is destructive to `data/smoke.db` and to nothing else.
 
 **Login:** `test@example.com` / `password123`. A second real account,
-`jamie@example.com` / `password123`, is a member of Weekend in Tokyo and
-Apartment 4B — that is the "other person in the group" view.
+`jj@example.com` / `password123` (Lee Jin Jie / JJ), is a member of Weekend
+in Tokyo and Apartment 4B — that is the "other person in the group" view.
 
 The demo seed pins dates with `SEED_TODAY=2026-06-01` and leaves the recurring
 series slightly behind on purpose, so the catch-up note is always visible.
@@ -96,19 +96,20 @@ Listed in `scripts/smoke-screens.ts`. Every id is captured twice: desktop
 | `dashboard` | Test User | Directed balances, ≤5 groups in the rail |
 | `groups` | Test User | Full group list |
 | `group-tokyo` | Test User | JPY, no decimals, Ramen / TeamLab |
-| `group-apartment` | Test User | USD group Test User shares with Jamie |
+| `group-apartment` | Test User | USD group Test User shares with JJ |
 | `friends` | Test User | Friend list |
-| `friend-sam` | Test User | Mixed USD + JPY, side by side, not summed |
+| `friend-ahbeng` | Test User | Mixed USD + JPY, side by side, not summed |
 | `all-expenses` | Test User | Global list |
 | `expense-detail` | Test User | Trader Joe's: user + system comments |
-| `expense-rent` | Test User | Recurring template, catch-up note |
+| `expense-rent` | Test User | Recurring template, next bill coming soon |
+| `expense-series` | Test User | Every bill in the Rent series, oldest first |
 | `add-expense-dialog` | Test User | The add form |
 | `settings` | Test User | Account + API tokens |
-| `jamie-dashboard` | Jamie Lee | Same ledger, other side |
-| `jamie-tokyo` | Jamie Lee | Tokyo as the member who paid TeamLab |
-| `jamie-apartment` | Jamie Lee | Apartment 4B as the other roommate |
-| `guest-picker` | guest link | "Which one are you?" (Alex Kim) |
-| `guest-group` | guest (Alex) | Tokyo with no Settings / other groups |
+| `jj-dashboard` | JJ | Same ledger, other side |
+| `jj-tokyo` | JJ | Tokyo as the member who paid TeamLab |
+| `jj-apartment` | JJ | Apartment 4B as the other roommate |
+| `guest-picker` | guest link | "Which one are you?" (Hana) |
+| `guest-group` | guest (Hana) | Tokyo with no Settings / other groups |
 
 ## Flows
 
@@ -123,7 +124,7 @@ run *after* the screenshots of the seeded state.
 | F4 | Search `coffee` narrows; `50%` matches nothing; CSV button is enabled |
 | F5 | Guest link: Tokyo only; nothing hits `/api/v1/` outside `/api/v1/guest/` |
 | F6 | 375×812, Show menu, no horizontal overflow on dashboard / group / expense |
-| F7 | Test User adds "Smoke test paint" in Apartment 4B; Jamie's session lists it |
+| F7 | Test User adds "Smoke test paint" in Apartment 4B; JJ's session lists it |
 
 `yarn smoke:check` runs last, against whatever F1 / F3 / F7 wrote, and asks
 whether `SUM(paid_share) == SUM(owed_share) == cost` still holds.
