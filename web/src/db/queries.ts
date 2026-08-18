@@ -222,6 +222,14 @@ function pairwiseByGroup(
     list.push({ groupId: rawGroup === "" ? null : rawGroup, balances });
     result.set(otherId, list);
   }
+  for (const list of result.values()) {
+    list.sort((a, b) => {
+      if (a.groupId === b.groupId) return 0;
+      if (a.groupId === null) return 1;
+      if (b.groupId === null) return -1;
+      return a.groupId < b.groupId ? -1 : 1;
+    });
+  }
   return result;
 }
 
@@ -242,8 +250,9 @@ function groupBalances(moves: Movement[], groupId: string): Array<{ userId: stri
   }
 
   const result: Array<{ userId: string; balances: CurrencyAmount[] }> = [];
-  for (const [userId, totals] of byUser) {
-    const balances = toAmounts(totals);
+  const userIds = [...byUser.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const userId of userIds) {
+    const balances = toAmounts(byUser.get(userId)!);
     if (balances.length > 0) result.push({ userId, balances });
   }
   return result;
@@ -485,13 +494,15 @@ function toApiFriend(
   explicit: Set<string>,
   groupNames: Map<string, string>,
 ): Friend {
-  const breakdown: FriendBreakdown[] = (breakdowns.get(user.id) ?? []).map((entry) => ({
-    groupId: entry.groupId,
-    // Null name means "one-on-one expenses"; the UI supplies that wording, so
-    // the server does not invent a pseudo-group and neither does this.
-    groupName: entry.groupId === null ? null : (groupNames.get(entry.groupId) ?? null),
-    balances: entry.balances,
-  }));
+  const breakdown: FriendBreakdown[] = (breakdowns.get(user.id) ?? [])
+    .map((entry) => ({
+      groupId: entry.groupId,
+      // Null name means "one-on-one expenses"; the UI supplies that wording, so
+      // the server does not invent a pseudo-group and neither does this.
+      groupName: entry.groupId === null ? null : (groupNames.get(entry.groupId) ?? null),
+      balances: entry.balances,
+    }))
+    .sort(byGroupName);
 
   return {
     id: user.id,
@@ -505,6 +516,13 @@ function toApiFriend(
     balances: balances.get(user.id) ?? [],
     breakdown,
   };
+}
+
+function byGroupName(a: { groupName: string | null }, b: { groupName: string | null }): number {
+  if (a.groupName === b.groupName) return 0;
+  if (a.groupName === null) return 1;
+  if (b.groupName === null) return -1;
+  return a.groupName.localeCompare(b.groupName);
 }
 
 /** The caller's own expenses, group and one-on-one alike. Backs All Expenses. */

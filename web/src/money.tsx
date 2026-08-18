@@ -39,7 +39,17 @@ const CurrencyContext = createContext<CurrencyContextValue>({
   frequentCodes: [],
 });
 
-export function CurrencyProvider({ children }: { children: ReactNode }) {
+export function CurrencyProvider({
+  children,
+  fetchCurrencies,
+}: {
+  children: ReactNode;
+  /**
+   * The guest shell has no Dexie and must not call `/api/v1` (a link token is
+   * refused there). Pass `guestApi.currencies` so amounts still render.
+   */
+  fetchCurrencies?: () => Promise<{ currencies: Currency[] }>;
+}) {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [frequentCodes, setFrequentCodes] = useState<string[]>([]);
@@ -64,15 +74,15 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   }, [mirrored]);
 
   useEffect(() => {
-    api
-      .listCurrencies()
+    const load = fetchCurrencies ?? (() => api.listCurrencies());
+    load()
       .then((r) => {
         setCurrencies(r.currencies);
         setLoaded(true);
         // Refresh the mirror so the next offline reload has the table. The
         // mapping is the only translation: the API speaks snake_case, Dexie
-        // stores the sync document.
-        if (db) {
+        // stores the sync document. Guests have no mirror.
+        if (db && !fetchCurrencies) {
           void db.currencies.bulkPut(
             r.currencies.map((c) => ({
               code: c.code,
@@ -87,12 +97,14 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       // is the only thing standing between the user and a screen of dashes.
       .catch(() => {});
     // Fails silently when signed out; the picker just falls back to a
-    // popular-currencies default in that case.
-    api
-      .frequentCurrencies()
-      .then((r) => setFrequentCodes(r.codes))
-      .catch(() => setFrequentCodes([]));
-  }, [db]);
+    // popular-currencies default in that case. Guests have no frequent list.
+    if (!fetchCurrencies) {
+      api
+        .frequentCurrencies()
+        .then((r) => setFrequentCodes(r.codes))
+        .catch(() => setFrequentCodes([]));
+    }
+  }, [db, fetchCurrencies]);
 
   const value = useMemo<CurrencyContextValue>(() => {
     const byCode = new Map(currencies.map((c) => [c.code, c.decimal_places]));

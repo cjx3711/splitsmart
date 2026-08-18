@@ -79,7 +79,17 @@ async function breakdownByUser(
     });
     byUser.set(row.otherUserId, list);
   }
+  for (const list of byUser.values()) {
+    list.sort(byGroupName);
+  }
   return byUser;
+}
+
+function byGroupName(a: { groupName: string | null }, b: { groupName: string | null }): number {
+  if (a.groupName === b.groupName) return 0;
+  if (a.groupName === null) return 1;
+  if (b.groupName === null) return -1;
+  return a.groupName.localeCompare(b.groupName);
 }
 
 friendRoutes.get("/", async (c) => {

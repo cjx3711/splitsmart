@@ -17,6 +17,7 @@
  */
 import type {
   Comment,
+  Currency,
   CurrencyAmount,
   ExpenseInput,
   ExpenseSummary,
@@ -139,6 +140,8 @@ export interface GuestMember {
 
 export const guestApi = {
   session: () => request<GuestSession>("/session"),
+
+  currencies: () => request<{ currencies: Currency[] }>("/currencies"),
 
   people: () =>
     request<{ people: Array<{ id: string; first_name: string; last_name: string | null; is_ghost: number }> }>(

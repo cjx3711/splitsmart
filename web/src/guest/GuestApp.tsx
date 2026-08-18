@@ -69,7 +69,7 @@ type State =
 
 export function GuestApp() {
   return (
-    <CurrencyProvider>
+    <CurrencyProvider fetchCurrencies={guestApi.currencies}>
       <Routes>
         {/* The secret arrives here and leaves the URL immediately. */}
         <Route path="/l/:token" element={<Landing />} />

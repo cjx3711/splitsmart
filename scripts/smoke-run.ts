@@ -27,6 +27,8 @@ const runDir = join(runsDir, name);
 
 mkdirSync(join(runDir, "snapshots"), { recursive: true });
 mkdirSync(join(runDir, "raw"), { recursive: true });
+mkdirSync(join(runDir, "screens"), { recursive: true });
+mkdirSync(join(runDir, "diffs"), { recursive: true });
 
 const results = {
   run: name,
@@ -47,6 +49,8 @@ try {
 }
 
 console.log(runDir);
+console.log(`  screens    ${join(runDir, "screens")}`);
+console.log(`  diffs      ${join(runDir, "diffs")}`);
 console.log(`  snapshots  ${join(runDir, "snapshots")}`);
 console.log(`  raw        ${join(runDir, "raw")}`);
 console.log(`  results    ${join(runDir, "results.json")}`);

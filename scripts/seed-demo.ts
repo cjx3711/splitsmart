@@ -26,9 +26,38 @@ const DEFAULT_PASSWORD = "password123";
  * The recurring series below depends on this: a template can only produce bills
  * once its `next_repeat` is in the past, and a hardcoded year would either
  * generate nothing or generate a decade of rent.
+ *
+ * SEED_TODAY pins that "today" to a fixed date. The pixel snapshots
+ * (docs/AI_SMOKE_TESTS.md) need it: a baseline PNG recorded in March and
+ * compared in August differs in every rendered date, which is churn, not a
+ * regression. Pinning does NOT make the series stop being behind — dueness is
+ * still judged against the real clock — so the catch-up state the demo exists
+ * to show is intact, and the scheduler's one-per-tick cap keeps the number of
+ * generated bills the same however long ago the anchor was.
  */
+const SEED_NOW = process.env.SEED_TODAY
+  ? Date.parse(`${process.env.SEED_TODAY}T12:00:00Z`)
+  : Date.now();
+
+if (Number.isNaN(SEED_NOW)) {
+  console.error(`SEED_TODAY must be YYYY-MM-DD, got: ${process.env.SEED_TODAY}`);
+  process.exit(1);
+}
+
+/**
+ * ULIDs encode a millisecond timestamp. Creating a dozen groups in the same
+ * millisecond makes their sort order random, and the sidebar shows the five
+ * newest — so a smoke snapshot would shuffle every reset. Tick the clock once
+ * per id so oldest-first insertion is also oldest-first in ULID order.
+ */
+let seedClock = SEED_NOW;
+function seedUlid(): string {
+  seedClock += 1;
+  return ulid(seedClock);
+}
+
 function daysAgo(days: number): string {
-  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+  return new Date(SEED_NOW - days * 86_400_000).toISOString().slice(0, 10);
 }
 
 async function ensureUser(
@@ -52,7 +81,7 @@ async function ensureUser(
   const created = await db
     .insertInto("users")
     .values({
-      id: ulid(),
+      id: seedUlid(),
       email,
       password_hash: await hashPassword(profile.password ?? DEFAULT_PASSWORD),
       first_name: profile.firstName,
@@ -72,7 +101,7 @@ async function createGhost(
   lastName: string,
   defaultCurrency = "USD",
 ): Promise<string> {
-  const id = ulid();
+  const id = seedUlid();
   await db
     .insertInto("users")
     .values({
@@ -94,7 +123,7 @@ async function createGroup(
   memberIds: string[],
   simplifyByDefault = false,
 ): Promise<string> {
-  const groupId = ulid();
+  const groupId = seedUlid();
   await db
     .insertInto("groups")
     .values({

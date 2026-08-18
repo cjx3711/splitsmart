@@ -226,6 +226,22 @@ guestRoutes.get("/session", async (c) => {
   });
 });
 
+/**
+ * The currencies table. Same payload as the logged-in `/categories/currencies`.
+ *
+ * The guest shell has no Dexie mirror, so without this it would call `/api/v1`
+ * (which 401s a link token) and every amount would render as a dash. Does not
+ * need a picked name: the picker page is already inside CurrencyProvider.
+ */
+guestRoutes.get("/currencies", async (c) => {
+  const currencies = await db
+    .selectFrom("currencies")
+    .select(["code", "decimal_places", "symbol", "name"])
+    .orderBy("code")
+    .execute();
+  return c.json({ currencies });
+});
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------

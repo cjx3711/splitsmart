@@ -22,7 +22,7 @@ import { SettleUpForm } from "../SettleUpForm.tsx";
 import { Modal } from "../Modal.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
-import { useFriend, useFriendExpenses } from "../localData.ts";
+import { useFriend, useFriendExpenses, useFriends } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
@@ -41,6 +41,7 @@ export function FriendDetail() {
 
   const loaded = useFriend(id);
   const expenses = useFriendExpenses(id, filters)?.expenses ?? [];
+  const allFriends = useFriends()?.friends ?? [];
 
   if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
   if (loaded === null) return <p className="empty">This person is not on this device.</p>;
@@ -56,6 +57,7 @@ export function FriendDetail() {
     [
       { id: user.id, first_name: user.firstName, last_name: user.lastName },
       { id: friend.id, first_name: friend.first_name, last_name: friend.last_name },
+      ...allFriends,
     ],
     user.id,
   );

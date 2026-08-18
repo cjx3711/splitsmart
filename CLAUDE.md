@@ -49,22 +49,32 @@ yarn db:reset                # wipe and rebuild the local database
 yarn seed:demo              # a demo account: groups, comments, a repeat series
 ```
 
-## The AI smoke suite
+## The smoke suite
 
 `yarn test` covers the logic. `docs/AI_SMOKE_TESTS.md` covers the part a unit
-test cannot see: an agent drives a browser through the app and judges each
-screen by looking at it (is JPY shown without decimals, do the split shares add
-up, does the sidebar survive a phone viewport). Run it with the `ai-smoke-test`
-skill; it reports and never repairs, so a red run stays informative.
+test cannot see: Playwright drives a seeded app, screenshots every important
+screen (desktop and mobile, including Jamie's view of the same groups), runs a
+handful of click-through flows, and diffs PNG + DOM against committed
+baselines. The `ai-smoke-test` skill starts that suite and only looks at a
+browser if something already failed. It reports and never repairs, so a red
+run stays informative.
+
+```bash
+yarn playwright install chromium   # once per machine
+yarn smoke                         # reset, serve, capture, flows, compare, check
+yarn smoke -- --update             # re-record baselines on this machine
+```
 
 It runs against **its own** database and ports — `data/smoke.db` on 5644/5645 —
 so it never touches your dev data. `yarn smoke:reset` rebuilds that database
 only; `yarn db:reset` is still the one that wipes yours.
 
-Text snapshots of each page live in `smoke/baselines/` and ARE committed, after
-`scripts/smoke-snapshot.ts` strips the values that legitimately churn (ULIDs,
-dates, `ref_N`, link secrets, the live FX estimate). Update a baseline in the
-commit that changed the UI, never to quiet a failing run.
+PNG baselines live in `smoke/baselines/png/` and DOM dumps in
+`smoke/baselines/dom/`. Both ARE committed. PNGs are machine-local (system
+fonts); re-record with `--update` on the device you run on rather than
+"fixing" a font diff. DOM dumps go through `scripts/smoke-lib.ts`, which
+strips ULIDs, dates, link secrets and the live FX estimate. Update a baseline
+in the commit that changed the UI, never to quiet a failing run.
 
 ## The five rules
 
