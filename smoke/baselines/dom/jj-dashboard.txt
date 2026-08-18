@@ -37,7 +37,9 @@
   - link "Test User":
     - /url: /app/friends/<ULID>
 - main:
-  - heading "Dashboard" [level=1]
+  - heading "Dashboard About these totals" [level=1]:
+    - text: Dashboard
+    - button "About these totals": "?"
   - link "New group":
     - /url: /app/groups/new
     - button "New group"
@@ -45,7 +47,6 @@
     - /url: /app/friends/new
     - button "Add a friend"
   - text: Net position 6000JPY -3836.21USD You owe 3836.21USD You are owed 6000JPY
-  - paragraph: Every currency is a separate ledger. A combined figure, when shown, is an estimate.
   - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
   - heading "You owe" [level=2]
   - link "Test User you owe 3836.21USD -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
@@ -71,6 +72,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

@@ -12,7 +12,8 @@
 import { Link } from "react-router-dom";
 import { displayName, type Friend, type CurrencyAmount } from "../api.ts";
 import { Amount, Amounts, sumByCurrency } from "../money.tsx";
-import { Avatar, avatarFromRow } from "../Avatar.tsx";
+import { avatarFromRow } from "../Avatar.tsx";
+import { FriendListItem } from "../FriendListItem.tsx";
 import { useAuth } from "../App.tsx";
 import { useFriends } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
@@ -153,19 +154,23 @@ function PeopleList({
         const relevant = person.balances.filter((b) => keep(b.amountMinor));
 
         return (
-          <Link key={person.id} to={`/friends/${person.id}`} className="list-item">
-            <Avatar {...avatarFromRow(person)} />
-            <div className="list-item-body">
-              <div className="list-item-title">{displayName(person)}</div>
+          <FriendListItem
+            key={person.id}
+            to={`/friends/${person.id}`}
+            avatar={avatarFromRow(person)}
+            title={displayName(person)}
+            subtitle={
               <div className={direction}>
                 {direction === "positive" ? "owes you " : "you owe "}
                 <Amounts balances={relevant} absolute />
               </div>
-              {/* Every bucket, signed - including ones pointing the other way.
-                  Filtering to this column's direction would print sub-lines
-                  that don't add up to the figure above them. Only shown when
-                  there is more than one, since a single line just repeats it. */}
-              {person.breakdown.length > 1 && (
+            }
+            extra={
+              // Every bucket, signed - including ones pointing the other way.
+              // Filtering to this column's direction would print sub-lines
+              // that don't add up to the figure above them. Only shown when
+              // there is more than one, since a single line just repeats it.
+              person.breakdown.length > 1 ? (
                 <ul className="breakdown">
                   {person.breakdown.map((entry) => (
                     <li key={entry.groupId ?? "none"}>
@@ -174,9 +179,9 @@ function PeopleList({
                     </li>
                   ))}
                 </ul>
-              )}
-            </div>
-          </Link>
+              ) : undefined
+            }
+          />
         );
       })}
     </div>

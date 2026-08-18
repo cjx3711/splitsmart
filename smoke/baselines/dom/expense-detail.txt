@@ -81,9 +81,8 @@
   - paragraph: Includes the laundry detergent
   - heading "Who paid, who owes" [level=2]
   - text: You paid 92.43USD owes 46.22USD
-  - link "JJ":
+  - link "JJ owes 46.21USD":
     - /url: /app/friends/<ULID>
-  - text: owes 46.21USD
   - heading "Comments" [level=2]
   - strong: JJ
   - text: "Did this include the laundry stuff? Test User updated this expense: - Amount: 87.43 USD → 92.43 USD - Notes added: \"Includes the laundry detergent\" - JJ's share: 43.71 USD → 46.21 USD - Test User's share: 43.72 USD → 46.22 USD Add a comment"
@@ -93,6 +92,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

@@ -39,16 +39,8 @@ import {
 import { api, ApiError, type ApiUser } from "../api.ts";
 import { getMeta, openLocalDb, setMeta, type LocalDb } from "../db/local.ts";
 import { localProfile } from "../db/queries.ts";
+import { LAST_USER_KEY } from "../lastUser.ts";
 import { SyncEngine, type SyncStatus } from "./engine.ts";
-
-/**
- * Which account this browser last signed into.
- *
- * `localStorage`, not a cookie: the session cookie is httpOnly and unreadable
- * here, and this is not a credential - it is the name of an IndexedDB database.
- * Losing it costs a bootstrap, not a session.
- */
-const LAST_USER_KEY = "splitsmart.lastUserId";
 
 interface SyncContextValue {
   user: ApiUser | null;

@@ -593,6 +593,8 @@ export function ApiDocs() {
       <p>
         <Link to="/about">About this instance</Link>
         {" · "}
+        <Link to="/changelog">Changelog</Link>
+        {" · "}
         <Link to="/">Home</Link>
       </p>
     </article>

@@ -55,6 +55,11 @@ yarn smoke:server    # serve it on 5644/5645 (yarn smoke starts this for you)
 
 `yarn smoke:reset` is destructive to `data/smoke.db` and to nothing else.
 
+`yarn smoke:server` sets `DISABLE_RECURRING_SCHEDULER=true` so boot does not
+mint recurring bills; `smoke:reset` already ran the scheduler with a pinned
+clock (`SEED_TODAY`). Re-recording baselines with `--no-reset` while the server
+has been up can still drift balances — stop the server and reset first.
+
 **Login:** `test@example.com` / `password123`. A second real account,
 `jj@example.com` / `password123` (Lee Jin Jie / JJ), is a member of Weekend
 in Tokyo and Apartment 4B - that is the "other person in the group" view.
@@ -127,7 +132,8 @@ run *after* the screenshots of the seeded state.
 | F6 | 375×812, Show menu, no horizontal overflow on dashboard / group / expense |
 | F7 | Test User adds "Smoke test paint" in Apartment 4B; JJ's session lists it |
 | F8 | Stop Rent warns (cancel is a no-op); resume starts from today and does not backfill |
-| F9 | Group member and expense participant names open `/friends/:id` |
+| F9 | Group balances, group members, and expense participants open `/friends/:id` |
+| F10 | Signed-in homepage says Open app; `/app/login` redirects to the dashboard |
 
 `yarn smoke:check` runs last, against whatever F1 / F3 / F7 / F8 wrote, and asks
 whether `SUM(paid_share) == SUM(owed_share) == cost` still holds.

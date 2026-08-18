@@ -23,7 +23,7 @@ import {
 } from "../SettleUpDialog.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
-import { Avatar, avatarFromRow } from "../Avatar.tsx";
+import { avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
@@ -32,7 +32,7 @@ import { useSync } from "../sync/SyncProvider.tsx";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { HelpTip } from "../HelpTip.tsx";
-import { PersonLink } from "../PersonLink.tsx";
+import { FriendListItem, friendHref } from "../FriendListItem.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
@@ -179,11 +179,12 @@ export function GroupDetail() {
       ) : (
         <div className="list">
           {balances.map((entry) => (
-            <div key={entry.userId} className="list-item">
-              <Avatar {...avatarFor(entry.userId)} />
-              <div className="list-item-body">
-                <div className="list-item-title">{nameOf(entry.userId)}</div>
-              </div>
+            <FriendListItem
+              key={entry.userId}
+              to={friendHref(entry.userId, user.id)}
+              avatar={avatarFor(entry.userId)}
+              title={nameOf(entry.userId)}
+            >
               <div>
                 <div className="ledger">
                   {entry.balances.map((b) => (
@@ -195,7 +196,7 @@ export function GroupDetail() {
                 </div>
                 <EstimatedTotal balances={entry.balances} preferredCurrency={user.defaultCurrency} />
               </div>
-            </div>
+            </FriendListItem>
           ))}
         </div>
       )}
@@ -266,43 +267,47 @@ export function GroupDetail() {
       </div>
       <div className="list">
         {members.map((m) => (
-          <div key={m.id} className="list-item">
-            <Avatar {...avatarFromRow(m)} />
-            <div className="list-item-body">
-              <div className="list-item-title">
-                <PersonLink userId={m.id} currentUserId={user.id}>
-                  {m.id === user.id ? "You" : displayName(m)}
-                </PersonLink>
-              </div>
-              <div className="muted">
+          <FriendListItem
+            key={m.id}
+            to={friendHref(m.id, user.id)}
+            avatar={avatarFromRow(m)}
+            title={m.id === user.id ? "You" : displayName(m)}
+            subtitle={
+              <span className="muted">
                 {m.role}
                 {m.is_ghost === 1 ? " · guest" : " · has an account"}
-              </div>
-            </div>
-            {m.is_ghost === 1 && (
-              <OnlineOnly what="Editing a placeholder's name">
-                <button
-                  className="link"
-                  onClick={() => {
-                    setIdentityMember(m);
-                    setOpenDialog("identity");
-                  }}
-                >
-                  Edit
-                </button>
-              </OnlineOnly>
-            )}
-            {isOwner && m.id !== user.id && (
-              <OnlineOnly what="Removing someone from a group">
-                <button
-                  className="link"
-                  onClick={() => setRemovingMember(m)}
-                >
-                  Remove
-                </button>
-              </OnlineOnly>
-            )}
-          </div>
+              </span>
+            }
+            actions={
+              m.is_ghost === 1 || (isOwner && m.id !== user.id) ? (
+                <>
+                  {m.is_ghost === 1 && (
+                    <OnlineOnly what="Editing a placeholder's name">
+                      <button
+                        className="link"
+                        onClick={() => {
+                          setIdentityMember(m);
+                          setOpenDialog("identity");
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </OnlineOnly>
+                  )}
+                  {isOwner && m.id !== user.id && (
+                    <OnlineOnly what="Removing someone from a group">
+                      <button
+                        className="link"
+                        onClick={() => setRemovingMember(m)}
+                      >
+                        Remove
+                      </button>
+                    </OnlineOnly>
+                  )}
+                </>
+              ) : undefined
+            }
+          />
         ))}
       </div>
 

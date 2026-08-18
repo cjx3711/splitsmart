@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 /**
  * Three shells, three HTML entry points. See docs/GUEST.md, "Two shells".
  *
- *   /          marketing, about, docs. Not the PWA.
+ *   /          marketing, about, changelog, docs. Not the PWA.
  *   /app/*     the logged-in SPA. PWA scope /app/, start_url /app/.
  *   /guest/*   the guest SPA. Network-only service worker, scope /guest/.
  *

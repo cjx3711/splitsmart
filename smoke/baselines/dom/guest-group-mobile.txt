@@ -22,13 +22,16 @@
   - heading "Expenses" [level=2]
   - link "TeamLab tickets <DATE> · Life · JJ paid 9600JPY you borrowed 2400JPY"
   - link "Ramen at Ichiran <DATE> · Dining out · Test User paid 4800JPY 2 comments you borrowed 1200JPY"
-  - heading "Members" [level=2]
+  - heading "Members About members" [level=2]:
+    - text: Members
+    - button "About members": "?"
   - text: Test User owner JJ member Ah Beng member You member · guest
-  - paragraph: Only someone with an account can add or remove people here.
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

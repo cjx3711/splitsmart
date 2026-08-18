@@ -10,6 +10,7 @@ export function Footer() {
     <footer className="footer">
       <span>Created out of spite by cjx3711.</span>
       <a href="/about">About</a>
+      <a href="/changelog">Changelog</a>
       <a href="/docs">API</a>
       <a href="https://github.com/cjx3711/splitsmart" target="_blank" rel="noreferrer">
         GitHub

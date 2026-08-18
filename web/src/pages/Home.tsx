@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { HomeGallery } from "../HomeGallery.tsx";
 import { Avatar } from "../Avatar.tsx";
+import { useHasLocalAccount } from "../lastUser.ts";
 
 /**
  * Things Splitwise markets that this app does not do. Sourced from their
@@ -86,10 +87,13 @@ const MISSING: { feature: string; them: string; us: string }[] = [
 ];
 
 /**
- * Logged-out landing page. The app chrome (sidebar, add-expense) is for people
- * who already have a session; this is the page that explains what the thing is.
+ * Marketing landing page. The app chrome (sidebar, add-expense) stays in /app;
+ * this page explains the product. If this browser already has an account, the
+ * CTA is "Open app" rather than "Log in".
  */
 export function Home() {
+  const signedIn = useHasLocalAccount();
+
   return (
     <div className="mkt">
       <section className="mkt-hero">
@@ -105,12 +109,20 @@ export function Home() {
             just send you a link.
           </p>
           <div className="mkt-cta">
-            <a href="/app/login?register" className="mkt-btn">
-              Create an account
-            </a>
-            <a href="/app/login" className="mkt-btn mkt-btn-ghost">
-              Log in
-            </a>
+            {signedIn ? (
+              <a href="/app" className="mkt-btn">
+                Open app
+              </a>
+            ) : (
+              <>
+                <a href="/app/login?register" className="mkt-btn">
+                  Create an account
+                </a>
+                <a href="/app/login" className="mkt-btn mkt-btn-ghost">
+                  Log in
+                </a>
+              </>
+            )}
           </div>
           <p className="mkt-fine">
             Or open a link someone sends you and pick your name. No signup at
@@ -239,10 +251,15 @@ export function Home() {
         <h2>That&apos;s the whole pitch.</h2>
         <p>
           The longer version of why this exists is on the{" "}
-          <Link to="/about">about page</Link>, and the endpoints are in the{" "}
+          <Link to="/about">about page</Link>, what just landed is in the{" "}
+          <Link to="/changelog">changelog</Link>, and the endpoints are in the{" "}
           <Link to="/docs">API docs</Link>. If you just want to split a bill,{" "}
-          <a href="/app/login?register">make an account</a> or wait for someone
-          to send you a group link.
+          {signedIn ? (
+            <a href="/app">open the app</a>
+          ) : (
+            <a href="/app/login?register">make an account</a>
+          )}{" "}
+          or wait for someone to send you a group link.
         </p>
       </section>
     </div>

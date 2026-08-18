@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-18T07:40:14.301Z",
+  "capturedAt": "2026-08-18T07:58:02.176Z",
   "base": "http://localhost:5644",
   "playwrightVersion": "1.62.1",
   "params": {
@@ -20,6 +20,20 @@
     }
   },
   "screens": [
+    {
+      "id": "dashboard",
+      "viewport": "desktop",
+      "path": "/app",
+      "click": [],
+      "auth": "user:user"
+    },
+    {
+      "id": "dashboard-mobile",
+      "viewport": "mobile",
+      "path": "/app",
+      "click": [],
+      "auth": "user:user"
+    },
     {
       "id": "group-tokyo",
       "viewport": "desktop",
@@ -57,6 +71,20 @@
       "auth": "user:user"
     },
     {
+      "id": "friends",
+      "viewport": "desktop",
+      "path": "/app/friends",
+      "click": [],
+      "auth": "user:user"
+    },
+    {
+      "id": "friends-mobile",
+      "viewport": "mobile",
+      "path": "/app/friends",
+      "click": [],
+      "auth": "user:user"
+    },
+    {
       "id": "expense-detail",
       "viewport": "desktop",
       "path": "/app/expenses",
@@ -73,6 +101,38 @@
         "Trader Joe's run"
       ],
       "auth": "user:user"
+    },
+    {
+      "id": "add-expense-dialog",
+      "viewport": "desktop",
+      "path": "/app",
+      "click": [
+        "Add Expense"
+      ],
+      "auth": "user:user"
+    },
+    {
+      "id": "add-expense-dialog-mobile",
+      "viewport": "mobile",
+      "path": "/app",
+      "click": [
+        "Add Expense"
+      ],
+      "auth": "user:user"
+    },
+    {
+      "id": "jj-dashboard",
+      "viewport": "desktop",
+      "path": "/app",
+      "click": [],
+      "auth": "user:jj"
+    },
+    {
+      "id": "jj-dashboard-mobile",
+      "viewport": "mobile",
+      "path": "/app",
+      "click": [],
+      "auth": "user:jj"
     },
     {
       "id": "jj-tokyo",
@@ -109,6 +169,24 @@
         "Apartment 4B"
       ],
       "auth": "user:jj"
+    },
+    {
+      "id": "guest-group",
+      "viewport": "desktop",
+      "path": "/",
+      "click": [
+        "Hana"
+      ],
+      "auth": "guest:group"
+    },
+    {
+      "id": "guest-group-mobile",
+      "viewport": "mobile",
+      "path": "/",
+      "click": [
+        "Hana"
+      ],
+      "auth": "guest:group"
     }
   ]
 }

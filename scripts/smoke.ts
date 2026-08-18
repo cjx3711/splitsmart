@@ -150,6 +150,13 @@ let server: ChildProcess | null = null;
 let startedServer = false;
 
 try {
+  if (UPDATE && NO_RESET) {
+    console.warn(
+      "warning: --update with --no-reset can record extra scheduler bills if the smoke server has been running.",
+    );
+    console.warn("Stop yarn smoke:server, run without --no-reset, or expect balance drift.");
+  }
+
   if (!NO_RESET && ONLY !== "compare") {
     if (await isUp(BASE)) {
       console.error(

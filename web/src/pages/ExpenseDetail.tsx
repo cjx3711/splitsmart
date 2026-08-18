@@ -35,8 +35,8 @@ import { useAuth } from "../App.tsx";
 import { useExpense, useFriends } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { useLocal } from "../sync/useLocal.ts";
-import { Avatar, avatarFromRow } from "../Avatar.tsx";
-import { PersonLink } from "../PersonLink.tsx";
+import { avatarFromRow } from "../Avatar.tsx";
+import { FriendListItem, friendHref } from "../FriendListItem.tsx";
 
 export function ExpenseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -215,15 +215,12 @@ export function ExpenseDetail() {
           <h2>Who paid, who owes</h2>
           <div className="list">
             {expense.shares.map((share) => (
-              <div key={share.user_id} className="list-item">
-                <Avatar {...avatarFor(share.user_id)} />
-                <div className="list-item-body">
-                  <div className="list-item-title">
-                    <PersonLink userId={share.user_id} currentUserId={user.id}>
-                      {nameOf(share.user_id)}
-                    </PersonLink>
-                  </div>
-                </div>
+              <FriendListItem
+                key={share.user_id}
+                to={friendHref(share.user_id, user.id)}
+                avatar={avatarFor(share.user_id)}
+                title={nameOf(share.user_id)}
+              >
                 <div style={{ textAlign: "right" }}>
                   {share.paid_share_minor > 0 && (
                     <div className="muted">
@@ -234,7 +231,7 @@ export function ExpenseDetail() {
                     owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
                   </div>
                 </div>
-              </div>
+              </FriendListItem>
             ))}
           </div>
 

@@ -396,12 +396,26 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
 
       await clickNamed(page, "Groups");
       await clickNamed(page, "Weekend in Tokyo");
+      await page.getByRole("heading", { name: "Balances", exact: true }).waitFor({ timeout: 10_000 });
+      await page
+        .getByRole("heading", { name: "Balances", exact: true })
+        .locator("xpath=following-sibling::div[contains(@class,'list')][1]")
+        .locator(".list-item")
+        .filter({ hasText: "JJ" })
+        .click();
+      await page.getByRole("heading", { name: "JJ", exact: true }).waitFor({ timeout: 10_000 });
+      const fromBalances = page.url();
+      if (!/\/friends\/[^/]+$/.test(fromBalances.replace(ctx.base, ""))) {
+        throw new Error(`group balance link landed on ${fromBalances}`);
+      }
+
+      await clickNamed(page, "Groups");
+      await clickNamed(page, "Weekend in Tokyo");
       await page.getByRole("heading", { name: "Members" }).waitFor({ timeout: 10_000 });
       await page
         .locator(".list-item")
         .filter({ hasText: "member · has an account" })
         .filter({ hasText: "JJ" })
-        .getByRole("link", { name: "JJ", exact: true })
         .click();
       await page.getByRole("heading", { name: "JJ", exact: true }).waitFor({ timeout: 10_000 });
       const fromGroup = page.url();
@@ -412,19 +426,34 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await clickNamed(page, "All expenses");
       await clickNamed(page, { text: "Concert tickets", near: "One-on-one" });
       await page.getByRole("heading", { name: "Who paid, who owes" }).waitFor({ timeout: 10_000 });
-      await page
-        .locator(".list-item")
-        .filter({ hasText: "owes" })
-        .filter({ hasText: "John" })
-        .getByRole("link", { name: "John", exact: true })
-        .click();
+      await page.locator(".list-item").filter({ hasText: "John" }).filter({ hasText: "owes" }).click();
       await page.getByRole("heading", { name: "John", exact: true }).waitFor({ timeout: 10_000 });
       const fromExpense = page.url();
       if (!/\/friends\/[^/]+$/.test(fromExpense.replace(ctx.base, ""))) {
         throw new Error(`expense participant link landed on ${fromExpense}`);
       }
 
-      return "Weekend in Tokyo member JJ and Concert tickets participant John both opened /friends/:id.";
+      return "Tokyo balances JJ, Tokyo member JJ, and Concert tickets participant John all opened /friends/:id.";
+    },
+  },
+  {
+    id: "F10",
+    title: "Signed-in marketing offers Open app, not Log in",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await page.goto(`${ctx.base}/`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("link", { name: "Open app" }).first().waitFor({ timeout: 10_000 });
+      if ((await page.getByRole("link", { name: "Log in" }).count()) > 0) {
+        throw new Error("homepage still offered Log in after sign-in");
+      }
+      await page.getByRole("link", { name: "Open app" }).first().click();
+      await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 15_000 });
+      await page.goto(`${ctx.base}/app/login`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 15_000 });
+      if ((await page.getByRole("heading", { name: "Log in" }).count()) > 0) {
+        throw new Error("/app/login still showed the form while signed in");
+      }
+      return "Homepage said Open app; /app/login redirected to the dashboard.";
     },
   },
 ];

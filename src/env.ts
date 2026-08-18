@@ -50,6 +50,16 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+
+  /**
+   * Smoke stack only (`yarn smoke:server`). The demo seed runs the recurring
+   * job itself with a pinned clock; letting the server tick on boot would make
+   * capture depend on how many times the process restarted.
+   */
+  DISABLE_RECURRING_SCHEDULER: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 function load() {

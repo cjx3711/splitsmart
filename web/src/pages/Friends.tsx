@@ -10,7 +10,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, displayName, type Friend } from "../api.ts";
 import { Ledger } from "../money.tsx";
-import { Avatar, avatarFromRow } from "../Avatar.tsx";
+import { avatarFromRow } from "../Avatar.tsx";
+import { FriendListItem } from "../FriendListItem.tsx";
 import { useSidebarRefresh } from "../App.tsx";
 import { useFriends, useMirrorReady } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
@@ -73,37 +74,39 @@ export function Friends() {
       ) : (
         <div className="list">
           {friends.map((friend) => (
-            <div key={friend.id} className="list-item">
-              <Avatar {...avatarFromRow(friend)} />
-              <Link
-                to={`/friends/${friend.id}`}
-                className="list-item-body"
-                style={{ textDecoration: "none", color: "inherit" }}
-              >
-                <div className="list-item-title">{displayName(friend)}</div>
-                <div className="muted">
+            <FriendListItem
+              key={friend.id}
+              to={`/friends/${friend.id}`}
+              avatar={avatarFromRow(friend)}
+              title={displayName(friend)}
+              subtitle={
+                <span className="muted">
                   {friend.email ?? "No email"}
                   {friend.is_ghost === 1 && " · hasn't joined yet"}
-                </div>
-              </Link>
+                </span>
+              }
+              actions={
+                friend.is_explicit ? (
+                  <OnlineOnly what="Removing a friend">
+                    <button
+                      className="icon"
+                      onClick={() => setRemoving(friend)}
+                      aria-label={`Remove ${displayName(friend)}`}
+                      title="Remove friend"
+                    >
+                      ✕
+                    </button>
+                  </OnlineOnly>
+                ) : undefined
+              }
+            >
               <Ledger balances={friend.balances} />
-              {friend.is_explicit ? (
-                <OnlineOnly what="Removing a friend">
-                  <button
-                    className="icon"
-                    onClick={() => setRemoving(friend)}
-                    aria-label={`Remove ${displayName(friend)}`}
-                    title="Remove friend"
-                  >
-                    ✕
-                  </button>
-                </OnlineOnly>
-              ) : (
+              {!friend.is_explicit && (
                 <span className="muted" title="From a shared group or expense">
                   shared
                 </span>
               )}
-            </div>
+            </FriendListItem>
           ))}
         </div>
       )}

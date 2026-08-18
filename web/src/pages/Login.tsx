@@ -1,8 +1,14 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.ts";
 import { Logo } from "../Logo.tsx";
 import { useAuth } from "../App.tsx";
+import { readLastUserId } from "../lastUser.ts";
+
+/** In-app paths only: `next` is a query string, so this is an open-redirect check. */
+function inAppPath(next: string | null): string {
+  return next?.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
 
 /**
  * Log in or create an account. Two modes, one screen.
@@ -29,8 +35,13 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const { setUser } = useAuth();
+  const { user, setUser, loading } = useAuth();
   const navigate = useNavigate();
+
+  if (user) return <Navigate to={inAppPath(next)} replace />;
+  // A returning visitor's profile is still loading from the mirror. Don't
+  // flash the form; Navigate above fires as soon as the cached user appears.
+  if (loading && readLastUserId()) return <p className="muted">Loading…</p>;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -48,9 +59,7 @@ export function Login() {
               nickname: nickname.trim() || null,
             });
       setUser(user);
-      // Only in-app paths, never an absolute URL: `next` comes from the query
-      // string, so an unchecked value here would be an open redirect.
-      navigate(next?.startsWith("/") && !next.startsWith("//") ? next : "/");
+      navigate(inAppPath(next));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

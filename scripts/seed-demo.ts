@@ -30,14 +30,18 @@ const DEFAULT_PASSWORD = "password123";
  * SEED_TODAY pins that "today" to a fixed date. The pixel snapshots
  * (docs/AI_SMOKE_TESTS.md) need it: a baseline PNG recorded in March and
  * compared in August differs in every rendered date, which is churn, not a
- * regression. Pinning does NOT make the series stop being behind - dueness is
- * still judged against the real clock - so the catch-up state the demo exists
- * to show is intact, and the scheduler's one-per-tick cap keeps the number of
- * generated bills the same however long ago the anchor was.
+ * regression. When SEED_TODAY is set, recurring generation uses that same
+ * instant too, so smoke captures do not depend on the wall clock or on how
+ * many times the smoke server process restarted.
+ *
+ * Pinning does NOT make the series stop being behind on a dev box: dueness in
+ * the UI is still judged against the real clock, so the catch-up note stays
+ * visible after `yarn seed:demo` without SEED_TODAY.
  */
 const SEED_NOW = process.env.SEED_TODAY
   ? Date.parse(`${process.env.SEED_TODAY}T12:00:00Z`)
   : Date.now();
+const SEED_SCHEDULER_NOW = new Date(SEED_NOW);
 
 if (Number.isNaN(SEED_NOW)) {
   console.error(`SEED_TODAY must be YYYY-MM-DD, got: ${process.env.SEED_TODAY}`);
@@ -471,12 +475,16 @@ async function main(): Promise<void> {
     ],
   });
 
-  // Two ticks: enough for a couple of real bills, and it deliberately leaves
-  // both series a little behind, which is a state the expense page has to
-  // explain rather than hide.
-  const firstTick = await runDueRecurrences();
-  const secondTick = await runDueRecurrences();
-  const generated = firstTick.generated.length + secondTick.generated.length;
+  // A few ticks: enough for real bills, and deliberately leaves both series a
+  // little behind - a state the expense page has to explain rather than hide.
+  // Smoke pins SEED_TODAY and runs three ticks here; the smoke server disables
+  // its own scheduler so captures never pick up extra bills from a reboot.
+  const schedulerTicks = process.env.SEED_TODAY ? 3 : 2;
+  let generated = 0;
+  for (let i = 0; i < schedulerTicks; i++) {
+    const run = await runDueRecurrences(SEED_SCHEDULER_NOW);
+    generated += run.generated.length;
+  }
 
   // --- comments ------------------------------------------------------------
   //

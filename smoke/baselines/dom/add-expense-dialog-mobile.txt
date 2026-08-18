@@ -38,6 +38,7 @@
     - text: Paid by
     - button "Paid by": You
     - text: Split
+    - button "About Equally": "?"
     - group "How to split this expense":
       - button "Equally" [pressed]
       - button "Exact amounts"
@@ -45,7 +46,6 @@
       - button "Shares"
       - button "Adjustment"
       - button "Itemized"
-    - paragraph: Split the total evenly between everyone on the expense.
     - text: Who owes what You Repeat
     - combobox "Repeat":
       - option "Does not repeat" [selected]
@@ -56,7 +56,9 @@
     - button "+ Add notes"
     - button "Add expense"
 - main:
-  - heading "Dashboard" [level=1]
+  - heading "Dashboard About these totals" [level=1]:
+    - text: Dashboard
+    - button "About these totals": "?"
   - link "New group":
     - /url: /app/groups/new
     - button "New group"
@@ -64,7 +66,6 @@
     - /url: /app/friends/new
     - button "Add a friend"
   - text: Net position 1200JPY 3909.36USD You owe 1200JPY 136.10USD You are owed 2400JPY 4045.46USD
-  - paragraph: Every currency is a separate ledger. A combined figure, when shown, is an estimate.
   - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
   - heading "You owe" [level=2]
   - link "Jas you owe 65.00USD":
@@ -101,6 +102,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

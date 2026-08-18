@@ -50,7 +50,13 @@
   - button "Settle up"
   - button "Add Expense"
   - heading "Balances" [level=2]
-  - text: Test User gets back 1200JPY You gets back 6000JPY Ah Beng owes 3600JPY Hana owes 3600JPY
+  - link "Test User gets back 1200JPY":
+    - /url: /app/friends/<ULID>
+  - text: You gets back 6000JPY
+  - link "Ah Beng owes 3600JPY":
+    - /url: /app/friends/<ULID>
+  - link "Hana owes 3600JPY":
+    - /url: /app/friends/<ULID>
   - heading "Suggested settle-up About suggested settle-up" [level=2]:
     - text: Suggested settle-up
     - button "About suggested settle-up": "?"
@@ -120,15 +126,13 @@
       - /url: /app/friends/<ULID>
     - text: paid 4800JPY 2 comments you borrowed 1200JPY
   - heading "Members" [level=2]
-  - link "Test User":
+  - link "Test User owner · has an account":
     - /url: /app/friends/<ULID>
-  - text: owner · has an account You member · has an account
-  - link "Ah Beng":
+  - text: You member · has an account
+  - link "Ah Beng member · has an account":
     - /url: /app/friends/<ULID>
-  - text: member · has an account
-  - link "Hana":
+  - link "Hana member · guest":
     - /url: /app/friends/<ULID>
-  - text: member · guest
   - button "Edit"
   - heading "Guest links" [level=2]
   - paragraph: Only the group owner can create or turn off guest links.
@@ -146,6 +150,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

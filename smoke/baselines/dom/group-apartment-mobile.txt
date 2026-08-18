@@ -19,13 +19,15 @@
   - button "Settle up"
   - button "Add Expense"
   - heading "Balances" [level=2]
-  - text: You gets back 5496.21USD JJ owes 5496.21USD
+  - text: You gets back 3696.21USD
+  - link "JJ owes 3696.21USD":
+    - /url: /app/friends/<ULID>
   - heading "Suggested settle-up About suggested settle-up" [level=2]:
     - text: Suggested settle-up
     - button "About suggested settle-up": "?"
   - text: USD
   - list:
-    - listitem: JJ → You 5496.21USD
+    - listitem: JJ → You 3696.21USD
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
   - combobox "Category":
@@ -85,15 +87,12 @@
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
-  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
-  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
   - link "Rent <DATE> · Rent · You paid repeats 1800.00USD you lent 900.00USD"
   - heading "Members" [level=2]
   - button "+ Add member"
   - text: You owner · has an account
-  - link "JJ":
+  - link "JJ member · has an account":
     - /url: /app/friends/<ULID>
-  - text: member · has an account
   - button "Remove"
   - heading "Guest links" [level=2]
   - paragraph: Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime - if a link is compromised, revoke it and create a new one.
@@ -106,6 +105,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

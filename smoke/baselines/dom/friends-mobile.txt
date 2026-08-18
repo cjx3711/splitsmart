@@ -8,63 +8,50 @@
 - main:
   - heading "Friends" [level=1]
   - button "+ Add friend"
-  - link "Ah Beng ahbeng@example.com":
+  - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
     - /url: /app/friends/<ULID>
-  - text: 1200JPY 149.25USD
   - button "Remove Ah Beng": ✕
-  - link "Ah Lian No email · hasn't joined yet":
+  - link "Ah Lian No email · hasn't joined yet settled up shared":
     - /url: /app/friends/<ULID>
-  - text: settled up shared
-  - link "Aisyah aisyah@example.com":
+  - link "Aisyah aisyah@example.com settled up":
     - /url: /app/friends/<ULID>
-  - text: settled up
   - button "Remove Aisyah": ✕
-  - link "Danial danial@example.com":
+  - link "Danial danial@example.com settled up":
     - /url: /app/friends/<ULID>
-  - text: settled up
   - button "Remove Danial": ✕
-  - link "Gerry No email · hasn't joined yet":
+  - link "Gerry No email · hasn't joined yet settled up shared":
     - /url: /app/friends/<ULID>
-  - text: settled up shared
-  - link "Hana No email · hasn't joined yet":
+  - link "Hana No email · hasn't joined yet 1200JPY shared":
     - /url: /app/friends/<ULID>
-  - text: 1200JPY shared
-  - link "James No email · hasn't joined yet":
+  - link "James No email · hasn't joined yet settled up":
     - /url: /app/friends/<ULID>
-  - text: settled up
   - button "Remove James": ✕
-  - link "Jas jas@example.com":
+  - link "Jas jas@example.com -65.00USD":
     - /url: /app/friends/<ULID>
-  - text: "-65.00USD"
   - button "Remove Jas": ✕
-  - link "Jen No email · hasn't joined yet":
+  - link "Jen No email · hasn't joined yet settled up":
     - /url: /app/friends/<ULID>
-  - text: settled up
   - button "Remove Jen": ✕
-  - link "JJ jj@example.com":
+  - link "JJ jj@example.com -1200JPY 3836.21USD shared":
     - /url: /app/friends/<ULID>
-  - text: "-1200JPY 3836.21USD shared"
-  - link "John No email · hasn't joined yet":
+  - link "John No email · hasn't joined yet 60.00USD":
     - /url: /app/friends/<ULID>
-  - text: 60.00USD
   - button "Remove John": ✕
-  - link "Mel mel@example.com":
+  - link "Mel mel@example.com -71.10USD":
     - /url: /app/friends/<ULID>
-  - text: "-71.10USD"
   - button "Remove Mel": ✕
-  - link "Priya No email · hasn't joined yet":
+  - link "Priya No email · hasn't joined yet settled up shared":
     - /url: /app/friends/<ULID>
-  - text: settled up shared
-  - link "Taro taro@example.com":
+  - link "Taro taro@example.com settled up shared":
     - /url: /app/friends/<ULID>
-  - text: settled up shared
-  - link "Yuki No email · hasn't joined yet":
+  - link "Yuki No email · hasn't joined yet settled up shared":
     - /url: /app/friends/<ULID>
-  - text: settled up shared
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

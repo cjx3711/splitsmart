@@ -77,7 +77,9 @@ function Shell() {
   const { user } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const appChrome = Boolean(user);
+  // Login is a public form. Showing the sidebar around it when a session
+  // already exists is the bug; the page itself redirects away.
+  const appChrome = Boolean(user) && location.pathname !== "/login";
 
   // Close the mobile drawer whenever the route changes, so tapping a group
   // doesn't leave the menu covering the screen you just asked for.
@@ -203,6 +205,7 @@ function TopBar({
           <nav className="topbar-public">
             {/* Another document; a route would 404 inside this shell. */}
             <a href="/about">About</a>
+            <a href="/changelog">Changelog</a>
             <a href="/docs">API</a>
           </nav>
         )}

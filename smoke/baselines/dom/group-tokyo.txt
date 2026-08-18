@@ -72,7 +72,13 @@
   - button "Settle up"
   - button "Add Expense"
   - heading "Balances" [level=2]
-  - text: You gets back 1200JPY JJ gets back 6000JPY Ah Beng owes 3600JPY Hana owes 3600JPY
+  - text: You gets back 1200JPY
+  - link "JJ gets back 6000JPY":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng owes 3600JPY":
+    - /url: /app/friends/<ULID>
+  - link "Hana owes 3600JPY":
+    - /url: /app/friends/<ULID>
   - heading "Suggested settle-up About suggested settle-up" [level=2]:
     - text: Suggested settle-up
     - button "About suggested settle-up": "?"
@@ -144,17 +150,14 @@
   - heading "Members" [level=2]
   - button "+ Add member"
   - text: You owner · has an account
-  - link "JJ":
+  - link "JJ member · has an account":
     - /url: /app/friends/<ULID>
-  - text: member · has an account
   - button "Remove"
-  - link "Ah Beng":
+  - link "Ah Beng member · has an account":
     - /url: /app/friends/<ULID>
-  - text: member · has an account
   - button "Remove"
-  - link "Hana":
+  - link "Hana member · guest":
     - /url: /app/friends/<ULID>
-  - text: member · guest
   - button "Edit"
   - button "Remove"
   - heading "Guest links" [level=2]
@@ -176,6 +179,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

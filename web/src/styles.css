@@ -192,6 +192,7 @@ a {
 
 .footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 1rem;
   padding: 1.5rem 1rem;
@@ -428,6 +429,16 @@ h2 {
   text-transform: none;
   line-height: 1.4;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+
+/* Cover the gap so moving the pointer onto the popover does not close it. */
+.help-tip-pop::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  height: 0.4rem;
 }
 
 h3 {
@@ -701,8 +712,43 @@ h3 {
   border-top: none;
 }
 
-a.list-item:hover {
+a.list-item,
+.list-item-clickable {
+  cursor: pointer;
+}
+
+a.list-item:hover,
+.list-item-clickable:hover {
   background: var(--surface-2);
+}
+
+.list-item:has(> .list-item-main) {
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+}
+
+.list-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.list-item:has(> .list-item-actions) .list-item-main {
+  padding-right: 0.5rem;
+}
+
+.list-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 0.75rem 0;
+  flex-shrink: 0;
 }
 
 .list-item-body {
@@ -715,6 +761,11 @@ a.list-item:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.list-item-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .person-link {
@@ -1762,7 +1813,7 @@ code {
   padding: 0 1rem;
 }
 
-/* --- public marketing pages (home, about, API docs) ----------------------- */
+/* --- public marketing pages (home, about, changelog, API docs) ------------ */
 
 .mkt-main {
   min-width: 0;
@@ -2401,6 +2452,11 @@ dialog.mkt-lightbox::backdrop {
 
 .mkt-prose h2 {
   margin-top: 2.25rem;
+}
+
+.mkt-changelog-entry h2 {
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
 }
 
 .mkt-prose p,

@@ -16,7 +16,8 @@ import {
   SettleUpDialog,
   groupSettleChoices,
 } from "../SettleUpDialog.tsx";
-import { Avatar, avatarFromRow } from "../Avatar.tsx";
+import { avatarFromRow } from "../Avatar.tsx";
+import { FriendListItem } from "../FriendListItem.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
@@ -154,15 +155,15 @@ export function GuestGroup() {
           {balances.map((entry) => {
             const member = members.find((m) => m.id === entry.userId);
             return (
-            <div key={entry.userId} className="list-item">
-              <Avatar
-                {...(member
+            <FriendListItem
+              key={entry.userId}
+              avatar={
+                member
                   ? avatarFromRow(member)
-                  : { id: entry.userId, name: nameOf(entry.userId) })}
-              />
-              <div className="list-item-body">
-                <div className="list-item-title">{nameOf(entry.userId)}</div>
-              </div>
+                  : { id: entry.userId, name: nameOf(entry.userId) }
+              }
+              title={nameOf(entry.userId)}
+            >
               <div>
                 <div className="ledger">
                   {entry.balances.map((b) => (
@@ -177,7 +178,7 @@ export function GuestGroup() {
                 </div>
                 <EstimatedTotal balances={entry.balances} preferredCurrency={me.defaultCurrency} />
               </div>
-            </div>
+            </FriendListItem>
             );
           })}
         </div>
@@ -203,16 +204,17 @@ export function GuestGroup() {
       </h2>
       <div className="list">
         {members.map((m) => (
-          <div key={m.id} className="list-item">
-            <Avatar {...avatarFromRow(m)} />
-            <div className="list-item-body">
-              <div className="list-item-title">{m.id === me.id ? "You" : guestFullName(m)}</div>
-              <div className="muted">
+          <FriendListItem
+            key={m.id}
+            avatar={avatarFromRow(m)}
+            title={m.id === me.id ? "You" : guestFullName(m)}
+            subtitle={
+              <span className="muted">
                 {m.role}
                 {m.is_ghost === 1 && " · guest"}
-              </div>
-            </div>
-          </div>
+              </span>
+            }
+          />
         ))}
       </div>
     </>

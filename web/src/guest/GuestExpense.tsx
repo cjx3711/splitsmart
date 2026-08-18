@@ -20,6 +20,8 @@ import { ExpenseDialog } from "../ExpenseDialog.tsx";
 import { expenseCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
+import { avatarFromRow } from "../Avatar.tsx";
+import { FriendListItem } from "../FriendListItem.tsx";
 
 export function GuestExpense() {
   const { id } = useParams<{ id: string }>();
@@ -78,6 +80,10 @@ export function GuestExpense() {
   if (!expense || !initial) return <p className="muted">Loading…</p>;
 
   const nameOf = makeLookup(people, me.id);
+  const avatarFor = (userId: string) => {
+    const person = people.find((p) => p.id === userId);
+    return person ? avatarFromRow(person) : { id: userId, name: nameOf(userId) };
+  };
   const title = expense.is_payment === 1 ? "Settle up" : expense.description;
   const deleteSeriesNote = seriesDeleteNote(expense);
 
@@ -137,10 +143,11 @@ export function GuestExpense() {
       <h2>Who paid, who owes</h2>
       <div className="list">
         {expense.shares.map((share) => (
-          <div key={share.user_id} className="list-item">
-            <div className="list-item-body">
-              <div className="list-item-title">{nameOf(share.user_id)}</div>
-            </div>
+          <FriendListItem
+            key={share.user_id}
+            avatar={avatarFor(share.user_id)}
+            title={nameOf(share.user_id)}
+          >
             <div style={{ textAlign: "right" }}>
               {share.paid_share_minor > 0 && (
                 <div className="muted">
@@ -151,7 +158,7 @@ export function GuestExpense() {
                 owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
               </div>
             </div>
-          </div>
+          </FriendListItem>
         ))}
       </div>
 

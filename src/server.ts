@@ -96,7 +96,7 @@ app.onError((err, c) => {
 //
 //   /app, /app/*     app.html    logged-in SPA, PWA scope /app/
 //   /guest, /guest/* guest.html  guest SPA, network-only SW scope /guest/
-//   everything else  index.html  marketing, about, docs
+//   everything else  index.html  marketing, about, changelog, docs
 //
 // ORDER MATTERS. serveStatic comes first so /app/sw.js and
 // /app/manifest.webmanifest are served as themselves; if the /app/* fallback
@@ -142,7 +142,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   // Recurring expenses. Only when run as the server: importing this module in a
   // test must never start generating bills. See src/domain/scheduler.ts.
-  startRecurringScheduler().unref();
+  // Smoke disables this: seed:demo already ran the job with a pinned clock.
+  if (!env.DISABLE_RECURRING_SCHEDULER) {
+    startRecurringScheduler().unref();
+  }
 
   serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log(`SplitSmart listening on http://localhost:${info.port}`);
