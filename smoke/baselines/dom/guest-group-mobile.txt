@@ -1,0 +1,35 @@
+- banner:
+  - link "Home":
+    - /url: /guest/groups/<ULID>
+    - img "SplitSmart"
+    - text: SplitSmart
+  - text: Guest Hana
+  - link "not you?":
+    - /url: /guest/pick
+- text: You are using this as
+- strong: Hana
+- text: ", with a link. Create an account to keep it: everything you have already split stays yours."
+- link "Make it mine":
+  - /url: /app/claim?link=<LINK_SECRET>&person=<ULID>
+- button "Not now"
+- main:
+  - heading "Weekend in Tokyo" [level=1]
+  - paragraph: Trip · default JPY · 4 members
+  - button "Settle up"
+  - button "Add an expense"
+  - heading "Balances" [level=2]
+  - text: Test User gets back 1200JPY JJ gets back 6000JPY Ah Beng owes 3600JPY You owes 3600JPY
+  - heading "Expenses" [level=2]
+  - link "TeamLab tickets <DATE> · Life · JJ paid 9600JPY you borrowed 2400JPY"
+  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid 4800JPY 2 comments you borrowed 1200JPY"
+  - heading "Members" [level=2]
+  - text: Test User owner JJ member Ah Beng member You member · guest
+  - paragraph: Only someone with an account can add or remove people here.
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

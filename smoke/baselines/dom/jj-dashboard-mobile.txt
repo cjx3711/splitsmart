@@ -1,0 +1,46 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - heading "Dashboard" [level=1]
+  - link "New group":
+    - /url: /app/groups/new
+    - button "New group"
+  - link "Add a friend":
+    - /url: /app/friends/new
+    - button "Add a friend"
+  - text: Net position 6000JPY -3836.21USD You owe 3836.21USD You are owed 6000JPY
+  - paragraph: Every currency is a separate ledger. A combined figure, when shown, is an estimate.
+  - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+  - heading "You owe" [level=2]
+  - link "Test User you owe 3836.21USD -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
+    - /url: /app/friends/<ULID>
+    - text: Test User you owe 3836.21USD
+    - list:
+      - listitem: "-3696.21USD in Apartment 4B"
+      - listitem: "-140.00USD in Ski Trip 2026"
+      - listitem: 1200JPY in Weekend in Tokyo
+  - heading "You are owed" [level=2]
+  - link "Ah Beng owes you 2400JPY":
+    - /url: /app/friends/<ULID>
+  - link "Hana owes you 2400JPY":
+    - /url: /app/friends/<ULID>
+  - link "Test User owes you 1200JPY -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
+    - /url: /app/friends/<ULID>
+    - text: Test User owes you 1200JPY
+    - list:
+      - listitem: "-3696.21USD in Apartment 4B"
+      - listitem: "-140.00USD in Ski Trip 2026"
+      - listitem: 1200JPY in Weekend in Tokyo
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

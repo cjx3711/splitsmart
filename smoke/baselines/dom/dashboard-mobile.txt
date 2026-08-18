@@ -1,0 +1,57 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - heading "Dashboard" [level=1]
+  - link "New group":
+    - /url: /app/groups/new
+    - button "New group"
+  - link "Add a friend":
+    - /url: /app/friends/new
+    - button "Add a friend"
+  - text: Net position 1200JPY 3909.36USD You owe 1200JPY 136.10USD You are owed 2400JPY 4045.46USD
+  - paragraph: Every currency is a separate ledger. A combined figure, when shown, is an estimate.
+  - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+  - heading "You owe" [level=2]
+  - link "Jas you owe 65.00USD":
+    - /url: /app/friends/<ULID>
+  - link "JJ you owe 1200JPY 3696.21USD in Apartment 4B 140.00USD in Ski Trip 2026 -1200JPY in Weekend in Tokyo":
+    - /url: /app/friends/<ULID>
+    - text: JJ you owe 1200JPY
+    - list:
+      - listitem: 3696.21USD in Apartment 4B
+      - listitem: 140.00USD in Ski Trip 2026
+      - listitem: "-1200JPY in Weekend in Tokyo"
+  - link "Mel you owe 71.10USD":
+    - /url: /app/friends/<ULID>
+  - heading "You are owed" [level=2]
+  - link "Ah Beng owes you 1200JPY 149.25USD 140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo 9.25USD in one-on-one expenses":
+    - /url: /app/friends/<ULID>
+    - text: Ah Beng owes you 1200JPY 149.25USD
+    - list:
+      - listitem: 140.00USD in Ski Trip 2026
+      - listitem: 1200JPY in Weekend in Tokyo
+      - listitem: 9.25USD in one-on-one expenses
+  - link "Hana owes you 1200JPY":
+    - /url: /app/friends/<ULID>
+  - link "JJ owes you 3836.21USD 3696.21USD in Apartment 4B 140.00USD in Ski Trip 2026 -1200JPY in Weekend in Tokyo":
+    - /url: /app/friends/<ULID>
+    - text: JJ owes you 3836.21USD
+    - list:
+      - listitem: 3696.21USD in Apartment 4B
+      - listitem: 140.00USD in Ski Trip 2026
+      - listitem: "-1200JPY in Weekend in Tokyo"
+  - link "John owes you 60.00USD":
+    - /url: /app/friends/<ULID>
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

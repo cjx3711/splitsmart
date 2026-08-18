@@ -1,0 +1,50 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - navigation "Breadcrumb":
+    - link "Back to Apartment 4B":
+      - /url: /app/groups/<ULID>
+      - text: ←
+    - list:
+      - listitem:
+        - link "Groups":
+          - /url: /app/groups
+      - listitem:
+        - text: /
+        - link "Apartment 4B":
+          - /url: /app/groups/<ULID>
+      - listitem: /Rent
+  - heading "Rent" [level=1]
+  - paragraph: <DATE> · Rent
+  - button "Delete"
+  - button "Edit"
+  - text: Amount
+  - paragraph: 1800.00USD
+  - text: Repeats
+  - paragraph: Monthly · 3 bills so far
+  - paragraph: The bill for <DATE> will be created soon.
+  - paragraph:
+    - link "View all bills in this series":
+      - /url: /app/expenses/<ULID>/series
+  - paragraph:
+    - button "Stop repeating"
+  - heading "Who paid, who owes" [level=2]
+  - text: You paid 1800.00USD owes 900.00USD JJ owes 900.00USD
+  - heading "Comments" [level=2]
+  - paragraph: Nothing said about this one yet.
+  - text: Add a comment
+  - textbox "Add a comment"
+  - button "Post" [disabled]
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

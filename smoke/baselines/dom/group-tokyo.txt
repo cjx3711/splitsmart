@@ -1,0 +1,192 @@
+- banner:
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+- navigation "Main":
+  - text: Test User
+  - link "Settings":
+    - /url: /app/settings
+  - link "Dashboard":
+    - /url: /app
+  - link "Recent activity":
+    - /url: /app/activity
+  - link "All expenses":
+    - /url: /app/expenses
+  - textbox "Filter groups and friends by name":
+    - /placeholder: Filter by name
+  - link "Groups":
+    - /url: /app/groups
+  - link "+ add":
+    - /url: /app/groups/new
+  - link "Weekend in Tokyo":
+    - /url: /app/groups/<ULID>
+  - link "Ski Trip 2026":
+    - /url: /app/groups/<ULID>
+  - link "Hackathon Squad":
+    - /url: /app/groups/<ULID>
+  - link "Jess & Marco's Wedding":
+    - /url: /app/groups/<ULID>
+  - link "Yosemite Camping":
+    - /url: /app/groups/<ULID>
+  - link "Show more (5)":
+    - /url: /app/groups
+  - link "Friends":
+    - /url: /app/friends
+  - link "+ add":
+    - /url: /app/friends/new
+  - link "James":
+    - /url: /app/friends/<ULID>
+  - link "Jen":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Yuki":
+    - /url: /app/friends/<ULID>
+  - link "Priya":
+    - /url: /app/friends/<ULID>
+  - link "Gerry":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Aisyah":
+    - /url: /app/friends/<ULID>
+  - link "Mel":
+    - /url: /app/friends/<ULID>
+  - link "Show more (5)":
+    - /url: /app/friends
+- main:
+  - navigation "Breadcrumb":
+    - link "Back to Groups":
+      - /url: /app/groups
+      - text: ←
+    - list:
+      - listitem:
+        - link "Groups":
+          - /url: /app/groups
+      - listitem: /Weekend in Tokyo
+  - heading "Weekend in Tokyo" [level=1]
+  - paragraph: Trip · default JPY · 4 members
+  - button "Settle up"
+  - button "Add Expense"
+  - heading "Balances" [level=2]
+  - text: You gets back 1200JPY JJ gets back 6000JPY Ah Beng owes 3600JPY Hana owes 3600JPY
+  - heading "Suggested settle-up" [level=2]
+  - paragraph:
+    - text: The fewest transfers that clear this group, one set per currency. Nothing is recorded until someone actually pays. Use
+    - strong: Settle up
+    - text: above, which starts prefilled with the first of these.
+  - text: JPY
+  - list:
+    - listitem: Ah Beng → JJ 3600JPY
+    - listitem: Hana → JJ 2400JPY
+    - listitem: Hana → You 1200JPY
+  - heading "Expenses" [level=2]
+  - searchbox "Search descriptions"
+  - combobox "Category":
+    - option "Any category" [selected]
+    - option "Rent"
+    - option "Mortgage"
+    - option "Electricity"
+    - option "Heat/gas"
+    - option "Water"
+    - option "TV/Phone/Internet"
+    - option "Parking"
+    - option "Insurance"
+    - option "Other"
+    - option "Groceries"
+    - option "Dining out"
+    - option "Household supplies"
+    - option "Car"
+    - option "Furniture"
+    - option "Maintenance"
+    - option "General"
+    - option "Games"
+    - option "Movies"
+    - option "Music"
+    - option "Other"
+    - option "Sports"
+    - option "Other"
+    - option "Other"
+    - option "Pets"
+    - option "Services"
+    - option "Bus/train"
+    - option "Gas/fuel"
+    - option "Other"
+    - option "Plane"
+    - option "Taxi"
+    - option "Trash"
+    - option "Liquor"
+    - option "Electronics"
+    - option "Clothing"
+    - option "Gifts"
+    - option "Medical expenses"
+    - option "Other"
+    - option "Taxes"
+    - option "Bicycle"
+    - option "Hotel"
+    - option "Cleaning"
+    - option "Education"
+    - option "Childcare"
+  - textbox "From"
+  - textbox "To"
+  - combobox "Kind":
+    - option "Expenses and payments" [selected]
+    - option "Expenses only"
+    - option "Settle-ups only"
+  - button "Download CSV"
+  - link "TeamLab tickets <DATE> · Life · JJ paid 9600JPY you borrowed 2400JPY":
+    - text: TeamLab tickets <DATE> · Life ·
+    - link "JJ":
+      - /url: /app/friends/<ULID>
+    - text: paid 9600JPY you borrowed 2400JPY
+  - link "Ramen at Ichiran <DATE> · Dining out · You paid 4800JPY 2 comments you lent 3600JPY"
+  - heading "Members" [level=2]
+  - text: You owner · has an account JJ member · has an account
+  - button "Remove"
+  - text: Ah Beng member · has an account
+  - button "Remove"
+  - text: Hana member · guest
+  - button "Edit"
+  - button "Remove"
+  - text: Add someone From your friends
+  - button "+ Gerry"
+  - button "+ James"
+  - button "+ Jas"
+  - button "+ Jen"
+  - button "+ John"
+  - button "+ Mel"
+  - button "+ Danial"
+  - button "+ Aisyah"
+  - button "+ Priya"
+  - button "+ Yuki"
+  - button "+ Ah Lian"
+  - button "+ Taro"
+  - text: Or a new name
+  - textbox "Or a new name":
+    - /placeholder: Jordan
+  - paragraph: Creates a placeholder person. Send them a guest link below and they can use the group without an account.
+  - button "Add to group" [disabled]
+  - heading "Guest links" [level=2]
+  - paragraph: Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime — if a link is compromised, revoke it and create a new one.
+  - strong: Anyone with the link
+  - text: Expires <DATE> · Never opened
+  - paragraph: They pick which name they are, and can change it later.
+  - code: http://localhost:5644/guest/l/<LINK_SECRET>
+  - button "Copy link"
+  - button "Replace with a new link"
+  - button "Turn off"
+  - strong: Hana only
+  - text: No link
+  - paragraph: Opens straight as them, with no picker.
+  - button "Create a link"
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

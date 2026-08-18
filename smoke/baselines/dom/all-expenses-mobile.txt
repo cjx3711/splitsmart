@@ -1,0 +1,198 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - heading "All expenses" [level=1]
+  - searchbox "Search descriptions"
+  - combobox "Group":
+    - option "Any group" [selected]
+    - option "No group"
+    - option "Apartment 4B"
+    - option "Book Club"
+    - option "Game Night Crew"
+    - option "Hackathon Squad"
+    - option "Jess & Marco's Wedding"
+    - option "Office Lunch Club"
+    - option "Ski Trip 2026"
+    - option "Summer BBQ"
+    - option "Weekend in Tokyo"
+    - option "Yosemite Camping"
+  - combobox "With":
+    - option "Anyone" [selected]
+    - option "Ah Beng"
+    - option "Ah Lian"
+    - option "Aisyah"
+    - option "Danial"
+    - option "Gerry"
+    - option "Hana"
+    - option "James"
+    - option "Jas"
+    - option "Jen"
+    - option "JJ"
+    - option "John"
+    - option "Mel"
+    - option "Priya"
+    - option "Taro"
+    - option "Yuki"
+  - combobox "Category":
+    - option "Any category" [selected]
+    - option "Rent"
+    - option "Mortgage"
+    - option "Electricity"
+    - option "Heat/gas"
+    - option "Water"
+    - option "TV/Phone/Internet"
+    - option "Parking"
+    - option "Insurance"
+    - option "Other"
+    - option "Groceries"
+    - option "Dining out"
+    - option "Household supplies"
+    - option "Car"
+    - option "Furniture"
+    - option "Maintenance"
+    - option "General"
+    - option "Games"
+    - option "Movies"
+    - option "Music"
+    - option "Other"
+    - option "Sports"
+    - option "Other"
+    - option "Other"
+    - option "Pets"
+    - option "Services"
+    - option "Bus/train"
+    - option "Gas/fuel"
+    - option "Other"
+    - option "Plane"
+    - option "Taxi"
+    - option "Trash"
+    - option "Liquor"
+    - option "Electronics"
+    - option "Clothing"
+    - option "Gifts"
+    - option "Medical expenses"
+    - option "Other"
+    - option "Taxes"
+    - option "Bicycle"
+    - option "Hotel"
+    - option "Cleaning"
+    - option "Education"
+    - option "Childcare"
+  - textbox "From"
+  - textbox "To"
+  - combobox "Kind":
+    - option "Expenses and payments" [selected]
+    - option "Expenses only"
+    - option "Settle-ups only"
+  - button "Download CSV"
+  - link "Settle up <DATE> · Apartment 4B · You paid 50.00USD you lent 50.00USD":
+    - text: Settle up <DATE> ·
+    - link "Apartment 4B":
+      - /url: /app/groups/<ULID>
+    - text: · You paid 50.00USD you lent 50.00USD
+  - link "Coffee catch-up <DATE> · One-on-one · Dining out · You paid 18.50USD you lent 9.25USD"
+  - link "TeamLab tickets <DATE> · Weekend in Tokyo · Life · JJ paid 9600JPY you borrowed 2400JPY":
+    - text: TeamLab tickets <DATE> ·
+    - link "Weekend in Tokyo":
+      - /url: /app/groups/<ULID>
+    - text: · Life ·
+    - link "JJ":
+      - /url: /app/friends/<ULID>
+    - text: paid 9600JPY you borrowed 2400JPY
+  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid 4800JPY 2 comments you lent 3600JPY":
+    - text: Ramen at Ichiran <DATE> ·
+    - link "Weekend in Tokyo":
+      - /url: /app/groups/<ULID>
+    - text: · Dining out · You paid 4800JPY 2 comments you lent 3600JPY
+  - link "Trader Joe's run <DATE> · Apartment 4B · Groceries · You paid 92.43USD 2 comments you lent 46.21USD":
+    - text: Trader Joe's run <DATE> ·
+    - link "Apartment 4B":
+      - /url: /app/groups/<ULID>
+    - text: · Groceries · You paid 92.43USD 2 comments you lent 46.21USD
+  - link "Concert tickets <DATE> · One-on-one · Life · You paid 120.00USD you lent 60.00USD"
+  - link "Team sushi lunch <DATE> · Office Lunch Club · Dining out · Mel paid 156.40USD 1 comment you borrowed 39.10USD":
+    - text: Team sushi lunch <DATE> ·
+    - link "Office Lunch Club":
+      - /url: /app/groups/<ULID>
+    - text: · Dining out ·
+    - link "Mel":
+      - /url: /app/friends/<ULID>
+    - text: paid 156.40USD 1 comment you borrowed 39.10USD
+  - link "Hotel block deposit <DATE> · Jess & Marco's Wedding · Hotel · Jas paid 325.00USD you borrowed 65.00USD":
+    - text: Hotel block deposit <DATE> ·
+    - link "Jess & Marco's Wedding":
+      - /url: /app/groups/<ULID>
+    - text: · Hotel ·
+    - link "Jas":
+      - /url: /app/friends/<ULID>
+    - text: paid 325.00USD you borrowed 65.00USD
+  - link "Friday coffee round <DATE> · Office Lunch Club · Dining out · Mel paid series 24.00USD you borrowed 8.00USD":
+    - text: Friday coffee round <DATE> ·
+    - link "Office Lunch Club":
+      - /url: /app/groups/<ULID>
+    - text: · Dining out ·
+    - link "Mel":
+      - /url: /app/friends/<ULID>
+    - text: paid series 24.00USD you borrowed 8.00USD
+  - link "Rent <DATE> · Apartment 4B · Rent · You paid series 1800.00USD you lent 900.00USD":
+    - text: Rent <DATE> ·
+    - link "Apartment 4B":
+      - /url: /app/groups/<ULID>
+    - text: · Rent · You paid series 1800.00USD you lent 900.00USD
+  - link "Friday coffee round <DATE> · Office Lunch Club · Dining out · Mel paid series 24.00USD you borrowed 8.00USD":
+    - text: Friday coffee round <DATE> ·
+    - link "Office Lunch Club":
+      - /url: /app/groups/<ULID>
+    - text: · Dining out ·
+    - link "Mel":
+      - /url: /app/friends/<ULID>
+    - text: paid series 24.00USD you borrowed 8.00USD
+  - link "Friday coffee round <DATE> · Office Lunch Club · Dining out · Mel paid series 24.00USD you borrowed 8.00USD":
+    - text: Friday coffee round <DATE> ·
+    - link "Office Lunch Club":
+      - /url: /app/groups/<ULID>
+    - text: · Dining out ·
+    - link "Mel":
+      - /url: /app/friends/<ULID>
+    - text: paid series 24.00USD you borrowed 8.00USD
+  - link "Friday coffee round <DATE> · Office Lunch Club · Dining out · Mel paid repeats 24.00USD you borrowed 8.00USD":
+    - text: Friday coffee round <DATE> ·
+    - link "Office Lunch Club":
+      - /url: /app/groups/<ULID>
+    - text: · Dining out ·
+    - link "Mel":
+      - /url: /app/friends/<ULID>
+    - text: paid repeats 24.00USD you borrowed 8.00USD
+  - link "Rent <DATE> · Apartment 4B · Rent · You paid series 1800.00USD you lent 900.00USD":
+    - text: Rent <DATE> ·
+    - link "Apartment 4B":
+      - /url: /app/groups/<ULID>
+    - text: · Rent · You paid series 1800.00USD you lent 900.00USD
+  - link "Rent <DATE> · Apartment 4B · Rent · You paid series 1800.00USD you lent 900.00USD":
+    - text: Rent <DATE> ·
+    - link "Apartment 4B":
+      - /url: /app/groups/<ULID>
+    - text: · Rent · You paid series 1800.00USD you lent 900.00USD
+  - link "Rent <DATE> · Apartment 4B · Rent · You paid repeats 1800.00USD you lent 900.00USD":
+    - text: Rent <DATE> ·
+    - link "Apartment 4B":
+      - /url: /app/groups/<ULID>
+    - text: · Rent · You paid repeats 1800.00USD you lent 900.00USD
+  - link "Lift tickets <DATE> · Ski Trip 2026 · Life · You paid 420.00USD you lent 280.00USD":
+    - text: Lift tickets <DATE> ·
+    - link "Ski Trip 2026":
+      - /url: /app/groups/<ULID>
+    - text: · Life · You paid 420.00USD you lent 280.00USD
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

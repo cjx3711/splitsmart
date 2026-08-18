@@ -1,0 +1,160 @@
+- banner:
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+- navigation "Main":
+  - text: JJ
+  - link "Settings":
+    - /url: /app/settings
+  - link "Dashboard":
+    - /url: /app
+  - link "Recent activity":
+    - /url: /app/activity
+  - link "All expenses":
+    - /url: /app/expenses
+  - textbox "Filter groups and friends by name":
+    - /placeholder: Filter by name
+  - link "Groups":
+    - /url: /app/groups
+  - link "+ add":
+    - /url: /app/groups/new
+  - link "Weekend in Tokyo":
+    - /url: /app/groups/<ULID>
+  - link "Ski Trip 2026":
+    - /url: /app/groups/<ULID>
+  - link "Apartment 4B":
+    - /url: /app/groups/<ULID>
+  - link "Friends":
+    - /url: /app/friends
+  - link "+ add":
+    - /url: /app/friends/new
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - link "Test User":
+    - /url: /app/friends/<ULID>
+- main:
+  - navigation "Breadcrumb":
+    - link "Back to Groups":
+      - /url: /app/groups
+      - text: ←
+    - list:
+      - listitem:
+        - link "Groups":
+          - /url: /app/groups
+      - listitem: /Apartment 4B
+  - heading "Apartment 4B" [level=1]
+  - paragraph: Home · default USD · 2 members
+  - button "Settle up"
+  - button "Add Expense"
+  - heading "Balances" [level=2]
+  - text: Test User gets back 3696.21USD You owes 3696.21USD
+  - heading "Suggested settle-up" [level=2]
+  - paragraph:
+    - text: The fewest transfers that clear this group, one set per currency. Nothing is recorded until someone actually pays. Use
+    - strong: Settle up
+    - text: above, which starts prefilled with the first of these.
+  - text: USD
+  - list:
+    - listitem: You → Test User 3696.21USD
+  - heading "Expenses" [level=2]
+  - searchbox "Search descriptions"
+  - combobox "Category":
+    - option "Any category" [selected]
+    - option "Rent"
+    - option "Mortgage"
+    - option "Electricity"
+    - option "Heat/gas"
+    - option "Water"
+    - option "TV/Phone/Internet"
+    - option "Parking"
+    - option "Insurance"
+    - option "Other"
+    - option "Groceries"
+    - option "Dining out"
+    - option "Household supplies"
+    - option "Car"
+    - option "Furniture"
+    - option "Maintenance"
+    - option "General"
+    - option "Games"
+    - option "Movies"
+    - option "Music"
+    - option "Other"
+    - option "Sports"
+    - option "Other"
+    - option "Other"
+    - option "Pets"
+    - option "Services"
+    - option "Bus/train"
+    - option "Gas/fuel"
+    - option "Other"
+    - option "Plane"
+    - option "Taxi"
+    - option "Trash"
+    - option "Liquor"
+    - option "Electronics"
+    - option "Clothing"
+    - option "Gifts"
+    - option "Medical expenses"
+    - option "Other"
+    - option "Taxes"
+    - option "Bicycle"
+    - option "Hotel"
+    - option "Cleaning"
+    - option "Education"
+    - option "Childcare"
+  - textbox "From"
+  - textbox "To"
+  - combobox "Kind":
+    - option "Expenses and payments" [selected]
+    - option "Expenses only"
+    - option "Settle-ups only"
+  - button "Download CSV"
+  - link "Settle up <DATE> · Test User paid 50.00USD you borrowed 50.00USD":
+    - text: Settle up <DATE> ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid 50.00USD you borrowed 50.00USD
+  - link "Trader Joe's run <DATE> · Groceries · Test User paid 92.43USD 2 comments you borrowed 46.21USD":
+    - text: Trader Joe's run <DATE> · Groceries ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid 92.43USD 2 comments you borrowed 46.21USD
+  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: Rent <DATE> · Rent ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid series 1800.00USD you borrowed 900.00USD
+  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: Rent <DATE> · Rent ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid series 1800.00USD you borrowed 900.00USD
+  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: Rent <DATE> · Rent ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid series 1800.00USD you borrowed 900.00USD
+  - link "Rent <DATE> · Rent · Test User paid repeats 1800.00USD you borrowed 900.00USD":
+    - text: Rent <DATE> · Rent ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid repeats 1800.00USD you borrowed 900.00USD
+  - heading "Members" [level=2]
+  - text: Test User owner · has an account You member · has an account
+  - heading "Guest links" [level=2]
+  - paragraph: Only the group owner can create or turn off guest links.
+  - strong: Anyone with the link
+  - text: No link
+  - paragraph: They pick which name they are, and can change it later.
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { HomeGallery } from "../HomeGallery.tsx";
+import { Avatar } from "../Avatar.tsx";
 
 /**
  * Things Splitwise markets that this app does not do. Sourced from their
@@ -117,35 +119,7 @@ export function Home() {
         </div>
 
         <div className="mkt-hero-visual" aria-hidden="true">
-          <div className="mkt-receipt">
-            <div className="mkt-receipt-head">
-              <span>Ramen, Fukuoka</span>
-              <span className="mkt-pill">Saved on this device</span>
-            </div>
-            <p className="mkt-receipt-meta">Itemised · 3 people · JPY</p>
-            <ul className="mkt-receipt-lines">
-              <li>
-                <span>Tonkotsu ×2</span>
-                <span className="amount">¥1,900</span>
-              </li>
-              <li>
-                <span>Gyoza</span>
-                <span className="amount">¥680</span>
-              </li>
-              <li>
-                <span>Tax</span>
-                <span className="amount">¥258</span>
-              </li>
-            </ul>
-            <div className="mkt-receipt-total">
-              <span>X paid</span>
-              <span className="amount">¥2,838</span>
-            </div>
-            <div className="mkt-receipt-owe">
-              <span>You owe X</span>
-              <span className="amount negative">¥946</span>
-            </div>
-          </div>
+          <OweageChart />
         </div>
       </section>
 
@@ -201,6 +175,8 @@ export function Home() {
           </article>
         </div>
       </section>
+
+      <HomeGallery />
 
       <section className="mkt-list-wrap">
         <div className="mkt-list-intro">
@@ -269,6 +245,97 @@ export function Home() {
           to send you a group link.
         </p>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Decorative dashboard excerpt. Names match scripts/seed-demo.ts so a later
+ * screenshot of the real dashboard still rhymes with this widget.
+ */
+function OweageChart() {
+  return (
+    <div className="mkt-owe">
+      <section>
+        <h2>You owe</h2>
+        <div className="list">
+          <OweRow
+            id="mkt-ahbeng"
+            name="Tan Ah Beng"
+            direction="negative"
+            amounts={["71.10 USD"]}
+          />
+          <OweRow
+            id="mkt-jas"
+            name="Jasmine Lim Jia Hui"
+            direction="negative"
+            amounts={["65.00 USD"]}
+          />
+        </div>
+      </section>
+      <section>
+        <h2>You are owed</h2>
+        <div className="list">
+          <OweRow
+            id="mkt-jj"
+            name="Lee Jin Jie"
+            direction="positive"
+            amounts={["1200 JPY", "140.00 USD"]}
+            breakdown={[
+              { amount: "140.00 USD", where: "Ski Trip 2026" },
+              { amount: "1200 JPY", where: "Weekend in Tokyo" },
+            ]}
+          />
+          <OweRow
+            id="mkt-taro"
+            name="Tanaka Taro"
+            direction="positive"
+            amounts={["39.10 USD"]}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function OweRow({
+  id,
+  name,
+  direction,
+  amounts,
+  breakdown,
+}: {
+  id: string;
+  name: string;
+  direction: "positive" | "negative";
+  amounts: string[];
+  breakdown?: { amount: string; where: string }[];
+}) {
+  return (
+    <div className="list-item">
+      <Avatar id={id} name={name} />
+      <div className="list-item-body">
+        <div className="list-item-title">{name}</div>
+        <div className={direction}>
+          {direction === "positive" ? "owes you " : "you owe "}
+          <span className="amounts">
+            {amounts.map((value) => (
+              <span key={value} className="amount">
+                {value}
+              </span>
+            ))}
+          </span>
+        </div>
+        {breakdown && breakdown.length > 1 ? (
+          <ul className="breakdown">
+            {breakdown.map((entry) => (
+              <li key={entry.where}>
+                <span className="amount">{entry.amount}</span> in {entry.where}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </div>
   );
 }

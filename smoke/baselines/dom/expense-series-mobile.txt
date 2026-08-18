@@ -1,0 +1,43 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - navigation "Breadcrumb":
+    - link "Back to Rent":
+      - /url: /app/expenses/<ULID>
+      - text: ←
+    - list:
+      - listitem:
+        - link "Groups":
+          - /url: /app/groups
+      - listitem:
+        - text: /
+        - link "Apartment 4B":
+          - /url: /app/groups/<ULID>
+      - listitem:
+        - text: /
+        - link "Rent":
+          - /url: /app/expenses/<ULID>
+      - listitem: /Series
+  - heading "Rent" [level=1]
+  - paragraph: Monthly series
+  - button "Stop repeating"
+  - paragraph: Each bill is its own expense. Deleting a later one does not stop the series. Deleting the first bill (the one marked repeats) stops new bills; the ones already made stay.
+  - heading "Bills" [level=2]
+  - link "Rent <DATE> · Rent · You paid repeats 1800.00USD you lent 900.00USD"
+  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
+  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
+  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
+  - text: Coming <DATE> · will be created soon
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

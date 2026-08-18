@@ -1,0 +1,100 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - heading "Settings" [level=1]
+  - text: Signed in as
+  - strong: Test User
+  - text: test@example.com
+  - heading "Name and icon" [level=2]
+  - paragraph: One name, not first and last. A nickname is what other people see in lists. The icon can be letters, an emoji, and a colour.
+  - text: Test User Name
+  - textbox "Name": Test User
+  - text: Nickname
+  - textbox "Nickname":
+    - /placeholder: Optional. Shown in lists instead of the full name.
+  - text: Icon letters
+  - textbox "Icon letters":
+    - /placeholder: TU
+  - paragraph: Up to two characters. Leave blank to derive them from the name.
+  - group "Icon emoji":
+    - text: Icon emoji
+    - button "No emoji" [pressed]: TU
+    - button "Use 😀": 😀
+    - button "Use 😎": 😎
+    - button "Use 🤓": 🤓
+    - button "Use 🥳": 🥳
+    - button "Use 👻": 👻
+    - button "Use 🤖": 🤖
+    - button "Use 🐱": 🐱
+    - button "Use 🐶": 🐶
+    - button "Use 🦊": 🦊
+    - button "Use 🐼": 🐼
+    - button "Use 🐸": 🐸
+    - button "Use 🐙": 🐙
+    - button "Use 🌸": 🌸
+    - button "Use 🍀": 🍀
+    - button "Use ⭐": ⭐
+    - button "Use 🔥": 🔥
+    - button "Use 🌈": 🌈
+    - button "Use 🌊": 🌊
+    - button "Use 🍕": 🍕
+    - button "Use 🍣": 🍣
+    - button "Use ☕": ☕
+    - button "Use 🍺": 🍺
+    - button "Use ✈️": ✈️
+    - button "Use 🏠": 🏠
+    - button "Use 🎵": 🎵
+    - button "Use ⚽": ⚽
+    - button "Use 🎮": 🎮
+    - button "Use 📚": 📚
+    - button "Use 💚": 💚
+    - button "Use 💙": 💙
+    - text: Or paste any emoji
+    - textbox "Or paste any emoji"
+  - group "Icon colour":
+    - text: Icon colour
+    - button "Auto" [pressed]
+    - button "Hue 12"
+    - button "Hue 32"
+    - button "Hue 48"
+    - button "Hue 72"
+    - button "Hue 145"
+    - button "Hue 168"
+    - button "Hue 188"
+    - button "Hue 205"
+    - button "Hue 230"
+    - button "Hue 262"
+    - button "Hue 292"
+    - button "Hue 328"
+  - button "Save name and icon"
+  - heading "Preferred currency" [level=2]
+  - paragraph: "Used as the default when you add an expense, and as the target for on-screen conversions (settle-up equivalents and estimated totals). Nothing in the ledger changes: balances stay in the currency they were recorded in."
+  - text: Currency
+  - button "Currency": USD · $
+  - heading "Import from Splitwise" [level=2]
+  - paragraph: Bring your groups, friends and expense history across. You supply your own Splitwise API key; it is used for that import only and never stored. People are matched to existing accounts by email address, and you see exactly who matched before anything is written.
+  - link "Start an import":
+    - /url: /app/import
+  - heading "API tokens" [level=2]
+  - paragraph:
+    - text: Use a token as the bearer credential for the Splitwise-compatible API at
+    - code: /api/sw/v3.0
+    - text: .
+  - text: New token name
+  - textbox "New token name": splitwise-to-toshl
+  - button "Create token"
+  - heading "Session" [level=2]
+  - button "Log out"
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

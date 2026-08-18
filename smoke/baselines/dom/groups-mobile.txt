@@ -1,0 +1,38 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - heading "Groups" [level=1]
+  - button "+ Add group"
+  - link "Apartment 4B Home · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Book Club Other · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Game Night Crew Sports · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Hackathon Squad Project · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Jess & Marco's Wedding Event · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Office Lunch Club Work · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Ski Trip 2026 Trip · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Summer BBQ Outing · default USD ›":
+    - /url: /app/groups/<ULID>
+  - link "Weekend in Tokyo Trip · default JPY ›":
+    - /url: /app/groups/<ULID>
+  - link "Yosemite Camping Trip · default USD ›":
+    - /url: /app/groups/<ULID>
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

@@ -1,0 +1,24 @@
+- banner:
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+- main:
+  - img "SplitSmart"
+  - text: SplitSmart
+  - heading "Log in" [level=1]
+  - text: Email
+  - textbox "Email"
+  - text: Password
+  - textbox "Password"
+  - button "Log in"
+  - button "Create an account"
+  - paragraph: Sent a guest link? Open that link instead; it needs no account.
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

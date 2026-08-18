@@ -1,0 +1,96 @@
+- banner:
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- navigation "Main":
+  - text: Test User
+  - link "Settings":
+    - /url: /app/settings
+  - link "Dashboard":
+    - /url: /app
+  - link "Recent activity":
+    - /url: /app/activity
+  - link "All expenses":
+    - /url: /app/expenses
+  - textbox "Filter groups and friends by name":
+    - /placeholder: Filter by name
+  - link "Groups":
+    - /url: /app/groups
+  - link "+ add":
+    - /url: /app/groups/new
+  - link "Weekend in Tokyo":
+    - /url: /app/groups/<ULID>
+  - link "Ski Trip 2026":
+    - /url: /app/groups/<ULID>
+  - link "Hackathon Squad":
+    - /url: /app/groups/<ULID>
+  - link "Jess & Marco's Wedding":
+    - /url: /app/groups/<ULID>
+  - link "Yosemite Camping":
+    - /url: /app/groups/<ULID>
+  - link "Show more (5)":
+    - /url: /app/groups
+  - link "Friends":
+    - /url: /app/friends
+  - link "+ add":
+    - /url: /app/friends/new
+  - link "James":
+    - /url: /app/friends/<ULID>
+  - link "Jen":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Yuki":
+    - /url: /app/friends/<ULID>
+  - link "Priya":
+    - /url: /app/friends/<ULID>
+  - link "Gerry":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Aisyah":
+    - /url: /app/friends/<ULID>
+  - link "Mel":
+    - /url: /app/friends/<ULID>
+  - link "Show more (5)":
+    - /url: /app/friends
+- main:
+  - navigation "Breadcrumb":
+    - link "Back to Apartment 4B":
+      - /url: /app/groups/<ULID>
+      - text: ←
+    - list:
+      - listitem:
+        - link "Groups":
+          - /url: /app/groups
+      - listitem:
+        - text: /
+        - link "Apartment 4B":
+          - /url: /app/groups/<ULID>
+      - listitem: /Trader Joe's run
+  - heading "Trader Joe's run" [level=1]
+  - paragraph: <DATE> · Groceries
+  - button "Delete"
+  - button "Edit"
+  - text: Amount
+  - paragraph: 92.43USD
+  - paragraph: Includes the laundry detergent
+  - heading "Who paid, who owes" [level=2]
+  - text: You paid 92.43USD owes 46.22USD JJ owes 46.21USD
+  - heading "Comments" [level=2]
+  - strong: JJ
+  - text: "Did this include the laundry stuff? Test User updated this expense: - Amount: 87.43 USD → 92.43 USD - Notes added: \"Includes the laundry detergent\" - JJ's share: 43.71 USD → 46.21 USD - Test User's share: 43.72 USD → 46.22 USD Add a comment"
+  - textbox "Add a comment"
+  - button "Post" [disabled]
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart
