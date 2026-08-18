@@ -25,7 +25,7 @@ import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expen
 import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
-import { MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
+import { MAX_NAME_LENGTH, MAX_NICKNAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { repeatPausedOf } from "../../domain/metadata.ts";
 
 export const groupRoutes = new Hono<AppEnv>();
@@ -302,6 +302,12 @@ groupRoutes.post(
       z.object({ userId: ulidSchema }),
       z.object({
         name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
+        nickname: z
+          .string()
+          .trim()
+          .max(MAX_NICKNAME_LENGTH)
+          .optional()
+          .transform((value) => value || undefined),
       }),
     ]),
   ),
@@ -325,6 +331,7 @@ groupRoutes.post(
               .values({
                 id: ulid(),
                 name: input.name,
+                nickname: input.nickname ?? null,
                 default_currency: (
                   await trx
                     .selectFrom("groups")

@@ -279,7 +279,7 @@ export interface ImportPerson {
   localUserId: string | null;
   name: string;
   email: string | null;
-  matchedBy: "splitwise_id" | "email" | "self" | "created";
+  matchedBy: "splitwise_id" | "email" | "invite_email" | "self" | "created";
 }
 
 export interface ImportFootprint {
@@ -529,7 +529,7 @@ export const api = {
 
   addGroupMember: (
     groupId: string,
-    input: { userId: string } | { name: string },
+    input: { userId: string } | { name: string; nickname?: string },
   ) =>
     request<{ member: GroupMember }>(`/groups/${groupId}/members`, {
       method: "POST",

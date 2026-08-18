@@ -29,7 +29,9 @@ const { seed } = await import("../../db/seed.ts");
 const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
-const { createExpense, deleteExpense, updateExpense, restoreExpense } = await import("../../domain/expenses.ts");
+const { createExpense, deleteExpense, updateExpense, restoreExpense } = await import(
+  "../../domain/expenses.ts"
+);
 const { createComment } = await import("../../domain/comments.ts");
 const { mergeUsers } = await import("../../domain/merge.ts");
 const { runDueRecurrences } = await import("../../domain/scheduler.ts");
@@ -800,7 +802,7 @@ describe("push", () => {
       description: "Rent",
       costMinor: 100000,
       currencyCode: "USD",
-      date: "2026-01-01",
+      date: "2027-01-01",
       splitType: "equal",
       participants: [
         { userId: aliceId, paidMinor: 100000 },
@@ -827,7 +829,7 @@ describe("push", () => {
               description: "Rent, typo fixed",
               costMinor: 100000,
               currencyCode: "USD",
-              date: "2026-01-01",
+              date: "2027-01-01",
               splitType: "equal",
               groupId,
               participants: [
@@ -1318,17 +1320,15 @@ describe("leaving and forgetting", () => {
       "new group bills do not follow a departed member",
     );
 
-    await updateExpense(onIt, {
-      ...(expenseBody([aliceId, leaver], { description: "Dinner, corrected" }) as any),
-      groupId: temp,
-      updatedBy: aliceId,
-    });
-    const afterEdit = await as(token, `/sync/pull?since=${later.body.seq}`);
+    // An edit of the split would refuse the departed member as a participant, so
+    // a comment is the write that still has to reach them: they are on the bill.
+    await createComment({ expenseId: onIt, userId: aliceId, content: "Still counts" });
+    const afterNote = await as(token, `/sync/pull?since=${later.body.seq}`);
     assert.ok(
-      afterEdit.body.changes.some(
-        (ch: any) => ch.entity === "expense" && ch.data?.id === onIt && ch.data?.description === "Dinner, corrected",
+      afterNote.body.changes.some(
+        (ch: any) => ch.entity === "comment" && ch.data?.content === "Still counts",
       ),
-      "edits of a bill they are on still arrive",
+      "writes on a bill they are on still arrive",
     );
   });
 

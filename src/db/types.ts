@@ -29,6 +29,8 @@ export interface UsersTable {
   /** JSON object. See src/domain/metadata.ts. */
   metadata: Generated<string>;
   email: string | null;
+  /** Invite-only address on ghosts. Never a login; see migrations/001. */
+  invite_email: string | null;
   password_hash: string | null;
   email_verified_at: string | null;
   name: string;

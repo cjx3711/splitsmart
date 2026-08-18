@@ -83,6 +83,19 @@ export function displayName(person: PersonName): string {
 }
 
 /**
+ * Address to show for this person.
+ *
+ * Real accounts: the login email. Ghosts: the address they were invited at,
+ * which is `invite_email` and never occupies `users.email`.
+ */
+export function knownEmail(user: {
+  email: string | null;
+  invite_email: string | null;
+}): string | null {
+  return user.email ?? user.invite_email;
+}
+
+/**
  * Letters drawn when no custom `iconLetters` is set.
  *
  * Two words → first grapheme of each (`Tanaka Yuki` → `TY`). One word → the

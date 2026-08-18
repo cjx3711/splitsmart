@@ -11,7 +11,7 @@ import { useParams } from "react-router-dom";
 import { api, displayName, type GroupMember, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import { AddMemberForm } from "../AddMemberForm.tsx";
+import { AddMemberDialog } from "../AddMemberDialog.tsx";
 import { Amount, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
@@ -31,12 +31,15 @@ import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localDa
 import { useSync } from "../sync/SyncProvider.tsx";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { HelpTip } from "../HelpTip.tsx";
+import { PersonLink } from "../PersonLink.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
@@ -203,13 +206,15 @@ export function GroupDetail() {
 
       {settle.some((s) => s.transfers.length > 0) && (
         <>
-          <h2>Suggested settle-up</h2>
-          <div className="card stack">
-            <p className="muted" style={{ margin: 0 }}>
+          <h2 className="with-help">
+            Suggested settle-up
+            <HelpTip label="About suggested settle-up">
               The fewest transfers that clear this group, one set per currency. Nothing is recorded
-              until someone actually pays. Use <strong>Settle up</strong> above, which starts
-              prefilled with the first of these.
-            </p>
+              until someone actually pays. Use Settle up above, which starts prefilled with the
+              first of these.
+            </HelpTip>
+          </h2>
+          <div className="card stack">
             {settle
               .filter((s) => s.transfers.length > 0)
               .map((s) => (
@@ -249,13 +254,26 @@ export function GroupDetail() {
         }
       />
 
-      <h2>Members</h2>
+      <div className="section-head">
+        <h2>Members</h2>
+        {isOwner && (
+          <OnlineOnly what="Adding someone to a group">
+            <button type="button" className="link" onClick={() => setAddMemberOpen(true)}>
+              + Add member
+            </button>
+          </OnlineOnly>
+        )}
+      </div>
       <div className="list">
         {members.map((m) => (
           <div key={m.id} className="list-item">
             <Avatar {...avatarFromRow(m)} />
             <div className="list-item-body">
-              <div className="list-item-title">{m.id === user.id ? "You" : displayName(m)}</div>
+              <div className="list-item-title">
+                <PersonLink userId={m.id} currentUserId={user.id}>
+                  {m.id === user.id ? "You" : displayName(m)}
+                </PersonLink>
+              </div>
               <div className="muted">
                 {m.role}
                 {m.is_ghost === 1 ? " · guest" : " · has an account"}
@@ -290,7 +308,9 @@ export function GroupDetail() {
 
       {isOwner && (
         <OnlineOnly what="Adding someone to a group">
-          <AddMemberForm
+          <AddMemberDialog
+            open={addMemberOpen}
+            onClose={() => setAddMemberOpen(false)}
             groupId={group.id}
             existingIds={members.map((m) => m.id)}
             onAdded={syncNow}

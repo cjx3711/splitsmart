@@ -62,6 +62,7 @@ authRoutes.post("/register", zValidator("json", registerSchema), async (c) => {
     .selectFrom("users")
     .select("id")
     .where("email", "=", input.email)
+    .where("is_ghost", "=", 0)
     .executeTakeFirst();
 
   if (existing) {

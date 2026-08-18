@@ -51,11 +51,9 @@
   - button "Add Expense"
   - heading "Balances" [level=2]
   - text: Test User gets back 1200JPY You gets back 6000JPY Ah Beng owes 3600JPY Hana owes 3600JPY
-  - heading "Suggested settle-up" [level=2]
-  - paragraph:
-    - text: The fewest transfers that clear this group, one set per currency. Nothing is recorded until someone actually pays. Use
-    - strong: Settle up
-    - text: above, which starts prefilled with the first of these.
+  - heading "Suggested settle-up About suggested settle-up" [level=2]:
+    - text: Suggested settle-up
+    - button "About suggested settle-up": "?"
   - text: JPY
   - list:
     - listitem: Ah Beng → You 3600JPY
@@ -122,18 +120,28 @@
       - /url: /app/friends/<ULID>
     - text: paid 4800JPY 2 comments you borrowed 1200JPY
   - heading "Members" [level=2]
-  - text: Test User owner · has an account You member · has an account Ah Beng member · has an account Hana member · guest
+  - link "Test User":
+    - /url: /app/friends/<ULID>
+  - text: owner · has an account You member · has an account
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - text: member · has an account
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - text: member · guest
   - button "Edit"
   - heading "Guest links" [level=2]
   - paragraph: Only the group owner can create or turn off guest links.
-  - strong: Anyone with the link
+  - strong:
+    - text: Anyone with the link
+    - button "About Anyone with the link": "?"
   - text: Expires <DATE> · Never opened
-  - paragraph: They pick which name they are, and can change it later.
   - code: http://localhost:5644/guest/l/<LINK_SECRET>
   - button "Copy link"
-  - strong: Hana only
+  - strong:
+    - text: Hana only
+    - button "About Hana only": "?"
   - text: No link
-  - paragraph: Opens straight as them, with no picker.
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

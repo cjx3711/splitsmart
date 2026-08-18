@@ -24,6 +24,7 @@ import type {
   SyncUser,
 } from "../../domain/sync-types.ts";
 import { repeatPausedOf } from "../../domain/metadata.ts";
+import { knownEmail } from "../../domain/person.ts";
 
 export type {
   SyncCategory,
@@ -49,6 +50,7 @@ const USER_COLUMNS = [
   "icon_emoji",
   "icon_hue",
   "email",
+  "invite_email",
   "is_ghost",
   "default_currency",
   "merged_into_user_id",
@@ -63,6 +65,7 @@ type UserRow = {
   icon_emoji: string | null;
   icon_hue: number | null;
   email: string | null;
+  invite_email: string | null;
   is_ghost: number;
   default_currency: string;
   merged_into_user_id: string | null;
@@ -77,7 +80,7 @@ export function toSyncUser(row: UserRow): SyncUser {
     iconLetters: row.icon_letters,
     iconEmoji: row.icon_emoji,
     iconHue: row.icon_hue,
-    email: row.email,
+    email: knownEmail(row),
     isGhost: row.is_ghost === 1,
     defaultCurrency: row.default_currency,
     mergedIntoUserId: row.merged_into_user_id,

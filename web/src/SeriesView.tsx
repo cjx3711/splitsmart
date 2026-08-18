@@ -13,6 +13,7 @@ import { Breadcrumbs, type Crumb } from "./Breadcrumbs.tsx";
 import { ExpenseList, type PersonLookup } from "./ExpenseList.tsx";
 import { isBehind, repeatLabel, type RepeatInterval } from "../../src/domain/recurring.ts";
 import type { ExpenseSummary } from "./api.ts";
+import { HelpTip } from "./HelpTip.tsx";
 
 export type SeriesStoppedReason = "deleted" | "ended" | null;
 
@@ -55,28 +56,32 @@ export function SeriesView({
         <div>
           <h1>{title}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            {interval ? `${repeatLabel(interval)} series` : "Repeating series"}
+            {interval ? `${repeatLabel(interval)} series` : "Repeating series"}{" "}
+            <HelpTip label="About this series">
+              {stoppedReason === "deleted" ? (
+                <>
+                  The first bill was deleted, so no more will be created. The bills already made
+                  stay.
+                </>
+              ) : stoppedReason === "ended" ? (
+                <>
+                  No more bills will be created. The ones already made stay. Resume starts from
+                  today - months that were missed will not be created.
+                </>
+              ) : (
+                <>
+                  Each bill is its own expense. Deleting a later one does not stop the series.
+                  Deleting the first bill (the one marked repeats) stops new bills; the ones already
+                  made stay.
+                </>
+              )}
+            </HelpTip>
           </p>
         </div>
         {stop && <div className="page-actions">{stop}</div>}
       </div>
 
-      {stoppedReason === "deleted" ? (
-        <div className="notice">
-          This series has stopped. The first bill was deleted, so no more will be created. The
-          bills already made stay.
-        </div>
-      ) : stoppedReason === "ended" ? (
-        <div className="notice">
-          This series has stopped. No more bills will be created. The ones already made stay. Resume
-          starts from today - months that were missed will not be created.
-        </div>
-      ) : (
-        <p className="muted">
-          Each bill is its own expense. Deleting a later one does not stop the series. Deleting the
-          first bill (the one marked repeats) stops new bills; the ones already made stay.
-        </p>
-      )}
+      {stoppedReason ? <div className="notice">This series has stopped.</div> : null}
 
       <h2>Bills</h2>
       <ExpenseList

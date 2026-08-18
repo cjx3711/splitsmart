@@ -532,6 +532,11 @@ describe("mergeUsers: what happens to the ghost row", () => {
   test("retires it as a stub and revokes every link that could act as it", async () => {
     const owner = await makeAccount("Owner");
     const ghost = await makeGhost("Alice");
+    await db
+      .updateTable("users")
+      .set({ invite_email: "alice-invite@example.com" })
+      .where("id", "=", ghost)
+      .execute();
     const account = await makeAccount("Alicia");
     const groupId = await makeGroup("Links", [owner, ghost]);
 
@@ -552,13 +557,14 @@ describe("mergeUsers: what happens to the ghost row", () => {
 
     const stub = await db
       .selectFrom("users")
-      .select(["merged_into_user_id", "deleted_at", "email"])
+      .select(["merged_into_user_id", "deleted_at", "email", "invite_email"])
       .where("id", "=", ghost)
       .executeTakeFirstOrThrow();
 
     assert.equal(stub.merged_into_user_id, account);
     assert.ok(stub.deleted_at, "a merged row must be soft-deleted");
-    assert.equal(stub.email, null, "the address is freed for the survivor");
+    assert.equal(stub.email, null);
+    assert.equal(stub.invite_email, null, "the invite address is cleared so the owner can invite that inbox again");
 
     const link = await db
       .selectFrom("access_links")

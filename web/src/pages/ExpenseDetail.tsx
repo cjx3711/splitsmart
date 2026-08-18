@@ -35,6 +35,8 @@ import { useAuth } from "../App.tsx";
 import { useExpense, useFriends } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { useLocal } from "../sync/useLocal.ts";
+import { Avatar, avatarFromRow } from "../Avatar.tsx";
+import { PersonLink } from "../PersonLink.tsx";
 
 export function ExpenseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -111,6 +113,20 @@ export function ExpenseDetail() {
   }
 
   const nameOf = makeLookup(friends, user.id);
+  const avatarFor = (userId: string) => {
+    if (userId === user.id) {
+      return {
+        id: user.id,
+        name: user.name,
+        nickname: user.nickname,
+        iconLetters: user.iconLetters,
+        iconEmoji: user.iconEmoji,
+        iconHue: user.iconHue,
+      };
+    }
+    const friend = friends.find((f) => f.id === userId);
+    return friend ? avatarFromRow(friend) : { id: userId, name: nameOf(userId) };
+  };
   const title = expense.is_payment === 1 ? "Settle up" : expense.description;
   const deleteSeriesNote = seriesDeleteNote(expense);
 
@@ -200,8 +216,13 @@ export function ExpenseDetail() {
           <div className="list">
             {expense.shares.map((share) => (
               <div key={share.user_id} className="list-item">
+                <Avatar {...avatarFor(share.user_id)} />
                 <div className="list-item-body">
-                  <div className="list-item-title">{nameOf(share.user_id)}</div>
+                  <div className="list-item-title">
+                    <PersonLink userId={share.user_id} currentUserId={user.id}>
+                      {nameOf(share.user_id)}
+                    </PersonLink>
+                  </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   {share.paid_share_minor > 0 && (

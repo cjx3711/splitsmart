@@ -15,6 +15,7 @@ import { Fragment, type ReactNode } from "react";
 import { displayName, type ExpenseSummary, type GroupMember } from "./api.ts";
 import { Amount } from "./money.tsx";
 import { SyncBadge } from "./SyncStatusBar.tsx";
+import { PersonLink } from "./PersonLink.tsx";
 
 export interface PersonLookup {
   (userId: string): string;
@@ -108,9 +109,13 @@ export function ExpenseList({
                         {p.user_id === currentUserId || !personLinks ? (
                           nameOf(p.user_id)
                         ) : (
-                          <Link to={`/friends/${p.user_id}`} onClick={(e) => e.stopPropagation()}>
+                          <PersonLink
+                            userId={p.user_id}
+                            currentUserId={currentUserId}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {nameOf(p.user_id)}
-                          </Link>
+                          </PersonLink>
                         )}
                       </Fragment>
                     ))}{" "}

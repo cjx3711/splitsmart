@@ -274,7 +274,7 @@ enough. Confirm runs the merge. It is never silent.
 | `friendships` | rewrite ids through `friendPair`; drop a row that would become self; `ON CONFLICT DO NOTHING` |
 | comments, activity actor | rewrite |
 | `access_links` for the ghost | revoke |
-| ghost row | `merged_into_user_id = account`, `deleted_at = now`, `email = NULL` (freed for the survivor) |
+| ghost row | `merged_into_user_id = account`, `deleted_at = now`, `email = NULL`, `invite_email = NULL` |
 
 `yarn db:check` gains three checks for this: `merged_users_are_retired`,
 `nothing_points_at_a_merged_user`, and `live_links_act_as_live_ghosts`.

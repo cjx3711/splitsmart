@@ -37,7 +37,7 @@ import { db, transaction } from "../db/index.ts";
 import { parseAmount } from "./money.ts";
 import { createExpense, importStamp, markImportSynced, updateExpense } from "./expenses.ts";
 import { createComment } from "./comments.ts";
-import { addFriendship, listRelatedUserIds } from "./friends.ts";
+import { addFriendship, findExplicitGhostByInviteEmail, listRelatedUserIds } from "./friends.ts";
 import { ulid } from "./ulid.ts";
 import {
   metadataFromSplitwise,
@@ -64,7 +64,7 @@ export interface PersonResult {
   name: string;
   email: string | null;
   /** How this person was resolved: the UI shows the email matches explicitly. */
-  matchedBy: "splitwise_id" | "email" | "self" | "created";
+  matchedBy: "splitwise_id" | "email" | "invite_email" | "self" | "created";
 }
 
 export interface SkippedRow {
@@ -133,6 +133,11 @@ export class PersonResolver {
     const byEmail = person.email ? await this.findByEmail(person.email) : undefined;
     if (byEmail) return this.describe(person, byEmail.id, "email");
 
+    const byInvite = person.email
+      ? await findExplicitGhostByInviteEmail(db, this.ownerId, person.email)
+      : undefined;
+    if (byInvite) return this.describe(person, byInvite.id, "invite_email");
+
     return this.describe(person, null, "created");
   }
 
@@ -163,6 +168,21 @@ export class PersonResolver {
       }
     }
 
+    if (person.email) {
+      const byInvite = await findExplicitGhostByInviteEmail(db, this.ownerId, person.email);
+      if (byInvite) {
+        if (splitwiseIdOf(byInvite.metadata) === null) {
+          await db
+            .updateTable("users")
+            .set({ metadata: metadataWithSplitwiseId(byInvite.metadata, person.id) })
+            .where("id", "=", byInvite.id)
+            .where(splitwiseIdSql(), "is", null)
+            .execute();
+        }
+        return this.describe(person, byInvite.id, "invite_email");
+      }
+    }
+
     // Nobody local: create a placeholder person, exactly as POST /friends does
     // minus the invite. No guest link is minted here: importing your Splitwise
     // history is not deciding to share it with the people in it. Mint one from
@@ -176,9 +196,9 @@ export class PersonResolver {
           created_at: createdAt,
           metadata: metadataFromSplitwise(person.id),
           name: splitwiseDisplayName(person),
-          // A ghost may carry an unverified address; login refuses ghosts outright
-          // so this can never become a working credential. See CLAUDE.md.
-          email: person.email ?? null,
+          // Invite address only. Occupying users.email would squat the login
+          // unique index and block this person from registering.
+          invite_email: person.email ?? null,
           default_currency: this.defaultCurrency,
           is_ghost: 1,
         })
@@ -217,7 +237,10 @@ export class PersonResolver {
       .selectFrom("users")
       .select(["id", "metadata"])
       // users.email is COLLATE NOCASE, so this is already case-insensitive.
+      // Ghosts store their invite address in invite_email and must not match
+      // here: that would treat a placeholder as an existing account.
       .where("email", "=", email)
+      .where("is_ghost", "=", 0)
       .where("deleted_at", "is", null)
       .executeTakeFirst();
   }

@@ -20,11 +20,9 @@
   - button "Add Expense"
   - heading "Balances" [level=2]
   - text: You gets back 1200JPY JJ gets back 6000JPY Ah Beng owes 3600JPY Hana owes 3600JPY
-  - heading "Suggested settle-up" [level=2]
-  - paragraph:
-    - text: The fewest transfers that clear this group, one set per currency. Nothing is recorded until someone actually pays. Use
-    - strong: Settle up
-    - text: above, which starts prefilled with the first of these.
+  - heading "Suggested settle-up About suggested settle-up" [level=2]:
+    - text: Suggested settle-up
+    - button "About suggested settle-up": "?"
   - text: JPY
   - list:
     - listitem: Ah Beng → JJ 3600JPY
@@ -91,43 +89,35 @@
     - text: paid 9600JPY you borrowed 2400JPY
   - link "Ramen at Ichiran <DATE> · Dining out · You paid 4800JPY 2 comments you lent 3600JPY"
   - heading "Members" [level=2]
-  - text: You owner · has an account JJ member · has an account
+  - button "+ Add member"
+  - text: You owner · has an account
+  - link "JJ":
+    - /url: /app/friends/<ULID>
+  - text: member · has an account
   - button "Remove"
-  - text: Ah Beng member · has an account
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - text: member · has an account
   - button "Remove"
-  - text: Hana member · guest
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - text: member · guest
   - button "Edit"
   - button "Remove"
-  - text: Add someone From your friends
-  - button "+ Gerry"
-  - button "+ James"
-  - button "+ Jas"
-  - button "+ Jen"
-  - button "+ John"
-  - button "+ Mel"
-  - button "+ Danial"
-  - button "+ Aisyah"
-  - button "+ Priya"
-  - button "+ Yuki"
-  - button "+ Ah Lian"
-  - button "+ Taro"
-  - text: Or a new name
-  - textbox "Or a new name":
-    - /placeholder: Jordan
-  - paragraph: Creates a placeholder person. Send them a guest link below and they can use the group without an account.
-  - button "Add to group" [disabled]
   - heading "Guest links" [level=2]
   - paragraph: Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime - if a link is compromised, revoke it and create a new one.
-  - strong: Anyone with the link
+  - strong:
+    - text: Anyone with the link
+    - button "About Anyone with the link": "?"
   - text: Expires <DATE> · Never opened
-  - paragraph: They pick which name they are, and can change it later.
   - code: http://localhost:5644/guest/l/<LINK_SECRET>
   - button "Copy link"
   - button "Replace with a new link"
   - button "Turn off"
-  - strong: Hana only
+  - strong:
+    - text: Hana only
+    - button "About Hana only": "?"
   - text: No link
-  - paragraph: Opens straight as them, with no picker.
   - button "Create a link"
 - contentinfo:
   - text: Created out of spite by cjx3711.

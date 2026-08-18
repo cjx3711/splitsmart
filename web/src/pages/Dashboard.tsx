@@ -17,6 +17,7 @@ import { useAuth } from "../App.tsx";
 import { useFriends } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { HelpTip } from "../HelpTip.tsx";
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -41,7 +42,12 @@ export function Dashboard() {
   return (
     <>
       <div className="page-head">
-        <h1>Dashboard</h1>
+        <h1 className="with-help">
+          Dashboard
+          <HelpTip label="About these totals">
+            Every currency is a separate ledger. A combined figure, when shown, is an estimate.
+          </HelpTip>
+        </h1>
         <div className="page-actions">
           <OnlineOnly what="Creating a group">
             <Link to="/groups/new">
@@ -74,9 +80,6 @@ export function Dashboard() {
         </div>
       </div>
 
-      <p className="ledger-note">
-        Every currency is a separate ledger. A combined figure, when shown, is an estimate.
-      </p>
       <ConversionFootnote sets={[net]} preferredCurrency={user.defaultCurrency} />
 
       <div className="columns" style={{ marginTop: "1.75rem" }}>

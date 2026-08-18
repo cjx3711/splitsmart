@@ -17,6 +17,7 @@ import { Amount, useCurrencies, useParseMoney } from "./money.tsx";
 import { CurrencySelect } from "./CurrencySelect.tsx";
 import { convertMinor, useExchangeRates } from "./exchangeRates.ts";
 import { type Payer } from "./ExpenseForm.tsx";
+import { HelpTip } from "./HelpTip.tsx";
 
 export interface SettlePayment {
   fromUserId: string;
@@ -178,27 +179,29 @@ export function SettleUpForm({
       </div>
 
       <div>
-        <label htmlFor="settleDate">Date</label>
+        <div className="label-with-help">
+          <label htmlFor="settleDate">Date</label>
+          <HelpTip label="About this payment">
+            {convertedMinor !== null && typedMinor !== null ? (
+              <>
+                Recording <Amount minor={typedMinor} currency={currency} /> to clear this {currency}{" "}
+                balance - about <Amount minor={convertedMinor} currency={convertTarget} /> at today's
+                rate.
+              </>
+            ) : (
+              <>
+                This clears {currency} only. A balance in any other currency is a separate ledger and
+                stays open.
+              </>
+            )}
+          </HelpTip>
+        </div>
         <input
           id="settleDate"
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
         />
-        <p className="field-hint">
-          {convertedMinor !== null && typedMinor !== null ? (
-            <>
-              Recording <Amount minor={typedMinor} currency={currency} /> to clear this {currency}{" "}
-              balance - about <Amount minor={convertedMinor} currency={convertTarget} /> at today's
-              rate.
-            </>
-          ) : (
-            <>
-              This clears {currency} only. A balance in any other currency is a separate ledger and
-              stays open.
-            </>
-          )}
-        </p>
       </div>
 
       <div>

@@ -307,11 +307,13 @@ one fewer participant would move cents belonging to third parties. The stored
 split becomes `exact` with `split_input = owed` and `split_meta = NULL`, which
 is the honest description of "these are the numbers"; no money moves.
 
-**A ghost may carry an email.** `POST /api/v1/friends` creates one with the
-address you invited them at, so the invite has somewhere to go. This is safe
-because login rejects ghosts outright and `issueVerificationToken` returns
-`no_email` for them; an unverified address on a ghost can never become a
-working login. The merge nulls it, freeing the address for the survivor.
+**A ghost may carry an invite address.** `POST /api/v1/friends` stores it in
+`invite_email`, not `users.email`. Login uniqueness is `users.email` only, so
+inviting someone cannot squat an inbox and block them from registering. The
+address is unique among that owner's live friend-ghosts, not globally: two
+people can invite the same inbox, and the inbox can still sign up. Login still
+refuses ghosts, and `issueVerificationToken` returns `no_email`. Claim clears
+`invite_email` on the retired stub.
 
 Known trade-off, accepted deliberately: anyone holding a link can read **and
 edit** everything in its scope. Revoking is instant, but it does not un-share

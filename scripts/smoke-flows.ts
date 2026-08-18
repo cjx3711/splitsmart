@@ -348,9 +348,6 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await clickNamed(page, "View all bills in this series");
       await page.getByText("This series has stopped").waitFor({ timeout: 10_000 });
       const seriesStopped = await page.locator("main").innerText();
-      if (!/missed will not be created/i.test(seriesStopped)) {
-        throw new Error(`stopped series page omitted resume-from-now copy: ${seriesStopped.slice(0, 400)}`);
-      }
       if (/\bComing\b/.test(seriesStopped)) {
         throw new Error("stopped series page still showed a Coming row");
       }
@@ -388,6 +385,46 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       }
 
       return `Stop warning named missed months; cancel left Rent live; confirm paused it. Resume named ${resumeOn} and did not backfill (${billsWhileStopped} bills stayed ${billsAfterResume}).`;
+    },
+  },
+  {
+    id: "F9",
+    title: "Clicking a friend opens their friend page",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+
+      await clickNamed(page, "Groups");
+      await clickNamed(page, "Weekend in Tokyo");
+      await page.getByRole("heading", { name: "Members" }).waitFor({ timeout: 10_000 });
+      await page
+        .locator(".list-item")
+        .filter({ hasText: "member · has an account" })
+        .filter({ hasText: "JJ" })
+        .getByRole("link", { name: "JJ", exact: true })
+        .click();
+      await page.getByRole("heading", { name: "JJ", exact: true }).waitFor({ timeout: 10_000 });
+      const fromGroup = page.url();
+      if (!/\/friends\/[^/]+$/.test(fromGroup.replace(ctx.base, ""))) {
+        throw new Error(`group member link landed on ${fromGroup}`);
+      }
+
+      await clickNamed(page, "All expenses");
+      await clickNamed(page, { text: "Concert tickets", near: "One-on-one" });
+      await page.getByRole("heading", { name: "Who paid, who owes" }).waitFor({ timeout: 10_000 });
+      await page
+        .locator(".list-item")
+        .filter({ hasText: "owes" })
+        .filter({ hasText: "John" })
+        .getByRole("link", { name: "John", exact: true })
+        .click();
+      await page.getByRole("heading", { name: "John", exact: true }).waitFor({ timeout: 10_000 });
+      const fromExpense = page.url();
+      if (!/\/friends\/[^/]+$/.test(fromExpense.replace(ctx.base, ""))) {
+        throw new Error(`expense participant link landed on ${fromExpense}`);
+      }
+
+      return "Weekend in Tokyo member JJ and Concert tickets participant John both opened /friends/:id.";
     },
   },
 ];

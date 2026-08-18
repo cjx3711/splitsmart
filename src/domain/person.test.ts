@@ -7,6 +7,7 @@ import {
   graphemes,
   hueFromId,
   iconLettersOf,
+  knownEmail,
 } from "./person.ts";
 
 describe("displayName", () => {
@@ -17,6 +18,23 @@ describe("displayName", () => {
   test("falls back to name", () => {
     assert.equal(displayName({ name: "Tanaka Yuki", nickname: null }), "Tanaka Yuki");
     assert.equal(displayName({ name: "Tanaka Yuki", nickname: "  " }), "Tanaka Yuki");
+  });
+});
+
+describe("knownEmail", () => {
+  test("real accounts use the login email", () => {
+    assert.equal(
+      knownEmail({ email: "alice@example.com", invite_email: null }),
+      "alice@example.com",
+    );
+  });
+
+  test("ghosts use the invite address, never a login email", () => {
+    assert.equal(
+      knownEmail({ email: null, invite_email: "invited@example.com" }),
+      "invited@example.com",
+    );
+    assert.equal(knownEmail({ email: null, invite_email: null }), null);
   });
 });
 

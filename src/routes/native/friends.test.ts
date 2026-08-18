@@ -7,7 +7,8 @@
  *   - adding a friend creates a real user row, so an expense can name them now
  *   - removing a friendship never moves money
  *   - a one-on-one expense may only involve the two people in it
- *   - a ghost invited at an address can still claim that same address
+ *   - a ghost invited at an address can still register at that same address
+ *     (`invite_email` is not `users.email`, so it cannot squat the login index)
  *
  * DATABASE_PATH is set before importing anything that opens the database,
  * because src/db/index.ts opens a connection at module load.
@@ -274,6 +275,93 @@ describe("adding a friend", () => {
       headers: { Authorization: `Bearer link_${secret}` },
     });
     assert.equal(asUser.status, 401);
+  });
+
+  test("an invite address does not occupy the login unique index", async () => {
+    const added = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Squat", email: "squat@example.com" }),
+    });
+    assert.equal(added.status, 201);
+    const { friend } = (await added.json()) as {
+      friend: { id: string; email: string | null; is_ghost: number };
+    };
+    assert.equal(friend.email, "squat@example.com", "the list still shows the invite address");
+    assert.equal(friend.is_ghost, 1);
+
+    const stored = await db
+      .selectFrom("users")
+      .select(["email", "invite_email"])
+      .where("id", "=", friend.id)
+      .executeTakeFirstOrThrow();
+    assert.equal(stored.email, null);
+    assert.equal(stored.invite_email, "squat@example.com");
+
+    const registered = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "squat@example.com",
+        password: "hunter2hunter2",
+        name: "The Real Squat",
+      }),
+    });
+    assert.equal(registered.status, 201, "inviting someone must not block them from signing up");
+  });
+
+  test("the same owner inviting the same address twice gets the same ghost", async () => {
+    const first = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Pat", email: "pat@example.com" }),
+    });
+    const second = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Patricia", email: "pat@example.com" }),
+    });
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+    const a = (await first.json()) as { friend: { id: string; name: string } };
+    const b = (await second.json()) as {
+      friend: { id: string; name: string };
+      existingAccount: boolean;
+    };
+    assert.equal(b.friend.id, a.friend.id);
+    assert.equal(b.existingAccount, false, "they are still a placeholder, not an account");
+    assert.equal(b.friend.name, "Pat", "the first name stays; this is not a rename");
+  });
+
+  test("a second owner inviting the same address gets their own ghost", async () => {
+    const otherId = ulid();
+    await db
+      .insertInto("users")
+      .values({
+        id: otherId,
+        email: "other-owner@example.com",
+        password_hash: "scrypt$131072$8$1$AAAA$AAAA",
+        name: "Other Owner",
+        default_currency: "USD",
+        is_ghost: 0,
+      })
+      .execute();
+    const otherToken = (await createApiToken(otherId, "test")).token;
+
+    const aliceFriend = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Shared Inbox", email: "shared-inbox@example.com" }),
+    });
+    const otherFriend = await app.request("/api/v1/friends", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${otherToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: "Also Shared", email: "shared-inbox@example.com" }),
+    });
+    assert.equal(aliceFriend.status, 201);
+    assert.equal(otherFriend.status, 201);
+    const aliceBody = (await aliceFriend.json()) as { friend: { id: string } };
+    const otherBody = (await otherFriend.json()) as { friend: { id: string } };
+    assert.notEqual(otherBody.friend.id, aliceBody.friend.id);
   });
 });
 

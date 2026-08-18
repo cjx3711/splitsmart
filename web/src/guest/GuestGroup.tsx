@@ -23,6 +23,7 @@ import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { groupCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestMember } from "./guestApi.ts";
+import { HelpTip } from "../HelpTip.tsx";
 
 export function GuestGroup() {
   const { id } = useParams<{ id: string }>();
@@ -194,7 +195,12 @@ export function GuestGroup() {
         personLinks={false}
       />
 
-      <h2>Members</h2>
+      <h2 className="with-help">
+        Members
+        <HelpTip label="About members">
+          Only someone with an account can add or remove people here.
+        </HelpTip>
+      </h2>
       <div className="list">
         {members.map((m) => (
           <div key={m.id} className="list-item">
@@ -209,9 +215,6 @@ export function GuestGroup() {
           </div>
         ))}
       </div>
-      <p className="field-hint">
-        Only someone with an account can add or remove people here.
-      </p>
     </>
   );
 }

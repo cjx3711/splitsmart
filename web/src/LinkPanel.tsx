@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type AccessLink } from "./api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { NeedsConnection, useOnline } from "./OnlineOnly.tsx";
+import { HelpTip } from "./HelpTip.tsx";
 
 export function CopyLinkButton({ url, label = "Copy link" }: { url: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -127,8 +128,13 @@ export function LinkPanel({
           return (
             <div key={slot.id} className="link-slot">
               <div className="link-slot-head">
-                <strong>{slot.label}</strong>
-                <span className="muted">
+                <strong className="with-help">
+                  {slot.label}
+                  {slot.note && (
+                    <HelpTip label={`About ${slot.label}`}>{slot.note}</HelpTip>
+                  )}
+                </strong>
+                <span className="muted with-help">
                   {!existing
                     ? "No link"
                     : existing.expired
@@ -141,23 +147,19 @@ export function LinkPanel({
                         ]
                           .filter(Boolean)
                           .join(" · ")}
+                  {existing && !url && (
+                    <HelpTip label="About this link">
+                      Replace this link to get a copyable URL. Older links cannot be read back.
+                    </HelpTip>
+                  )}
                 </span>
               </div>
-
-              {slot.note && <p className="field-hint">{slot.note}</p>}
 
               {url && (
                 <div className="link-url-row">
                   <code className="link-url">{url}</code>
                   <CopyLinkButton url={url} />
                 </div>
-              )}
-
-              {existing && !url && (
-                <p className="field-hint">
-                  Replace this link to get a copyable URL. Older links cannot be
-                  read back.
-                </p>
               )}
 
               {manage && (

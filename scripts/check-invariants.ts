@@ -137,6 +137,38 @@ const CHECKS: Check[] = [
     sql: `SELECT id, name FROM users WHERE is_ghost = 1 AND password_hash IS NOT NULL`,
   },
   {
+    name: "ghosts_have_no_login_email",
+    description:
+      "Ghosts must not occupy users.email: that unique index is for real accounts, and squatting it blocks sign-up",
+    sql: `SELECT id, name FROM users WHERE is_ghost = 1 AND email IS NOT NULL`,
+  },
+  {
+    name: "invite_email_is_ghosts_only",
+    description: "invite_email is the address a ghost was invited at; real accounts do not have one",
+    sql: `SELECT id, name FROM users WHERE is_ghost = 0 AND invite_email IS NOT NULL`,
+  },
+  {
+    name: "invite_email_unique_per_owner",
+    description:
+      "One owner must not have two live friend-ghosts invited at the same address",
+    sql: `
+      SELECT owner.id AS owner_id, ghost.invite_email, COUNT(*) AS n
+      FROM friendships f
+      JOIN users owner ON owner.is_ghost = 0 AND (
+        owner.id = f.user_a_id OR owner.id = f.user_b_id
+      )
+      JOIN users ghost ON ghost.is_ghost = 1
+        AND ghost.deleted_at IS NULL
+        AND ghost.invite_email IS NOT NULL
+        AND ghost.id = CASE
+          WHEN f.user_a_id = owner.id THEN f.user_b_id
+          ELSE f.user_a_id
+        END
+      GROUP BY owner.id, ghost.invite_email
+      HAVING COUNT(*) > 1
+    `,
+  },
+  {
     name: "merged_users_are_retired",
     description:
       "A user consumed by a claim must be soft-deleted, not left walking around",

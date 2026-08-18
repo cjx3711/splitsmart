@@ -108,6 +108,17 @@ describe("adding members", () => {
       .executeTakeFirst();
     assert.equal(row, undefined);
   });
+
+  test("creates a placeholder with an optional nickname", async () => {
+    const res = await as(ownerToken, `/groups/${groupId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ name: "Jordan Lee", nickname: "Jordy" }),
+    });
+    assert.equal(res.status, 201);
+    const body = (await res.json()) as { member: { name: string; nickname: string | null } };
+    assert.equal(body.member.name, "Jordan Lee");
+    assert.equal(body.member.nickname, "Jordy");
+  });
 });
 
 describe("removing members", () => {

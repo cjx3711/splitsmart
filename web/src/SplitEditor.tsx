@@ -28,6 +28,7 @@ import { computeSplit, type SplitItem, type SplitType } from "../../src/domain/s
 import { Amount, useCurrencies, useParseMoney } from "./money.tsx";
 import { resolvePayments, type Payment } from "./PaidBy.tsx";
 import type { Person } from "./PeoplePicker.tsx";
+import { HelpTip } from "./HelpTip.tsx";
 
 export const SPLIT_MODES: Array<{ id: SplitType; label: string; hint: string }> = [
   { id: "equal", label: "Equally", hint: "Split the total evenly between everyone on the expense." },
@@ -372,7 +373,12 @@ export function SplitEditor({
   return (
     <div className="split-editor stack">
       <div>
-        <label>Split</label>
+        <div className="label-with-help">
+          <label>Split</label>
+          {mode && (
+            <HelpTip label={`About ${mode.label}`}>{mode.hint}</HelpTip>
+          )}
+        </div>
 
         {/* Splitwise's two one-sided shortcuts. They set `shares` weights rather
             than fixed amounts so that changing the total afterwards keeps them
@@ -416,7 +422,6 @@ export function SplitEditor({
             </button>
           ))}
         </div>
-        {mode && <p className="split-hint">{mode.hint}</p>}
       </div>
 
       {draft.mode === "itemized" ? (

@@ -21,6 +21,7 @@ import { useState } from "react";
 import { Modal } from "./Modal.tsx";
 import { Amount, useCurrencies } from "./money.tsx";
 import type { Person } from "./PeoplePicker.tsx";
+import { HelpTip } from "./HelpTip.tsx";
 
 export type Payment =
   | { kind: "single"; payerId: string }
@@ -150,21 +151,23 @@ export function PaidByField({
           </div>
 
           <div className="split-editor stack">
-            <button
-              type="button"
-              className={`payer-option${payment.kind === "own-share" ? " is-active" : ""}`}
-              aria-pressed={payment.kind === "own-share"}
-              onClick={() => {
-                onChange({ kind: "own-share" });
-                setOpen(false);
-              }}
-            >
-              Each person paid for their own share
-            </button>
-            <p className="split-hint" style={{ marginTop: 0 }}>
-              Records what everyone spent without anybody ending up owing anybody. Useful for a
-              night where you all paid your own way but still want it on the ledger.
-            </p>
+            <div className="payer-option-row">
+              <button
+                type="button"
+                className={`payer-option${payment.kind === "own-share" ? " is-active" : ""}`}
+                aria-pressed={payment.kind === "own-share"}
+                onClick={() => {
+                  onChange({ kind: "own-share" });
+                  setOpen(false);
+                }}
+              >
+                Each person paid for their own share
+              </button>
+              <HelpTip label="About paying your own share">
+                Records what everyone spent without anybody ending up owing anybody. Useful for a
+                night where you all paid your own way but still want it on the ledger.
+              </HelpTip>
+            </div>
 
             <div>
               <label>Or several people put in different amounts</label>

@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-18T07:12:53.561Z",
+  "capturedAt": "2026-08-18T07:40:14.301Z",
   "base": "http://localhost:5644",
   "playwrightVersion": "1.62.1",
   "params": {
@@ -20,62 +20,6 @@
     }
   },
   "screens": [
-    {
-      "id": "marketing-home",
-      "viewport": "desktop",
-      "path": "/",
-      "click": [],
-      "auth": "none"
-    },
-    {
-      "id": "marketing-home-mobile",
-      "viewport": "mobile",
-      "path": "/",
-      "click": [],
-      "auth": "none"
-    },
-    {
-      "id": "login",
-      "viewport": "desktop",
-      "path": "/app",
-      "click": [],
-      "auth": "none"
-    },
-    {
-      "id": "login-mobile",
-      "viewport": "mobile",
-      "path": "/app",
-      "click": [],
-      "auth": "none"
-    },
-    {
-      "id": "dashboard",
-      "viewport": "desktop",
-      "path": "/app",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "dashboard-mobile",
-      "viewport": "mobile",
-      "path": "/app",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "groups",
-      "viewport": "desktop",
-      "path": "/app/groups",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "groups-mobile",
-      "viewport": "mobile",
-      "path": "/app/groups",
-      "click": [],
-      "auth": "user:user"
-    },
     {
       "id": "group-tokyo",
       "viewport": "desktop",
@@ -113,52 +57,6 @@
       "auth": "user:user"
     },
     {
-      "id": "friends",
-      "viewport": "desktop",
-      "path": "/app/friends",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "friends-mobile",
-      "viewport": "mobile",
-      "path": "/app/friends",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "friend-ahbeng",
-      "viewport": "desktop",
-      "path": "/app/friends",
-      "click": [
-        "Ah Beng"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "friend-ahbeng-mobile",
-      "viewport": "mobile",
-      "path": "/app/friends",
-      "click": [
-        "Ah Beng"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "all-expenses",
-      "viewport": "desktop",
-      "path": "/app/expenses",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "all-expenses-mobile",
-      "viewport": "mobile",
-      "path": "/app/expenses",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
       "id": "expense-detail",
       "viewport": "desktop",
       "path": "/app/expenses",
@@ -175,116 +73,6 @@
         "Trader Joe's run"
       ],
       "auth": "user:user"
-    },
-    {
-      "id": "expense-rent",
-      "viewport": "desktop",
-      "path": "/app/groups",
-      "click": [
-        "Apartment 4B",
-        "Rent~repeats"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "expense-rent-mobile",
-      "viewport": "mobile",
-      "path": "/app/groups",
-      "click": [
-        "Apartment 4B",
-        "Rent~repeats"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "expense-series",
-      "viewport": "desktop",
-      "path": "/app/groups",
-      "click": [
-        "Apartment 4B",
-        "Rent~repeats",
-        "View all bills in this series"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "expense-series-mobile",
-      "viewport": "mobile",
-      "path": "/app/groups",
-      "click": [
-        "Apartment 4B",
-        "Rent~repeats",
-        "View all bills in this series"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "expense-rent-stop",
-      "viewport": "desktop",
-      "path": "/app/groups",
-      "click": [
-        "Apartment 4B",
-        "Rent~repeats",
-        "Stop repeating"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "expense-rent-stop-mobile",
-      "viewport": "mobile",
-      "path": "/app/groups",
-      "click": [
-        "Apartment 4B",
-        "Rent~repeats",
-        "Stop repeating"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "add-expense-dialog",
-      "viewport": "desktop",
-      "path": "/app",
-      "click": [
-        "Add Expense"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "add-expense-dialog-mobile",
-      "viewport": "mobile",
-      "path": "/app",
-      "click": [
-        "Add Expense"
-      ],
-      "auth": "user:user"
-    },
-    {
-      "id": "settings",
-      "viewport": "desktop",
-      "path": "/app/settings",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "settings-mobile",
-      "viewport": "mobile",
-      "path": "/app/settings",
-      "click": [],
-      "auth": "user:user"
-    },
-    {
-      "id": "jj-dashboard",
-      "viewport": "desktop",
-      "path": "/app",
-      "click": [],
-      "auth": "user:jj"
-    },
-    {
-      "id": "jj-dashboard-mobile",
-      "viewport": "mobile",
-      "path": "/app",
-      "click": [],
-      "auth": "user:jj"
     },
     {
       "id": "jj-tokyo",
@@ -321,38 +109,6 @@
         "Apartment 4B"
       ],
       "auth": "user:jj"
-    },
-    {
-      "id": "guest-picker",
-      "viewport": "desktop",
-      "path": "/",
-      "click": [],
-      "auth": "guest:group"
-    },
-    {
-      "id": "guest-picker-mobile",
-      "viewport": "mobile",
-      "path": "/",
-      "click": [],
-      "auth": "guest:group"
-    },
-    {
-      "id": "guest-group",
-      "viewport": "desktop",
-      "path": "/",
-      "click": [
-        "Hana"
-      ],
-      "auth": "guest:group"
-    },
-    {
-      "id": "guest-group-mobile",
-      "viewport": "mobile",
-      "path": "/",
-      "click": [
-        "Hana"
-      ],
-      "auth": "guest:group"
     }
   ]
 }

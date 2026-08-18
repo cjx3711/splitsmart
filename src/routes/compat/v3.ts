@@ -21,6 +21,7 @@ import { getPairwiseBalances, getBalanceBetween } from "../../domain/balances.ts
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { createExpense } from "../../domain/expenses.ts";
 import { parseAmount } from "../../domain/money.ts";
+import { knownEmail } from "../../domain/person.ts";
 import { isUlid } from "../../domain/ulid.ts";
 import {
   serializeCurrentUser,
@@ -52,6 +53,7 @@ const USER_COLUMNS = [
   "id",
   "name",
   "email",
+  "invite_email",
   "avatar_url",
   "default_currency",
   "is_ghost",
@@ -61,6 +63,7 @@ type UserRow = {
   id: string;
   name: string;
   email: string | null;
+  invite_email: string | null;
   avatar_url: string | null;
   default_currency: string;
   is_ghost: number;
@@ -71,7 +74,7 @@ function toSerializableUser(user: UserRow): SerializableUser {
     id: user.id,
     first_name: user.name,
     last_name: null,
-    email: user.email,
+    email: knownEmail(user),
     avatar_url: user.avatar_url,
     default_currency: user.default_currency,
     is_ghost: user.is_ghost,
@@ -274,6 +277,7 @@ compatV3.get("/get_expenses", async (c) => {
         "users.id as u_id",
         "users.name",
         "users.email",
+        "users.invite_email",
         "users.avatar_url",
         "users.default_currency",
         "users.is_ghost",
@@ -324,7 +328,7 @@ compatV3.get("/get_expenses", async (c) => {
           id: s.u_id,
           first_name: s.name,
           last_name: null,
-          email: s.email,
+          email: knownEmail(s),
           avatar_url: s.avatar_url,
           default_currency: s.default_currency,
           is_ghost: s.is_ghost,
@@ -441,7 +445,7 @@ compatV3.post("/create_expense", async (c) => {
       .select([
         "users.id as user_id", "expense_users.paid_share_minor",
         "expense_users.owed_share_minor", "users.id as u_id", "users.name",
-        "users.email", "users.avatar_url",
+        "users.email", "users.invite_email", "users.avatar_url",
         "users.default_currency", "users.is_ghost",
       ])
       .where("expense_users.expense_id", "=", expenseId)
@@ -470,7 +474,7 @@ compatV3.post("/create_expense", async (c) => {
             owed_share_minor: s.owed_share_minor,
             user: {
               id: s.u_id, first_name: s.name, last_name: null,
-              email: s.email, avatar_url: s.avatar_url,
+              email: knownEmail(s), avatar_url: s.avatar_url,
               default_currency: s.default_currency, is_ghost: s.is_ghost,
             },
           })),

@@ -429,13 +429,16 @@ describe("friends", () => {
 
     const carolRow = await db
       .selectFrom("users")
-      .select(["id", "metadata", "created_at"])
+      .select(["id", "metadata", "created_at", "email", "invite_email", "is_ghost"])
       .where("id", "=", carol.localUserId)
       .executeTakeFirstOrThrow();
     assert.equal(splitwiseIdOf(carolRow.metadata), 2002);
     assert.ok(isUlid(carolRow.id));
     assert.equal(ulidTime(carolRow.id), Date.parse("2021-04-01T00:00:00Z"));
     assert.equal(Date.parse(carolRow.created_at), Date.parse("2021-04-01T00:00:00Z"));
+    assert.equal(carolRow.is_ghost, 1);
+    assert.equal(carolRow.email, null, "imported ghosts must not occupy the login unique index");
+    assert.equal(carolRow.invite_email, "carol@example.com");
 
     const friends = await get("/friends");
     const names = friends.body.friends.map((f: any) => f.name).sort();

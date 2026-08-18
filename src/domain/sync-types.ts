@@ -22,10 +22,12 @@
 /**
  * A person, as somebody else's device needs to render them.
  *
- * `email` is included because the friends screen shows it and the invite flow
- * needs to know whether there is one. `mergedIntoUserId` travels so a client
- * that missed the `user_merge` row still knows this row is a retired stub rather
- * than a living person with a mysteriously empty history.
+ * `email` is the login address for real accounts, and the invite address for
+ * ghosts (`invite_email` on the row). Ghosts must not occupy `users.email`,
+ * or inviting someone would block them from registering. `mergedIntoUserId`
+ * travels so a client that missed the `user_merge` row still knows this row
+ * is a retired stub rather than a living person with a mysteriously empty
+ * history.
  */
 export interface SyncUser {
   id: string;

@@ -11,6 +11,7 @@ import {
   identityPayload,
   type IdentityDraft,
 } from "../PersonIdentityForm.tsx";
+import { HelpTip } from "../HelpTip.tsx";
 
 /**
  * Account settings and API tokens.
@@ -77,11 +78,13 @@ export function Settings() {
         <div className="muted">{user?.email ?? "Guest account (no email)"}</div>
       </div>
 
-      <h2>Name and icon</h2>
-      <p className="muted">
-        One name, not first and last. A nickname is what other people see in
-        lists. The icon can be letters, an emoji, and a colour.
-      </p>
+      <h2 className="with-help">
+        Name and icon
+        <HelpTip label="About name and icon">
+          One name, not first and last. A nickname is what other people see in lists. The icon can
+          be letters, an emoji, and a colour.
+        </HelpTip>
+      </h2>
       {user && identity && (
         <form
           className="card stack"
@@ -113,12 +116,14 @@ export function Settings() {
         </form>
       )}
 
-      <h2>Preferred currency</h2>
-      <p className="muted">
-        Used as the default when you add an expense, and as the target for on-screen conversions
-        (settle-up equivalents and estimated totals). Nothing in the ledger changes: balances stay
-        in the currency they were recorded in.
-      </p>
+      <h2 className="with-help">
+        Preferred currency
+        <HelpTip label="About preferred currency">
+          Used as the default when you add an expense, and as the target for on-screen conversions
+          (settle-up equivalents and estimated totals). Nothing in the ledger changes: balances stay
+          in the currency they were recorded in.
+        </HelpTip>
+      </h2>
       {user && (
         <div style={{ maxWidth: "16rem" }}>
           <label htmlFor="preferredCurrency">Currency</label>
@@ -139,21 +144,24 @@ export function Settings() {
         </div>
       )}
 
-      <h2>Import from Splitwise</h2>
-      <p className="muted">
-        Bring your groups, friends and expense history across. You supply your own Splitwise API
-        key; it is used for that import only and never stored. People are matched to existing
-        accounts by email address, and you see exactly who matched before anything is written.
-      </p>
+      <h2 className="with-help">
+        Import from Splitwise
+        <HelpTip label="About importing from Splitwise">
+          Bring your groups, friends and expense history across. You supply your own Splitwise API
+          key; it is used for that import only and never stored. People are matched to existing
+          accounts by email address, and you see exactly who matched before anything is written.
+        </HelpTip>
+      </h2>
       <OnlineOnly what="Importing from Splitwise">
         <Link to="/import">Start an import</Link>
       </OnlineOnly>
 
-      <h2>API tokens</h2>
-      <p className="muted">
-        Use a token as the bearer credential for the Splitwise-compatible API at{" "}
-        <code>/api/sw/v3.0</code>.
-      </p>
+      <h2 className="with-help">
+        API tokens
+        <HelpTip label="About API tokens">
+          Use a token as the bearer credential for the Splitwise-compatible API at /api/sw/v3.0.
+        </HelpTip>
+      </h2>
 
       {freshToken && (
         <div className="notice stack">

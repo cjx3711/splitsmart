@@ -20,6 +20,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { isBehind, repeatLabel, type RepeatInterval } from "../../src/domain/recurring.ts";
+import { HelpTip } from "./HelpTip.tsx";
 
 export function RepeatNote({
   repeatInterval,
@@ -78,8 +79,10 @@ export function RepeatNote({
       <div className="notice">
         <span className="eyebrow">Series</span>
         <p style={{ margin: "0.3rem 0 0" }}>
-          {repeatLabel(repeatPaused)} repeating is stopped. Resume starts from today - missed bills
-          will not be created.
+          {repeatLabel(repeatPaused)} repeating is stopped.{" "}
+          <HelpTip label="About resuming">
+            Resume starts from today - missed bills will not be created.
+          </HelpTip>
         </p>
         {seriesCount > 0 && (
           <p className="muted" style={{ margin: "0.3rem 0 0" }}>
@@ -101,15 +104,16 @@ export function RepeatNote({
       <div className="card">
         <span className="eyebrow">Series</span>
         <p style={{ margin: "0.3rem 0 0" }}>
-          One of a repeating series. Editing this changes this bill only, not the ones still to come
+          One of a repeating series.{" "}
+          <HelpTip label="About this bill">
+            Editing this changes this bill only, not the ones still to come.
+          </HelpTip>
           {seriesHref ? (
             <>
               {" "}
-              - <Link to={seriesHref}>view all bills</Link>.
+              <Link to={seriesHref}>View all bills</Link>.
             </>
-          ) : (
-            "."
-          )}
+          ) : null}
         </p>
         {stop && <p style={{ margin: "0.3rem 0 0" }}>{stop}</p>}
       </div>

@@ -19,15 +19,13 @@
   - button "Settle up"
   - button "Add Expense"
   - heading "Balances" [level=2]
-  - text: Test User gets back 3696.21USD You owes 3696.21USD
-  - heading "Suggested settle-up" [level=2]
-  - paragraph:
-    - text: The fewest transfers that clear this group, one set per currency. Nothing is recorded until someone actually pays. Use
-    - strong: Settle up
-    - text: above, which starts prefilled with the first of these.
+  - text: Test User gets back 5496.21USD You owes 5496.21USD
+  - heading "Suggested settle-up About suggested settle-up" [level=2]:
+    - text: Suggested settle-up
+    - button "About suggested settle-up": "?"
   - text: USD
   - list:
-    - listitem: You → Test User 3696.21USD
+    - listitem: You → Test User 5496.21USD
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
   - combobox "Category":
@@ -107,18 +105,31 @@
     - link "Test User":
       - /url: /app/friends/<ULID>
     - text: paid series 1800.00USD you borrowed 900.00USD
+  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: Rent <DATE> · Rent ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid series 1800.00USD you borrowed 900.00USD
+  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: Rent <DATE> · Rent ·
+    - link "Test User":
+      - /url: /app/friends/<ULID>
+    - text: paid series 1800.00USD you borrowed 900.00USD
   - link "Rent <DATE> · Rent · Test User paid repeats 1800.00USD you borrowed 900.00USD":
     - text: Rent <DATE> · Rent ·
     - link "Test User":
       - /url: /app/friends/<ULID>
     - text: paid repeats 1800.00USD you borrowed 900.00USD
   - heading "Members" [level=2]
-  - text: Test User owner · has an account You member · has an account
+  - link "Test User":
+    - /url: /app/friends/<ULID>
+  - text: owner · has an account You member · has an account
   - heading "Guest links" [level=2]
   - paragraph: Only the group owner can create or turn off guest links.
-  - strong: Anyone with the link
+  - strong:
+    - text: Anyone with the link
+    - button "About Anyone with the link": "?"
   - text: No link
-  - paragraph: They pick which name they are, and can change it later.
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

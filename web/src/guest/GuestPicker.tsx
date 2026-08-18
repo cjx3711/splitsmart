@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { Avatar } from "../Avatar.tsx";
 import { useGuest, pickPerson } from "./GuestApp.tsx";
 import { guestFullName } from "./guestApi.ts";
+import { HelpTip } from "../HelpTip.tsx";
 
 export function GuestPicker() {
   const { session, reload } = useGuest();
@@ -45,7 +46,12 @@ export function GuestPicker() {
 
   return (
     <div className="auth stack">
-      <h1>Which one are you?</h1>
+      <h1 className="with-help">
+        Which one are you?
+        <HelpTip label="Not on this list">
+          Not on this list? Ask whoever sent you the link to add you. Guests cannot add people.
+        </HelpTip>
+      </h1>
       <p className="muted">
         {session.group ? `Everyone in ${session.group.name}. ` : ""}
         Pick your name to see what you owe. You can change this later.
@@ -66,11 +72,6 @@ export function GuestPicker() {
           </button>
         ))}
       </div>
-
-      <p className="field-hint">
-        Not on this list? Ask whoever sent you the link to add you. Guests
-        cannot add people.
-      </p>
     </div>
   );
 }

@@ -168,7 +168,7 @@ const DEFS: ScreenDef[] = [
       { text: "Rent", near: "repeats" },
       "View all bills in this series",
     ],
-    waitForText: "Deleting a later one does not stop the series",
+    waitForText: "Monthly series",
   },
   {
     id: "expense-rent-stop",

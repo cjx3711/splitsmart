@@ -26,6 +26,7 @@ import { CategoryButton, DEFAULT_CATEGORY_ID } from "./categories.tsx";
 import { PeoplePicker, type Person } from "./PeoplePicker.tsx";
 import { PaidByField, type Payment } from "./PaidBy.tsx";
 import { SplitEditor, buildSplit, itemizedTotal, useSplitDraft, type SplitDraftInit } from "./SplitEditor.tsx";
+import { HelpTip } from "./HelpTip.tsx";
 
 /** Kept as the old name so SettleUpForm and friends need no churn. */
 export type Payer = Person;
@@ -325,7 +326,17 @@ export function ExpenseForm({
 
       {allowRepeat && (
         <div>
-          <label htmlFor="repeat">Repeat</label>
+          <div className="label-with-help">
+            <label htmlFor="repeat">Repeat</label>
+            {repeatInterval && (
+              <HelpTip label="About repeating">
+                This bill stays as it is. A copy is created{" "}
+                {repeatLabel(repeatInterval).toLowerCase()}, starting one interval after{" "}
+                {date || "its date"}, and each copy is an ordinary expense you can edit or delete
+                on its own.
+              </HelpTip>
+            )}
+          </div>
           <select
             id="repeat"
             value={repeatInterval ?? ""}
@@ -340,13 +351,6 @@ export function ExpenseForm({
               </option>
             ))}
           </select>
-          {repeatInterval && (
-            <p className="muted" style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
-              This bill stays as it is. A copy is created {repeatLabel(repeatInterval).toLowerCase()},
-              starting one interval after {date || "its date"}, and each copy is an ordinary expense
-              you can edit or delete on its own.
-            </p>
-          )}
         </div>
       )}
 

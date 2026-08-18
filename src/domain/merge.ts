@@ -586,9 +586,10 @@ export async function mergeUsers(
       .set({
         merged_into_user_id: toUserId,
         deleted_at: new Date().toISOString(),
-        // Free the address for the survivor; a claimed placeholder must not
-        // keep holding the unique index on an email nobody can log in with.
+        // Free the invite address so this owner can invite that inbox again
+        // as a new placeholder. users.email was already null on a ghost.
         email: null,
+        invite_email: null,
       })
       .where("id", "=", fromUserId)
       .execute();

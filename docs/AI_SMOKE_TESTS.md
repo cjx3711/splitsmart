@@ -127,6 +127,7 @@ run *after* the screenshots of the seeded state.
 | F6 | 375×812, Show menu, no horizontal overflow on dashboard / group / expense |
 | F7 | Test User adds "Smoke test paint" in Apartment 4B; JJ's session lists it |
 | F8 | Stop Rent warns (cancel is a no-op); resume starts from today and does not backfill |
+| F9 | Group member and expense participant names open `/friends/:id` |
 
 `yarn smoke:check` runs last, against whatever F1 / F3 / F7 / F8 wrote, and asks
 whether `SUM(paid_share) == SUM(owed_share) == cost` still holds.

@@ -85,7 +85,8 @@ One table, two kinds:
 | | Real | Ghost |
 |---|---|---|
 | `is_ghost` | 0 | 1 |
-| `email` | required | optional, unverifiable |
+| `email` | required, unique | always NULL (must not occupy the login index) |
+| `invite_email` | always NULL | optional, unique among that owner's live friend-ghosts |
 | `password_hash` | required | NULL (enforced) |
 | Identity | email + password | none of their own; a guest link acts as them |
 

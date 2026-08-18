@@ -12,6 +12,9 @@
  * account over, that is a CLAIM: they register, then merge the ghost into their
  * new account (src/routes/native/claim.ts). No balance moves either way.
  *
+ * An invite address is stored in `invite_email`, not `users.email`. Occupying
+ * the login unique index would let anyone squat an inbox by adding a friend.
+ *
  * The invite is a guest link (`/guest/l/<secret>`), not a recovery code. It is
  * revocable, it expires if the owner says so, and it needs no transcription.
  */
@@ -28,19 +31,20 @@ import {
 } from "../../domain/balances.ts";
 import {
   addFriendship,
+  findExplicitGhostByInviteEmail,
   removeFriendship,
   listExplicitFriendIds,
   listRelatedUserIds,
 } from "../../domain/friends.ts";
 import { createExpense, createPayment } from "../../domain/expenses.ts";
 import { commentCountSql } from "../../domain/comments.ts";
-import { mintAccessLink } from "../../domain/access-links.ts";
+import { findFriendLink, mintAccessLink } from "../../domain/access-links.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
 import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { sendEmail } from "../../email/postmark.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
 import { env } from "../../env.ts";
-import { displayName, MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
+import { displayName, knownEmail, MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 import { logChange } from "../../domain/sync-log.ts";
 import {
@@ -111,6 +115,7 @@ friendRoutes.get("/", async (c) => {
       .select([
         "id",
         "email",
+        "invite_email",
         "name",
         "nickname",
         "icon_letters",
@@ -133,8 +138,8 @@ friendRoutes.get("/", async (c) => {
 
   return c.json({
     friends: users.map((u) => ({
-      id: u.id,
-      email: u.email,
+        id: u.id,
+        email: knownEmail(u),
       ...personSnake(u),
       is_ghost: u.is_ghost,
       // Only explicit friendships can be removed; the rest come from shared
@@ -165,12 +170,13 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
     return c.json({ error: "Guest accounts cannot add friends." }, 403);
   }
 
-  const existing = input.email
+  const existingAccount = input.email
     ? await db
         .selectFrom("users")
         .select([
           "id",
           "email",
+          "invite_email",
           "name",
           "nickname",
           "icon_letters",
@@ -179,37 +185,40 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
           "is_ghost",
         ])
         .where("email", "=", input.email)
+        .where("is_ghost", "=", 0)
         .where("deleted_at", "is", null)
         .executeTakeFirst()
     : undefined;
 
-  if (existing?.id === auth.id) {
+  if (existingAccount?.id === auth.id) {
     return c.json({ error: "That's your own email address." }, 400);
   }
 
   // Someone with that address already has an account: link to them rather than
   // creating a duplicate person. Their name is theirs, not whatever was typed.
-  if (existing) {
-    await addFriendship(auth.id, existing.id);
+  if (existingAccount) {
+    await addFriendship(auth.id, existingAccount.id);
 
     const invite = friendInviteEmail({
-      name: displayName(existing),
+      name: displayName(existingAccount),
       inviterName: displayName(auth),
       // They already have an account, so the invite is just the front door.
       acceptUrl: `${env.APP_ORIGIN}/app`,
       isNewAccount: false,
     });
-    const delivery = existing.email ? await sendEmail({ to: existing.email, ...invite }) : null;
+    const delivery = existingAccount.email
+      ? await sendEmail({ to: existingAccount.email, ...invite })
+      : null;
 
     return c.json(
       {
         friend: {
-          id: existing.id,
-          email: existing.email,
-          ...personSnake(existing),
-          is_ghost: existing.is_ghost,
+          id: existingAccount.id,
+          email: knownEmail(existingAccount),
+          ...personSnake(existingAccount),
+          is_ghost: existingAccount.is_ghost,
           is_explicit: 1,
-          balances: await getBalanceBetween(db, auth.id, existing.id),
+          balances: await getBalanceBetween(db, auth.id, existingAccount.id),
           breakdown: [],
         },
         existingAccount: true,
@@ -217,6 +226,55 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
       },
       201,
     );
+  }
+
+  // This owner's existing placeholder at that address, not anyone else's.
+  // Unique per owner: two people can invite the same inbox, and that inbox
+  // can still register because invite_email is not users.email.
+  if (input.email) {
+    const existingGhost = await findExplicitGhostByInviteEmail(db, auth.id, input.email);
+    if (existingGhost) {
+      await addFriendship(auth.id, existingGhost.id);
+
+      let inviteUrl =
+        (await findFriendLink(db, auth.id, existingGhost.id))?.url ?? undefined;
+      if (!inviteUrl) {
+        const minted = await transaction((trx) =>
+          mintAccessLink(trx, {
+            kind: "friend",
+            userId: existingGhost.id,
+            createdBy: auth.id,
+          }),
+        );
+        inviteUrl = minted.url;
+      }
+
+      const invite = friendInviteEmail({
+        name: displayName(existingGhost),
+        inviterName: displayName(auth),
+        acceptUrl: inviteUrl,
+        isNewAccount: true,
+      });
+      const delivery = await sendEmail({ to: input.email, ...invite });
+
+      return c.json(
+        {
+          friend: {
+            id: existingGhost.id,
+            email: knownEmail(existingGhost),
+            ...personSnake(existingGhost),
+            is_ghost: existingGhost.is_ghost,
+            is_explicit: 1,
+            balances: await getBalanceBetween(db, auth.id, existingGhost.id),
+            breakdown: [],
+          },
+          existingAccount: false,
+          emailDelivered: delivery.delivered,
+          inviteUrl,
+        },
+        201,
+      );
+    }
   }
 
   // A placeholder person plus the guest link that reaches them, minted
@@ -227,16 +285,16 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
       .values({
         id: ulid(),
         name: input.name,
-        // A ghost may carry an address it has not proved control of. Login
-        // still refuses ghosts, and issueVerificationToken skips them, so this
-        // never turns into an unverified-but-usable login.
-        email: input.email ?? null,
+        // Stored off the login unique index on purpose: occupying users.email
+        // would let anyone squat an inbox by adding a friend.
+        invite_email: input.email ?? null,
         default_currency: auth.defaultCurrency,
         is_ghost: 1,
       })
       .returning([
         "id",
         "email",
+        "invite_email",
         "name",
         "nickname",
         "icon_letters",
@@ -271,7 +329,15 @@ friendRoutes.post("/", zValidator("json", addFriendSchema), async (c) => {
 
   return c.json(
     {
-      friend: { ...friend, is_explicit: 1, balances: [], breakdown: [] },
+      friend: {
+        id: friend.id,
+        email: knownEmail(friend),
+        ...personSnake(friend),
+        is_ghost: friend.is_ghost,
+        is_explicit: 1,
+        balances: [],
+        breakdown: [],
+      },
       existingAccount: false,
       emailDelivered,
       // Returned so the UI can copy it. The same URL is always available from
@@ -295,6 +361,7 @@ friendRoutes.get("/:id", async (c) => {
     .select([
       "id",
       "email",
+      "invite_email",
       "name",
       "nickname",
       "icon_letters",
@@ -318,7 +385,7 @@ friendRoutes.get("/:id", async (c) => {
   return c.json({
     friend: {
       id: friend.id,
-      email: friend.email,
+      email: knownEmail(friend),
       ...personSnake(friend),
       is_ghost: friend.is_ghost,
       is_explicit: explicitIds.includes(friendId),
@@ -382,6 +449,7 @@ friendRoutes.patch(
         .returning([
           "id",
           "email",
+          "invite_email",
           "name",
           "nickname",
           "icon_letters",
@@ -415,7 +483,7 @@ friendRoutes.patch(
     return c.json({
       friend: {
         id: updated.id,
-        email: updated.email,
+        email: knownEmail(updated),
         ...personSnake(updated),
         is_ghost: updated.is_ghost,
         is_explicit: explicitIds.includes(friendId),

@@ -145,6 +145,43 @@ export async function listExplicitFriendIds(
   return rows.map((r) => (r.user_a_id === userId ? r.user_b_id : r.user_a_id));
 }
 
+const GHOST_INVITE_COLUMNS = [
+  "id",
+  "email",
+  "invite_email",
+  "name",
+  "nickname",
+  "icon_letters",
+  "icon_emoji",
+  "icon_hue",
+  "is_ghost",
+  "metadata",
+] as const;
+
+/**
+ * The live ghost this owner already invited at `email`, if any.
+ *
+ * Scoped to explicit friendships, not everyone related: sharing a group with
+ * someone else's placeholder must not let you attach to it by typing the same
+ * address. Two owners may each have a ghost at the same inbox.
+ */
+export async function findExplicitGhostByInviteEmail(
+  database: DB,
+  ownerId: string,
+  email: string,
+) {
+  const ids = await listExplicitFriendIds(database, ownerId);
+  if (ids.length === 0) return undefined;
+  return database
+    .selectFrom("users")
+    .select(GHOST_INVITE_COLUMNS)
+    .where("id", "in", ids)
+    .where("is_ghost", "=", 1)
+    .where("invite_email", "=", email)
+    .where("deleted_at", "is", null)
+    .executeTakeFirst();
+}
+
 /**
  * Everyone this user can see: explicit friends, plus everyone they share a live
  * group membership or an expense with.

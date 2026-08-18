@@ -298,7 +298,8 @@ describe("ghosts", () => {
       .values({
         id: withEmail,
         name: "Invited",
-        email: "invited-ghost@example.com",
+        email: null,
+        invite_email: "invited-ghost@example.com",
         is_ghost: 1,
       })
       .execute();

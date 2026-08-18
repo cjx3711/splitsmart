@@ -10,6 +10,7 @@ import { useSidebarRefresh } from "../App.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { CopyLinkButton } from "../LinkPanel.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
+import { HelpTip } from "../HelpTip.tsx";
 
 export function NewFriend() {
   const refreshSidebar = useSidebarRefresh();
@@ -78,16 +79,16 @@ export function NewFriend() {
                 <span>
                   {result.delivered
                     ? "Their guest link, in case the email goes astray:"
-                    : "No invite was emailed. Send them this link yourself:"}
+                    : "No invite was emailed. Send them this link yourself:"}{" "}
+                  <HelpTip label="About this invite link">
+                    Expires in 3 months. You can always copy it again from their page. If it is
+                    compromised, turn it off and create a new one.
+                  </HelpTip>
                 </span>
                 <div className="link-url-row">
                   <code className="link-url">{result.inviteUrl}</code>
                   <CopyLinkButton url={result.inviteUrl} />
                 </div>
-                <span className="field-hint">
-                  Expires in 3 months. You can always copy it again from their
-                  page. If it is compromised, turn it off and create a new one.
-                </span>
               </>
             )}
             <span>
@@ -110,7 +111,14 @@ export function NewFriend() {
         </div>
 
         <div>
-          <label htmlFor="friendEmail">Email (optional)</label>
+          <div className="label-with-help">
+            <label htmlFor="friendEmail">Email (optional)</label>
+            <HelpTip label="About the email">
+              Adding an email sends them a guest link. If this server has no mail provider
+              configured, the invite is written to the server log instead and the link is shown
+              here for you to pass on yourself.
+            </HelpTip>
+          </div>
           <input
             id="friendEmail"
             type="email"
@@ -118,11 +126,6 @@ export function NewFriend() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder="grace@example.com"
           />
-          <p className="field-hint">
-            Adding an email sends them a guest link. If this server has no mail provider
-            configured, the invite is written to the server log instead and the link is shown
-            here for you to pass on yourself.
-          </p>
         </div>
 
         <div>

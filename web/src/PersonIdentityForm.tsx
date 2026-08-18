@@ -6,6 +6,7 @@
  */
 import { ICON_HUES, defaultIconLetters } from "../../src/domain/person.ts";
 import { Avatar } from "./Avatar.tsx";
+import { HelpTip } from "./HelpTip.tsx";
 
 export type IdentityDraft = {
   name: string;
@@ -123,7 +124,12 @@ export function PersonIdentityForm({
       </div>
 
       <div>
-        <label htmlFor={`${idPrefix}-letters`}>Icon letters</label>
+        <div className="label-with-help">
+          <label htmlFor={`${idPrefix}-letters`}>Icon letters</label>
+          <HelpTip label="About icon letters">
+            Up to two characters. Leave blank to derive them from the name.
+          </HelpTip>
+        </div>
         <input
           id={`${idPrefix}-letters`}
           value={value.iconLetters}
@@ -131,9 +137,6 @@ export function PersonIdentityForm({
           maxLength={8}
           placeholder={autoLetters}
         />
-        <p className="field-hint">
-          Up to two characters. Leave blank to derive them from the name.
-        </p>
       </div>
 
       <fieldset className="identity-fieldset">

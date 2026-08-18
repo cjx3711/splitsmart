@@ -31,6 +31,7 @@ import {
 } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
+import { HelpTip } from "../HelpTip.tsx";
 
 type Step = "key" | "review" | "running" | "done";
 
@@ -242,7 +243,13 @@ function KeyStep({
         }}
       >
         <div>
-          <label htmlFor="apiKey">Splitwise API key</label>
+          <div className="label-with-help">
+            <label htmlFor="apiKey">Splitwise API key</label>
+            <HelpTip label="About the API key">
+              The key is used for this import only; it is never saved to the database, and it is
+              forgotten as soon as you leave this page.
+            </HelpTip>
+          </div>
           <input
             id="apiKey"
             value={apiKey}
@@ -258,8 +265,7 @@ function KeyStep({
           <a href="https://secure.splitwise.com/apps" target="_blank" rel="noreferrer">
             secure.splitwise.com/apps
           </a>
-          . The key is used for this import only; it is never saved to the database, and it is
-          forgotten as soon as you leave this page.
+          .
         </p>
         <button type="submit" disabled={busy || apiKey.trim().length < 10}>
           {busy ? "Checking your Splitwise account…" : "Check my Splitwise account"}
@@ -282,7 +288,9 @@ function ReviewStep({
 }) {
   const matched = preview.people.filter((p) => p.matchedBy === "email");
   const creating = preview.people.filter((p) => p.matchedBy === "created");
-  const linked = preview.people.filter((p) => p.matchedBy === "splitwise_id");
+  const linked = preview.people.filter(
+    (p) => p.matchedBy === "splitwise_id" || p.matchedBy === "invite_email",
+  );
 
   return (
     <div className="stack">
@@ -321,7 +329,7 @@ function ReviewStep({
       />
       {linked.length > 0 && (
         <PeopleList
-          title="Already imported previously"
+          title="Already on your books"
           people={linked}
           empty=""
         />
@@ -429,13 +437,14 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
 
       {outcome.newPeople.length > 0 && (
         <div className="card stack">
-          <strong>People created ({outcome.newPeople.length})</strong>
-          <p className="muted" style={{ margin: 0 }}>
-            These are placeholders, with no way in yet. Importing your history is
-            not the same as deciding to share it, so no guest links were made.
-            Open someone's friend page and create one when you want them to see
-            what you have split.
-          </p>
+          <strong className="with-help">
+            People created ({outcome.newPeople.length})
+            <HelpTip label="About people created">
+              These are placeholders, with no way in yet. Importing your history is not the same as
+              deciding to share it, so no guest links were made. Open someone&apos;s friend page and
+              create one when you want them to see what you have split.
+            </HelpTip>
+          </strong>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {outcome.newPeople.map((person) => (
               <li key={person.splitwiseId} style={{ marginBottom: "0.4rem" }}>
@@ -449,11 +458,13 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
 
       {outcome.skipped.length > 0 && (
         <div className="card stack">
-          <strong>Skipped ({outcome.skipped.length})</strong>
-          <p className="muted" style={{ margin: 0 }}>
-            Nothing was written for these. A row we cannot import exactly is left out rather than
-            guessed at.
-          </p>
+          <strong className="with-help">
+            Skipped ({outcome.skipped.length})
+            <HelpTip label="About skipped rows">
+              Nothing was written for these. A row we cannot import exactly is left out rather than
+              guessed at.
+            </HelpTip>
+          </strong>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {outcome.skipped.map((skip) => (
               <li key={skip.splitwiseId}>

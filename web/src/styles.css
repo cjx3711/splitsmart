@@ -350,6 +350,86 @@ h2 {
   margin: 2rem 0 0.75rem;
 }
 
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.with-help {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.label-with-help {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.3rem;
+}
+
+.label-with-help label {
+  margin-bottom: 0;
+}
+
+.help-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.help-tip-btn {
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-tip-btn:hover,
+.help-tip-btn:focus-visible {
+  color: var(--text);
+  border-color: var(--text);
+  background: var(--surface-2);
+}
+
+.help-tip-pop {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+
 h3 {
   font-size: 0.95rem;
   font-weight: 650;
@@ -512,12 +592,6 @@ h3 {
   gap: 1rem;
 }
 
-.ledger-note {
-  margin: 0.75rem 0 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
 .estimate {
   margin-top: 0.35rem;
   font-size: 0.875rem;
@@ -641,6 +715,37 @@ a.list-item:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.person-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.person-link:hover {
+  color: var(--accent);
+}
+
+.member-picker-list {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.member-picker-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.member-picker-item:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.member-new-form {
+  margin-top: 0.25rem;
 }
 
 /* Per-group breakdown under a person, mirroring Splitwise's sub-lines. */
@@ -1458,6 +1563,17 @@ button.icon:hover:not(:disabled) {
   color: var(--text);
   border: 1px solid var(--border);
   font-weight: 500;
+}
+
+.payer-option-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.payer-option-row .payer-option {
+  flex: 1;
+  width: auto;
 }
 
 .payer-option.is-active {

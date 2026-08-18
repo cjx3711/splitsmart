@@ -62,10 +62,14 @@ CREATE TABLE currencies (
 --
 --   Real users  (is_ghost = 0): have email + password_hash, can log in normally.
 --   Ghost users (is_ghost = 1): PLACEHOLDER PEOPLE, created by whoever added
---                               them. No email, no password, and no credential
---                               of their own. A guest reaches a ghost's data by
---                               holding an access_links secret that says it may
---                               act as them. See docs/GUEST.md.
+--                               them. No login email, no password, and no
+--                               credential of their own. A guest reaches a
+--                               ghost's data by holding an access_links secret
+--                               that says it may act as them. See docs/GUEST.md.
+--                               The address they were invited at lives in
+--                               invite_email, never in email: occupying the
+--                               unique login index would let anyone squat an
+--                               inbox by adding a friend.
 --
 -- A ghost is never upgraded in place. The one path is: create a real account,
 -- then claim the ghost, which MERGES it (src/domain/merge.ts) and retires the
@@ -76,7 +80,14 @@ CREATE TABLE users (
   -- leftovers. See src/domain/metadata.ts. Default '{}' so inserts can omit it.
   metadata           TEXT    NOT NULL DEFAULT '{}',
 
+  -- Login address. Unique. Ghosts must leave this NULL (CHECK below) so
+  -- inviting someone cannot block them from registering.
   email              TEXT UNIQUE COLLATE NOCASE,
+  -- Address this ghost was invited at. Not a login. Not globally unique:
+  -- two owners may invite the same inbox, and that inbox may still sign up.
+  -- Unique among one owner's live friend-ghosts (enforced at friend-add,
+  -- audited by yarn db:check).
+  invite_email       TEXT COLLATE NOCASE,
   password_hash      TEXT,                     -- see src/auth/password.ts for format
   email_verified_at  TEXT,
 
@@ -111,14 +122,17 @@ CREATE TABLE users (
   CHECK (icon_hue IS NULL OR (icon_hue >= 0 AND icon_hue <= 359)),
   -- A real (non-ghost) account must be able to authenticate.
   CHECK (is_ghost = 1 OR (email IS NOT NULL AND password_hash IS NOT NULL)),
-  -- A ghost must not carry credentials it cannot use.
-  CHECK (is_ghost = 0 OR password_hash IS NULL),
+  -- A ghost must not occupy the login unique index, or carry a password.
+  CHECK (is_ghost = 0 OR (email IS NULL AND password_hash IS NULL)),
+  -- invite_email is the invite-only address; real accounts do not have one.
+  CHECK (is_ghost = 1 OR invite_email IS NULL),
   -- A merged row is retired, not alive.
   CHECK (merged_into_user_id IS NULL OR deleted_at IS NOT NULL),
   CHECK (merged_into_user_id IS NULL OR merged_into_user_id <> id)
 ) STRICT;
 
 CREATE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
+CREATE INDEX idx_users_invite_email ON users(invite_email) WHERE invite_email IS NOT NULL;
 CREATE UNIQUE INDEX idx_users_splitwise_id
   ON users(json_extract(metadata, '$.splitwise_id'))
   WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
