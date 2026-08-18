@@ -41,11 +41,13 @@ export function PersonIdentityDialog({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && person) {
-      setDraft(draftFromPerson(person));
-      setError(null);
-    }
-  }, [open, person]);
+    if (!open || !person) return;
+    setDraft(draftFromPerson(person));
+    setError(null);
+    // Seed when the dialog opens, not when a live query refreshes the person
+    // under an in-progress edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, person?.id]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

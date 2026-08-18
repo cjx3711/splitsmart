@@ -225,7 +225,11 @@ web/                 React frontend (Vite)
     Logo.tsx         The mark (also copied literally into public/favicon.svg)
     Sidebar.tsx      Owns the group/friend lists shown on every screen
     ExpenseForm.tsx      The one add-expense form (group, friend, or neither)
-    AddExpenseDialog.tsx Loads the people/groups it offers; the only entry point
+    ExpenseDialog.tsx    ExpenseForm in a modal. Shared by both shells
+    AddExpenseDialog.tsx Loads people/groups from the mirror; logged-in entry
+    SettleUpDialog.tsx   Currency picker + SettleUpForm. Shared by both shells
+    Modal.tsx            Native <dialog>. Modal chrome; Dialog for the lightbox
+    ConfirmDialog.tsx    Two-button confirm on top of Modal
     PeoplePicker.tsx     Who is on the expense: an email-style To: field
     PaidBy.tsx           Who put the money in. NOT how it is split
     SplitEditor.tsx      How it is split, previewed with the real engine
@@ -490,10 +494,11 @@ of the others can express. It requires the caller to be a participant: a
 non-group expense between two other people creates a balance neither of them can
 see and there is no screen for it.
 
-On the client, `web/src/AddExpenseDialog.tsx` is the only place that knows where
-people come from (a group's members, or your friends). `ExpenseForm` takes the
-pool as a prop, so the group screen, the friend screen and the top bar all open
-the same form.
+On the client, `web/src/ExpenseDialog.tsx` wraps the form for both shells.
+The logged-in `AddExpenseDialog` is the only place that knows where people
+come from (a group's members, or your friends); the guest screens pass the
+people the link can see. `ExpenseForm` takes the pool as a prop, so nobody
+gets a second form.
 
 ## Friends
 

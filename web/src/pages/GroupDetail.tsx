@@ -167,7 +167,6 @@ export function GroupDetail() {
             id: ulid(),
             payload: paymentAsExpense(payment, group.id),
           });
-          setOpenDialog(null);
         }}
       />
 

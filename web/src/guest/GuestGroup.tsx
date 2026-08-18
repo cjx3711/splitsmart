@@ -141,7 +141,6 @@ export function GuestGroup() {
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payment) => {
           await guestApi.createPayment({ ...payment, groupId: group.id });
-          setOpenDialog(null);
           await load();
         }}
       />

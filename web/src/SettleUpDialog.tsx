@@ -168,7 +168,10 @@ export function SettleUpDialog({
           currencies={currencies}
           preferredCurrency={preferredCurrency}
           initial={active?.initial}
-          onSubmit={onSubmit}
+          onSubmit={async (payment) => {
+            await onSubmit(payment);
+            onClose();
+          }}
         />
       )}
     </Modal>

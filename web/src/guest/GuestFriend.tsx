@@ -137,7 +137,6 @@ export function GuestFriend() {
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payment) => {
           await guestApi.createPayment({ ...payment, groupId: null });
-          setOpenDialog(null);
           await load();
         }}
       />

@@ -114,7 +114,6 @@ export function FriendDetail() {
         title={`Add Expense with ${name}`}
         initialFriendId={friend.id}
         onClose={() => setOpenDialog(null)}
-
       />
 
       <PersonIdentityDialog
@@ -146,7 +145,6 @@ export function FriendDetail() {
             id: ulid(),
             payload: paymentAsExpense(payment, null),
           });
-          setOpenDialog(null);
         }}
       />
 
