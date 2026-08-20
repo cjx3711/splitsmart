@@ -77,7 +77,8 @@ export interface CreateExpenseInput {
   createdBy: string;
   /**
    * JSON bag written as `expenses.metadata`. The importer stamps
-   * `{ splitwise_id }` so a second run can match; native creates omit it.
+   * `{ splitwise_id }` so a second run can match, and `repeat_paused` when a
+   * Splitwise repeating bill lands as a stopped series. Native creates omit it.
    */
   metadata?: EntityMetadata;
   /**
@@ -471,6 +472,123 @@ export async function updateExpense(
   });
 
   return { updatedAt, version };
+}
+
+/**
+ * Turns a stopped series back on, from today, without backfilling.
+ *
+ * Rebuilds the update from the stored row so callers (the import wizard) do
+ * not have to re-send the split. Same resume rule as an ordinary PATCH:
+ * `next_repeat` walks forward from the bill date until it is on or after
+ * `now`. Already-live templates are a no-op.
+ */
+export async function resumeRepeat(
+  expenseId: string,
+  updatedBy: string,
+  now: Date = new Date(),
+): Promise<"resumed" | "already_live"> {
+  const existing = await db
+    .selectFrom("expenses")
+    .select([
+      "id",
+      "deleted_at",
+      "repeat_interval",
+      "repeat_of",
+      "group_id",
+      "description",
+      "details",
+      "cost_minor",
+      "currency_code",
+      "date",
+      "category_id",
+      "split_type",
+      "split_meta",
+      "is_payment",
+      "payment_method",
+      "metadata",
+    ])
+    .where("id", "=", expenseId)
+    .executeTakeFirst();
+
+  if (!existing) throw new ExpenseError(`Expense ${expenseId} not found`);
+  if (existing.deleted_at) throw new ExpenseError(`Expense ${expenseId} is deleted`);
+  if (existing.repeat_of !== null) {
+    throw new ExpenseError("An occurrence cannot become a template");
+  }
+  if (isRepeatInterval(existing.repeat_interval)) return "already_live";
+
+  const paused = parseMetadata(existing.metadata).repeat_paused;
+  if (!isRepeatInterval(paused)) {
+    throw new ExpenseError("Expense is not a stopped series");
+  }
+
+  const shares = await db
+    .selectFrom("expense_users")
+    .select(["user_id", "paid_share_minor", "split_input"])
+    .where("expense_id", "=", expenseId)
+    .execute();
+
+  await updateExpense(
+    expenseId,
+    {
+      groupId: existing.group_id,
+      description: existing.description,
+      details: existing.details,
+      costMinor: existing.cost_minor,
+      currencyCode: existing.currency_code,
+      date: existing.date,
+      categoryId: existing.category_id,
+      splitType: asSplitType(existing.split_type),
+      participants: shares.map((s) => ({
+        userId: s.user_id,
+        paidMinor: s.paid_share_minor,
+        ...(s.split_input != null ? { input: s.split_input } : {}),
+      })),
+      ...splitMetaFields(existing.split_type, existing.split_meta),
+      isPayment: existing.is_payment === 1,
+      paymentMethod: existing.payment_method,
+      repeatInterval: paused,
+      updatedBy,
+    },
+    now,
+  );
+
+  return "resumed";
+}
+
+function asSplitType(value: string): SplitType {
+  switch (value) {
+    case "equal":
+    case "exact":
+    case "percent":
+    case "shares":
+    case "adjustment":
+    case "itemized":
+      return value;
+    default:
+      throw new ExpenseError(`Unknown split type ${value}`);
+  }
+}
+
+function splitMetaFields(
+  splitType: string,
+  raw: string | null,
+): { items?: SplitItem[]; taxMinor?: number; tipMinor?: number } {
+  if (splitType !== "itemized" || !raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as {
+      items?: SplitItem[];
+      taxMinor?: number;
+      tipMinor?: number;
+    };
+    return {
+      ...(Array.isArray(parsed.items) ? { items: parsed.items } : {}),
+      ...(typeof parsed.taxMinor === "number" ? { taxMinor: parsed.taxMinor } : {}),
+      ...(typeof parsed.tipMinor === "number" ? { tipMinor: parsed.tipMinor } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 /**

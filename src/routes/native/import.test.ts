@@ -33,9 +33,9 @@ const ME_SW_ID = 1000;
 
 const swFriends = [
   // Matches an existing SplitSmart account by email; the heuristic under test.
-  { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com" },
-  // No local account: becomes a placeholder.
-  { id: 2002, first_name: "Carol", last_name: "Clark", email: "carol@example.com", created_at: "2021-04-01T00:00:00Z" },
+  { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com", registration_status: "confirmed" },
+  // No local account: becomes a placeholder. Dummy: not a real Splitwise user.
+  { id: 2002, first_name: "Carol", last_name: "Clark", email: "carol@example.com", created_at: "2021-04-01T00:00:00Z", registration_status: "dummy" },
 ];
 
 const swGroups = [
@@ -117,8 +117,8 @@ const swExpenses = [
     // Nested, and a count that agrees with the array.
     comments_count: 2,
     comments: swComments[4001],
-    // A recurring series in Splitwise. Imported as the bill that happened, never
-    // as a live template: originating future copies is not importing.
+    // A recurring series in Splitwise. Imported as a stopped series, never
+    // armed: originating future copies is not importing.
     repeats: true,
     repeat_interval: "monthly",
     next_repeat: "2026-04-01T00:00:00Z",
@@ -131,18 +131,19 @@ const swExpenses = [
     ],
   },
   {
-    // Non-group, and a zero-decimal currency: 3400 JPY is 3400 minor units.
+    // Non-group, and a zero-decimal currency. Splitwise often sends a trailing
+    // ".0" even for JPY; those zeros are not extra precision and must import.
     id: 4002,
     group_id: 0,
     description: "Ramen",
-    cost: "3400",
+    cost: "3400.0",
     currency_code: "JPY",
     date: "2026-03-02T00:00:00Z",
     // A count with no nested array: this is the shape that needs step 4.
     comments_count: 2,
     users: [
-      { user: swGroups[1]!.members[0], paid_share: "3400", owed_share: "1700" },
-      { user: swFriends[0], paid_share: "0", owed_share: "1700" },
+      { user: swGroups[1]!.members[0], paid_share: "3400.0", owed_share: "1700.0" },
+      { user: swFriends[0], paid_share: "0.0", owed_share: "1700.0" },
     ],
   },
   {
@@ -182,6 +183,20 @@ const swExpenses = [
     date: "2026-03-06T00:00:00Z",
     users: [{ user: swFriends[0], paid_share: "5.00", owed_share: "5.00" }],
   },
+  {
+    // Splitwise often sends JPY with cents. Extra digits are dropped, not skipped.
+    id: 4006,
+    group_id: 0,
+    description: "Payment",
+    payment: true,
+    cost: "197529.02",
+    currency_code: "JPY",
+    date: "2026-03-07T00:00:00Z",
+    users: [
+      { user: swFriends[1], paid_share: "197529.02", owed_share: "0.0" },
+      { user: swGroups[1]!.members[0], paid_share: "0.0", owed_share: "197529.02" },
+    ],
+  },
 ];
 
 /** Requests the fake saw, so auth and paging can be asserted on. */
@@ -210,6 +225,7 @@ function startFakeSplitwise(): Promise<{ server: Server; base: string }> {
             last_name: "Anderson",
             email: "alice@example.com",
             default_currency: "USD",
+            registration_status: "confirmed",
           },
         });
       case "/api/v3.0/get_friends":
@@ -255,7 +271,8 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { ulid, isUlid, ulidTime } = await import("../../domain/ulid.ts");
-const { splitwiseIdOf, splitwiseIdSql } = await import("../../domain/metadata.ts");
+const { splitwiseIdOf, splitwiseIdSql, parseMetadata } = await import("../../domain/metadata.ts");
+const { runDueRecurrences } = await import("../../domain/scheduler.ts");
 
 let apiToken: string;
 let aliceId: string;
@@ -439,6 +456,7 @@ describe("friends", () => {
     assert.equal(carolRow.is_ghost, 1);
     assert.equal(carolRow.email, null, "imported ghosts must not occupy the login unique index");
     assert.equal(carolRow.invite_email, "carol@example.com");
+    assert.equal(parseMetadata(carolRow.metadata).splitwise_registration_status, "dummy");
 
     const friends = await get("/friends");
     const names = friends.body.friends.map((f: any) => f.name).sort();
@@ -454,6 +472,7 @@ describe("friends", () => {
       .where("id", "=", bobId)
       .executeTakeFirstOrThrow();
     assert.equal(splitwiseIdOf(bobRow.metadata), 2001);
+    assert.equal(parseMetadata(bobRow.metadata).splitwise_registration_status, "confirmed");
     assert.equal(bobRow.is_ghost, 0, "matching must not demote a real account to a ghost");
   });
 
@@ -519,8 +538,14 @@ describe("expenses", () => {
     const { status, body } = await post("/import/expenses", { apiKey: API_KEY });
     assert.equal(status, 200);
     assert.equal(body.fetched, swExpenses.length);
-    assert.equal(body.imported, 3);
+    assert.equal(body.imported, 4);
+    assert.equal(body.pausedSeries.length, 1);
+    assert.equal(body.pausedSeries[0].description, "Rent");
+    assert.equal(body.pausedSeries[0].interval, "monthly");
     assert.equal(body.done, false, "a full page always offers a next offset");
+    assert.equal(body.warnings.length, 1);
+    assert.equal(body.warnings[0].splitwiseId, 4006);
+    assert.match(body.warnings[0].reason, /fractional amount 0\.02 JPY dropped/i);
 
     const rent = await db
       .selectFrom("expenses")
@@ -574,6 +599,35 @@ describe("expenses", () => {
     assert.equal(payment.is_payment, 1);
   });
 
+  test("extra JPY digits are dropped, noted on the bill, and not skipped", async () => {
+    const payment = await db
+      .selectFrom("expenses")
+      .selectAll()
+      .where(splitwiseIdSql(), "=", 4006)
+      .executeTakeFirstOrThrow();
+    assert.equal(payment.currency_code, "JPY");
+    assert.equal(payment.cost_minor, 197529);
+    assert.equal(payment.is_payment, 1);
+
+    const comments = await db
+      .selectFrom("comments")
+      .select(["kind", "content"])
+      .where("expense_id", "=", payment.id)
+      .where("deleted_at", "is", null)
+      .execute();
+    assert.equal(comments.length, 1);
+    assert.equal(comments[0]!.kind, "system");
+    assert.match(comments[0]!.content, /fractional amount 0\.02 JPY dropped on import/i);
+
+    const shares = await db
+      .selectFrom("expense_users")
+      .select(["paid_share_minor", "owed_share_minor"])
+      .where("expense_id", "=", payment.id)
+      .execute();
+    assert.equal(shares.reduce((sum, s) => sum + s.paid_share_minor, 0), 197529);
+    assert.equal(shares.reduce((sum, s) => sum + s.owed_share_minor, 0), 197529);
+  });
+
   test("skips the unimportable with a reason, and writes nothing for them", async () => {
     const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
     const reasons = new Map(body.skipped.map((s: any) => [s.splitwiseId, s.reason]));
@@ -594,10 +648,12 @@ describe("expenses", () => {
   test("re-running a page imports nothing and duplicates nothing", async () => {
     const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
     assert.equal(body.imported, 0);
-    assert.equal(body.alreadyPresent, 3);
+    assert.equal(body.alreadyPresent, 4);
+    assert.equal(body.pausedSeries.length, 0, "already-present series are not offered again");
+    assert.equal(body.warnings.length, 0, "truncation is not re-warned on a second run");
 
     const count = await db.selectFrom("expenses").select("id").execute();
-    assert.equal(count.length, 3);
+    assert.equal(count.length, 4);
   });
 
   test("paging walks to the end", async () => {
@@ -735,29 +791,34 @@ describe("comments", () => {
 });
 
 describe("recurrence and receipts", () => {
-  test("a Splitwise recurring expense does NOT become a live template here", async () => {
+  test("a Splitwise recurring expense lands as a stopped series, not a live template", async () => {
     const rent = await db
       .selectFrom("expenses")
-      .select(["repeat_interval", "next_repeat", "repeat_of"])
+      .select(["repeat_interval", "next_repeat", "repeat_of", "metadata"])
       .where(splitwiseIdSql(), "=", 4001)
       .executeTakeFirstOrThrow();
 
     // Splitwise says repeats: true, monthly, next 2026-04-01. Importing that as a
-    // schedule would start generating bills this account never asked us to
-    // originate. It arrives as the bill that already happened, and nothing else.
+    // live schedule would start generating bills this account never asked us to
+    // originate. It arrives paused, and the wizard offers to continue it.
     assert.equal(rent.repeat_interval, null);
     assert.equal(rent.next_repeat, null);
     assert.equal(rent.repeat_of, null);
+    assert.equal(parseMetadata(rent.metadata).repeat_paused, "monthly");
+
+    const generated = await runDueRecurrences(new Date("2026-05-01T00:00:00Z"));
+    assert.equal(generated.generated.length, 0, "a stopped import must not mint future bills");
   });
 
   test("the preview says so, and says receipts are not imported", async () => {
     const { body } = await post("/import/preview", { apiKey: API_KEY });
     assert.ok(
-      body.warnings.some((w: string) => /future repeats are not scheduled/i.test(w)),
+      body.warnings.some((w: string) => /stopped series/i.test(w)),
       "a user must be told before, not discover it afterwards",
     );
     assert.ok(body.warnings.some((w: string) => /receipt images are not imported/i.test(w)));
-    assert.ok(body.warnings.some((w: string) => /comments come across/i.test(w)));
+    assert.ok(body.warnings.some((w: string) => /more decimal places than their currency allows/i.test(w)));
+    assert.ok(body.warnings.some((w: string) => /comments are imported/i.test(w)));
     assert.ok(body.counts.comments >= 2, "the count is a floor from the first page");
   });
 });
@@ -785,7 +846,7 @@ describe("run", () => {
     assert.equal(body.expenses.nextOffset, null);
     // Everything already landed in the step-by-step tests above.
     assert.equal(body.expenses.imported, 0);
-    assert.equal(body.expenses.alreadyPresent, 3);
+    assert.equal(body.expenses.alreadyPresent, 4);
     assert.equal(body.groups.groups[0].created, false);
   });
 
@@ -867,7 +928,7 @@ describe("re-import as update", () => {
   test("a second refresh of the same row is a no-op, not a rewrite", async () => {
     const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
     assert.equal(body.refreshed, 0, "nothing changed upstream this time");
-    assert.equal(body.alreadyPresent, 3);
+    assert.equal(body.alreadyPresent, 4);
   });
 
   test("a locally edited row is skipped with a reason, never overwritten", async () => {
@@ -917,5 +978,75 @@ describe("re-import as update", () => {
       .where("content", "=", "Ours, not Splitwise's")
       .execute();
     assert.equal(mine.length, 1, "Splitwise never saw it, so it is not Splitwise's to remove");
+  });
+});
+
+describe("continuing imported series", () => {
+  test("resumes a stopped import from today and does not backfill", async () => {
+    const rent = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+
+    const { status, body } = await post("/import/continue-recurring", { ids: [rent.id] });
+    assert.equal(status, 200);
+    assert.deepEqual(body.continued, [rent.id]);
+    assert.equal(body.skipped.length, 0);
+
+    const stored = await db
+      .selectFrom("expenses")
+      .select(["repeat_interval", "next_repeat", "metadata"])
+      .where("id", "=", rent.id)
+      .executeTakeFirstOrThrow();
+    assert.equal(stored.repeat_interval, "monthly");
+    assert.ok(stored.next_repeat, "a live template must be scheduled");
+    const today = new Date().toISOString().slice(0, 10);
+    assert.ok(
+      stored.next_repeat.slice(0, 10) >= today,
+      "resume starts from today, so it cannot be a backfill",
+    );
+    assert.equal(parseMetadata(stored.metadata).repeat_paused, undefined);
+  });
+
+  test("unknown or unseen ids are skipped, not a 404 for the batch", async () => {
+    const { status, body } = await post("/import/continue-recurring", {
+      ids: ["01ARZ3NDEKTSV4RRFFQ69G5FDY"],
+    });
+    assert.equal(status, 200);
+    assert.equal(body.continued.length, 0);
+    assert.equal(body.skipped.length, 1);
+    assert.match(body.skipped[0].reason, /not found/i);
+  });
+
+  test("continuing an already-live series is a no-op, not an error", async () => {
+    const rent = await db
+      .selectFrom("expenses")
+      .select(["id", "next_repeat"])
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+
+    const { body } = await post("/import/continue-recurring", { ids: [rent.id] });
+    assert.deepEqual(body.continued, [rent.id]);
+
+    const after = await db
+      .selectFrom("expenses")
+      .select("next_repeat")
+      .where("id", "=", rent.id)
+      .executeTakeFirstOrThrow();
+    assert.equal(after.next_repeat, rent.next_repeat, "already-live must not reschedule");
+  });
+
+  test("a later import does not pause a series the user continued", async () => {
+    const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
+    assert.equal(body.pausedSeries.length, 0);
+
+    const rent = await db
+      .selectFrom("expenses")
+      .select(["repeat_interval", "next_repeat"])
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+    assert.equal(rent.repeat_interval, "monthly");
+    assert.ok(rent.next_repeat);
   });
 });

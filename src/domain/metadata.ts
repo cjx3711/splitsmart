@@ -5,6 +5,10 @@
  *   splitwise_id - original Splitwise integer, set on import so a second run
  *                  can match instead of duplicating. Never the native PK, never
  *                  on the compat wire.
+ *   splitwise_registration_status - Splitwise's `registration_status` on the
+ *                  person, stored so signup can tell a real Splitwise account
+ *                  (`confirmed`) from an email-only dummy. See
+ *                  src/domain/splitwise-identity.ts.
  *   notes        - freeform user notes.
  *   repeat_paused - the interval a stopped series had, so Resume can put it
  *                  back without guessing weekly vs monthly. Not a column: the
@@ -20,6 +24,11 @@ import { isRepeatInterval, type RepeatInterval } from "./recurring.ts";
 
 export interface EntityMetadata {
   splitwise_id?: number;
+  /**
+   * Splitwise `registration_status`, lowercased. `confirmed` is a real
+   * Splitwise account; `dummy` is an email someone else typed.
+   */
+  splitwise_registration_status?: string;
   notes?: string;
   /** Set while a series is stopped; the live interval lives in repeat_interval. */
   repeat_paused?: string;
@@ -54,8 +63,11 @@ export function splitwiseIdOf(raw: string | null | undefined): number | null {
   return typeof id === "number" && Number.isInteger(id) ? id : null;
 }
 
-export function metadataFromSplitwise(splitwiseId: number): string {
-  return serializeMetadata({ splitwise_id: splitwiseId });
+export function metadataFromSplitwise(
+  splitwiseId: number,
+  registrationStatus?: string | null,
+): string {
+  return metadataWithSplitwiseIdentity("{}", splitwiseId, registrationStatus);
 }
 
 /** Stamp `splitwise_id` without clobbering notes or other keys. No-op if already set. */
@@ -63,9 +75,48 @@ export function metadataWithSplitwiseId(
   existing: string | null | undefined,
   splitwiseId: number,
 ): string {
+  return metadataWithSplitwiseIdentity(existing, splitwiseId);
+}
+
+/**
+ * Stamp Splitwise identity. The id is write-once; a missing registration
+ * status can be filled in later when an import sees the person again.
+ */
+export function metadataWithSplitwiseIdentity(
+  existing: string | null | undefined,
+  splitwiseId: number,
+  registrationStatus?: string | null,
+): string {
   const parsed = parseMetadata(existing);
-  if (typeof parsed.splitwise_id === "number") return serializeMetadata(parsed);
-  return serializeMetadata({ ...parsed, splitwise_id: splitwiseId });
+  if (typeof parsed.splitwise_id !== "number") parsed.splitwise_id = splitwiseId;
+  const status = normalizeSplitwiseRegistrationStatus(registrationStatus);
+  const current = parsed.splitwise_registration_status;
+  if (status && current !== status) {
+    // Fill in, or upgrade dummy → confirmed. Never demote a confirmed person.
+    if (!current || (current === "dummy" && status === "confirmed")) {
+      parsed.splitwise_registration_status = status;
+    }
+  }
+  return serializeMetadata(parsed);
+}
+
+export function normalizeSplitwiseRegistrationStatus(
+  status: string | null | undefined,
+): string | undefined {
+  if (typeof status !== "string") return undefined;
+  const trimmed = status.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function splitwiseRegistrationStatusOf(
+  raw: string | null | undefined,
+): "confirmed" | "dummy" | null {
+  const parsed = parseMetadata(raw).splitwise_registration_status;
+  const value = normalizeSplitwiseRegistrationStatus(
+    typeof parsed === "string" ? parsed : undefined,
+  );
+  if (value === "confirmed" || value === "dummy") return value;
+  return null;
 }
 
 /**

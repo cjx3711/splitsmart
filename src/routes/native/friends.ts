@@ -29,9 +29,11 @@ import {
   getBalanceBetween,
   type CurrencyAmount,
 } from "../../domain/balances.ts";
+import { compareByLastExpense } from "../../domain/friend-recency.ts";
 import {
   addFriendship,
   findExplicitGhostByInviteEmail,
+  lastSharedExpenseIds,
   removeFriendship,
   listExplicitFriendIds,
   listRelatedUserIds,
@@ -119,7 +121,7 @@ export const friendRoutes = new Hono<AppEnv>()
   const ids = await listRelatedUserIds(db, auth.id);
   if (ids.length === 0) return c.json({ friends: [] });
 
-  const [users, balances, explicitIds, breakdowns] = await Promise.all([
+  const [users, balances, explicitIds, breakdowns, lastByUser] = await Promise.all([
     db
       .selectFrom("users")
       .select([
@@ -136,12 +138,16 @@ export const friendRoutes = new Hono<AppEnv>()
       ])
       .where("id", "in", ids)
       .where("deleted_at", "is", null)
-      .orderBy("name")
       .execute(),
     getPairwiseBalances(db, auth.id),
     listExplicitFriendIds(db, auth.id),
     breakdownByUser(auth.id),
+    lastSharedExpenseIds(db, auth.id),
   ]);
+
+  users.sort((a, b) =>
+    compareByLastExpense(a.id, b.id, lastByUser, displayName(a), displayName(b)),
+  );
 
   const balanceByUser = new Map(balances.map((b) => [b.otherUserId, b.balances]));
   const explicit = new Set(explicitIds);

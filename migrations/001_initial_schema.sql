@@ -133,9 +133,12 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_email ON users(email) WHERE email IS NOT NULL;
 CREATE INDEX idx_users_invite_email ON users(invite_email) WHERE invite_email IS NOT NULL;
+-- Live rows only: a claimed ghost must not keep the Splitwise id slot, so the
+-- survivor (or a later import) can hold it.
 CREATE UNIQUE INDEX idx_users_splitwise_id
   ON users(json_extract(metadata, '$.splitwise_id'))
-  WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL;
+  WHERE json_extract(metadata, '$.splitwise_id') IS NOT NULL
+    AND deleted_at IS NULL;
 
 -- ---------------------------------------------------------------------------
 -- sessions: browser cookie sessions

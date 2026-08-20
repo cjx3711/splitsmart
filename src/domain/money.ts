@@ -14,6 +14,50 @@ const DEFAULT_DECIMAL_PLACES = 2;
 
 export class MoneyError extends Error {}
 
+export interface TruncatedAmount {
+  minor: number;
+  /** Decimal string of what was dropped, e.g. `"0.02"`. Null if nothing was. */
+  dropped: string | null;
+}
+
+/**
+ * Parses a decimal string into minor units, dropping extra digits rather than
+ * rounding them. Trailing zeros are not extra precision (`"3400.0"` JPY is 3400);
+ * `"197529.02"` JPY becomes 197529 with `dropped: "0.02"`.
+ *
+ * Import is the caller that wants this. Everywhere else uses `parseAmount`,
+ * which refuses the extra digits so a UI typo cannot silently move money.
+ */
+export function parseAmountTruncating(
+  input: string | number,
+  decimalPlaces = DEFAULT_DECIMAL_PLACES,
+): TruncatedAmount {
+  const raw = typeof input === "number" ? String(input) : input.trim();
+
+  if (!/^-?\d*(\.\d*)?$/.test(raw) || raw === "" || raw === "." || raw === "-") {
+    throw new MoneyError(`Not a valid amount: ${JSON.stringify(input)}`);
+  }
+
+  const negative = raw.startsWith("-");
+  const unsigned = negative ? raw.slice(1) : raw;
+  const [whole = "0", fraction = ""] = unsigned.split(".");
+
+  const kept = fraction.slice(0, decimalPlaces);
+  const extra = fraction.slice(decimalPlaces).replace(/0+$/, "");
+
+  const padded = kept.padEnd(decimalPlaces, "0");
+  const minor = Number(whole || "0") * 10 ** decimalPlaces + Number(padded || "0");
+
+  if (!Number.isSafeInteger(minor)) {
+    throw new MoneyError(`Amount out of safe integer range: ${raw}`);
+  }
+
+  return {
+    minor: negative ? -minor : minor,
+    dropped: extra.length === 0 ? null : `0.${"0".repeat(decimalPlaces)}${extra}`,
+  };
+}
+
 /**
  * Parses a decimal string like "25.00" into minor units.
  *
@@ -24,30 +68,13 @@ export class MoneyError extends Error {}
  */
 export function parseAmount(input: string | number, decimalPlaces = DEFAULT_DECIMAL_PLACES): number {
   const raw = typeof input === "number" ? input.toFixed(decimalPlaces) : input.trim();
-
-  if (!/^-?\d*(\.\d*)?$/.test(raw) || raw === "" || raw === "." || raw === "-") {
-    throw new MoneyError(`Not a valid amount: ${JSON.stringify(input)}`);
-  }
-
-  const negative = raw.startsWith("-");
-  const unsigned = negative ? raw.slice(1) : raw;
-  const [whole = "0", fraction = ""] = unsigned.split(".");
-
-  // More precision than the currency supports is a caller bug, not something to
-  // silently round away; rounding here is how money quietly goes missing.
-  if (fraction.length > decimalPlaces) {
+  const parsed = parseAmountTruncating(raw, decimalPlaces);
+  if (parsed.dropped !== null) {
     throw new MoneyError(
       `${raw} has more than ${decimalPlaces} decimal place(s) for this currency`,
     );
   }
-
-  const padded = fraction.padEnd(decimalPlaces, "0");
-  const minor = Number(whole) * 10 ** decimalPlaces + Number(padded || "0");
-
-  if (!Number.isSafeInteger(minor)) {
-    throw new MoneyError(`Amount out of safe integer range: ${raw}`);
-  }
-  return negative ? -minor : minor;
+  return parsed.minor;
 }
 
 /**

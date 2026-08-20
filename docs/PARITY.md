@@ -319,11 +319,11 @@ the guest-on-a-trip case wants it.
 ### Import
 
 Past Splitwise occurrences are already separate expenses and import as
-`exact` rows today. **Do not** turn `repeats: true` into a live SplitSmart
-template. That would start generating future copies this account never
-asked us to originate. Preview warning: "Recurring expenses are imported
-as the bills that already happened. Future repeats are not scheduled
-here." Users who want it going forward recreate the series once.
+`exact` rows today. The live repeating row lands as a **stopped** series
+(`metadata.repeat_paused`, no `repeat_interval`), so import does not start
+generating future copies. The wizard offers to continue them after import;
+resume starts from today and does not backfill. Preview warning: "Recurring
+expenses come across as stopped series."
 
 ### Offline
 
@@ -417,7 +417,7 @@ rule still applies if you do wrap: money as decimal strings, ULID ids,
 - Push notifications, email-on-expense (phase 4)
 - Receipts / image attachments (CLAUDE.md)
 - Currency conversion, charts, Splitwise Pro
-- Auto-continuing a Splitwise recurring series on import
+- Auto-continuing a Splitwise recurring series on import (opt-in after import is built)
 - Importing Splitwise's notification stream (derived, ephemeral)
 - Amount-range search
 

@@ -23,6 +23,29 @@ import type { DB } from "../db/index.ts";
 import { transaction } from "../db/index.ts";
 import { logChange } from "./sync-log.ts";
 
+/**
+ * Newest live expense id each related person shares with `userId`.
+ *
+ * Same definition as `lastSharedExpenseIdByUser` in friend-recency.ts, as a
+ * GROUP BY so the friends list does not have to load every expense. Deleted
+ * bills are out: a tombstone is not an interaction.
+ */
+export async function lastSharedExpenseIds(
+  db: DB,
+  userId: string,
+): Promise<Map<string, string>> {
+  const related = await sql<{ id: string; last_expense_id: string }>`
+    SELECT eu2.user_id AS id, MAX(e.id) AS last_expense_id
+    FROM expenses e
+    JOIN expense_users eu1 ON eu1.expense_id = e.id AND eu1.user_id = ${userId}
+    JOIN expense_users eu2 ON eu2.expense_id = e.id AND eu2.user_id <> ${userId}
+    WHERE e.deleted_at IS NULL
+    GROUP BY eu2.user_id
+  `.execute(db);
+
+  return new Map(related.rows.map((r) => [r.id, r.last_expense_id]));
+}
+
 /** Canonical column order for the `friendships` primary key. */
 export function friendPair(
   userId: string,

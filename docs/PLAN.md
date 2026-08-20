@@ -183,7 +183,8 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
       importer at a fake; `src/routes/native/import.test.ts` runs one over HTTP.
 - ✅ Map Splitwise users to local users by `splitwise_id`, then by **email**;
       create ghosts for anyone unmatched. The wizard names the email matches
-      before writing anything.
+      before writing anything. A later import by that person merges the ghost
+      (API key). Signing up at a confirmed Splitwise invite address does too.
 - ✅ Idempotent re-import (match on `splitwise_id`; a second run is a no-op)
 - ✅ Splitwise's own `owed_share` allocation imported as an `exact` split, so no
       cent moves in translation
@@ -203,8 +204,8 @@ server-wide key. The user pastes their own Splitwise API key into the wizard at
       `splitwise_id`, unknown authors become placeholders, source-deleted ones
       skipped. Receipt images are not imported (CLAUDE.md, "No file uploads") -
       one preview warning, not a skip per expense. A Splitwise recurring expense
-      is imported as the bills that happened and never as a live template; the
-      preview says so before anything is written.
+      lands as a stopped series (`repeat_paused`); the wizard offers to continue
+      any of them after import, and resume starts from today without backfill.
 - ⬜ Run `yarn db:check` after import and reconcile every balance against the
       Splitwise UI before trusting it. Operator step; the wizard now says it on
       the last screen.

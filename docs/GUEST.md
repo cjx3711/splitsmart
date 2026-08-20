@@ -177,8 +177,9 @@ them to `/app/groups/:id`. They are not offered a different name to become.
 
 ## Claim
 
-One user flow. Create the account first, then claim. No in-place
-"set password on the ghost" path - that is a second flow for the same outcome.
+One user flow for *manual* placeholders. Create the account first, then claim.
+No in-place "set password on the ghost" path - that is a second flow for the
+same outcome.
 
 ```
 Guest (not logged in)
@@ -194,6 +195,20 @@ Logged in, not a member of this group, holding a valid link
 Logged in, already a member
   → no claim picker; they are themselves
 ```
+
+Splitwise-imported ghosts have two extra, automatic paths that do not need a
+link. Both go through the same `mergeUsers` (shares added, never re-split):
+
+- **Import.** Holding a Splitwise API key is proof you are that Splitwise
+  user. If a live ghost already carries your `metadata.splitwise_id`, import
+  merges it into you before writing anything. Dummy vs confirmed does not
+  matter; the key is the proof.
+- **Signup.** Splitwise's `registration_status` is `confirmed` for a real
+  Splitwise account and `dummy` for an email someone else typed. Imported
+  ghosts store that flag. Signing up at a confirmed ghost's `invite_email`
+  merges it. Dummy ghosts and invite-only friends (no splitwise_id) still
+  need the link: two owners can invite the same inbox, and a dummy address
+  was never verified by Splitwise.
 
 Claim endpoints live on the logged-in API (`src/routes/native/claim.ts`):
 cookie session **and** the link token in the body. The token is what makes

@@ -304,11 +304,23 @@ secret can never reach `/api/v1` or the compat API. The guest tree is
 `/api/v1/guest/*` and nothing else; there is deliberately no route there that
 mints a link, adds a person, or creates a group.
 
-**A ghost is never upgraded in place.** The one path is: create a real account,
+**A ghost is never upgraded in place.** The usual path is: create a real account,
 then CLAIM the ghost, which merges it (`src/domain/merge.ts`) and retires the
 row with `merged_into_user_id` + `deleted_at`. Claim needs a cookie session AND
-the link token: the token is the only thing making that placeholder claimable,
-and without it a logged-in caller could absorb a stranger by guessing a ULID.
+the link token: the token is the only thing making a *manual* placeholder
+claimable, and without it a logged-in caller could absorb a stranger by guessing
+a ULID.
+
+Two automatic exceptions, both narrower than the link:
+
+- **Import.** The Splitwise API key proves the importer is that Splitwise user.
+  If a live ghost already carries their `metadata.splitwise_id`, it is merged
+  into them before the import writes anything (`src/domain/splitwise-identity.ts`).
+- **Signup.** Splitwise marks registered people `registration_status: confirmed`
+  (placeholders it never signed up are `dummy`). An imported confirmed ghost
+  stores that flag plus `invite_email`. Signing up at that address merges the
+  ghost. Dummy and invite-only ghosts still need the link: the email may have
+  been typed by someone else, and two owners can invite the same inbox.
 
 The merge rule that matters: when both people are on the same expense their
 shares are **added together**, never re-split. Re-running `computeSplit` with
@@ -592,6 +604,7 @@ POST /api/v1/import/friends    step 1
 POST /api/v1/import/groups     step 2
 POST /api/v1/import/expenses   step 3, one page per call, resumable
 POST /api/v1/import/comments   step 4, one page of expenses per call
+POST /api/v1/import/continue-recurring  resume stopped imported series (no key)
 POST /api/v1/import/run        all four server-side, for small accounts
 POST /api/v1/import/wipe       hard-delete this ledger so a reimport starts empty
                                (`{ "confirm": "DELETE ALL DATA" }`; refuses if
@@ -607,19 +620,28 @@ Four things this must keep doing:
 
 - **Identity is `metadata.splitwise_id` first, email second.** Every imported
   row carries the Splitwise id it came from in the JSON metadata bag, so a
-  second run matches instead of duplicating. The native PK is always a fresh
-  ULID. Email is the *only* heuristic, used just to link a Splitwise contact
-  to a SplitSmart account that already exists, and the preview names every
-  person it applies to before anything is written, because a wrong match
-  merges two people's money.
+  second run matches instead of duplicating. The id is **global**: a friend's
+  later import finds the same people, groups and expenses rather than copying
+  them. The native PK is always a fresh ULID. Email is the *only* heuristic,
+  used just to link a Splitwise contact to a SplitSmart account that already
+  exists, and the preview names every person it applies to before anything is
+  written, because a wrong match merges two people's money.
+- **The importer is claimed, not duplicated.** If they already exist as a
+  ghost (someone else imported them first), that ghost is merged into their
+  account at the start of the import. Signing up at a confirmed Splitwise
+  invite address does the same merge without an import. See
+  `src/domain/splitwise-identity.ts`.
 - **Splitwise's own `owed_share` is imported as an `exact` split.** Never
   re-derive an equal split from the total: the two disagree by a cent on
   three-way splits, and a cent is a balance.
 - **Group 0 is not a group.** It is Splitwise's "Non-group expenses" bucket and
   maps to `group_id = NULL`.
 - **A row that cannot be imported exactly is skipped with a reason**, never
-  fudged. Unknown currency, missing group, shares that do not add up; each
-  comes back in `skipped[]` and writes nothing.
+  fudged, with one exception: extra digits past the currency's scale (Splitwise
+  sending `197529.02` JPY) are dropped, a system comment is left on the bill,
+  and the expense is listed in `warnings[]` rather than `skipped[]`. Unknown
+  currency, missing group, shares that do not add up; those still come back in
+  `skipped[]` and write nothing.
 
 Two smaller deliberate choices: imported expenses pass `recordActivity: false`
 to `createExpense` (one summary feed entry per run, not one per expense), and an
@@ -644,11 +666,13 @@ comment, and a comment deleted at the source is skipped like a deleted expense.
 Comment import passes `enforceVisibility: false` - it is replaying history, and
 Splitwise lets somebody comment and then leave the group.
 
-**A Splitwise recurring expense does NOT become a live template.** Its past
+**A Splitwise repeating expense lands as a stopped series.** Its past
 occurrences are already separate expenses and import as ordinary `exact` bills.
-Turning `repeats: true` into a SplitSmart template would start generating future
-copies this account never asked us to originate; the preview says so out loud
-instead. Receipts are one preview warning, never a skip per expense.
+The live Splitwise row (`repeats: true`) is stamped `metadata.repeat_paused`
+with its interval, and `repeat_interval` stays null so the scheduler cannot
+fire. The wizard then offers to continue any of them: resume starts from today
+and does not create months that already happened. Receipts are one preview
+warning, never a skip per expense.
 
 **Re-import can update in place, but only what nobody has touched.** An
 already-imported expense that changed upstream is overwritten through

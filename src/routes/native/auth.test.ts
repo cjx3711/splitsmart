@@ -26,6 +26,7 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { ulid } = await import("../../domain/ulid.ts");
+const { serializeMetadata, splitwiseIdOf, parseMetadata } = await import("../../domain/metadata.ts");
 
 let apiToken: string;
 let userId: string;
@@ -142,5 +143,146 @@ describe("PATCH /api/v1/auth/me", () => {
     const meBody = (await me.json()) as { user: Record<string, unknown> };
     assert.equal(meBody.user.nickname, "Yuki");
     assert.equal(meBody.user.iconHue, 48);
+  });
+});
+
+describe("POST /api/v1/auth/register Splitwise ghost claim", () => {
+  async function makeImportedGhost(opts: {
+    email: string;
+    name: string;
+    splitwiseId?: number;
+    status?: string;
+  }): Promise<string> {
+    const id = ulid();
+    const metadata =
+      opts.splitwiseId != null
+        ? serializeMetadata({
+            splitwise_id: opts.splitwiseId,
+            ...(opts.status ? { splitwise_registration_status: opts.status } : {}),
+          })
+        : "{}";
+    await db
+      .insertInto("users")
+      .values({
+        id,
+        name: opts.name,
+        default_currency: "USD",
+        is_ghost: 1,
+        invite_email: opts.email,
+        metadata,
+      })
+      .execute();
+    return id;
+  }
+
+  async function register(email: string, name: string) {
+    const res = await app.request("/api/v1/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password: "password1",
+        name,
+        defaultCurrency: "USD",
+      }),
+    });
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  }
+
+  test("merges a confirmed Splitwise ghost whose invite email matches", async () => {
+    const ghostId = await makeImportedGhost({
+      email: "claimed@example.com",
+      name: "Imported Bob",
+      splitwiseId: 2001,
+      status: "confirmed",
+    });
+
+    const { status, body } = await register("claimed@example.com", "Bob Brown");
+    assert.equal(status, 201);
+    assert.equal(body.claimedImportedHistory, true);
+
+    const user = body.user as { id: string };
+    const stub = await db
+      .selectFrom("users")
+      .select(["deleted_at", "merged_into_user_id", "metadata"])
+      .where("id", "=", ghostId)
+      .executeTakeFirstOrThrow();
+    assert.ok(stub.deleted_at);
+    assert.equal(stub.merged_into_user_id, user.id);
+    assert.equal(splitwiseIdOf(stub.metadata), null);
+
+    const survivor = await db
+      .selectFrom("users")
+      .select("metadata")
+      .where("id", "=", user.id)
+      .executeTakeFirstOrThrow();
+    assert.equal(splitwiseIdOf(survivor.metadata), 2001);
+    assert.equal(parseMetadata(survivor.metadata).splitwise_registration_status, "confirmed");
+  });
+
+  test("does not merge a dummy Splitwise ghost on signup", async () => {
+    const ghostId = await makeImportedGhost({
+      email: "dummy@example.com",
+      name: "Dummy Carol",
+      splitwiseId: 2002,
+      status: "dummy",
+    });
+
+    const { status, body } = await register("dummy@example.com", "Carol Clark");
+    assert.equal(status, 201);
+    assert.equal(body.claimedImportedHistory, false);
+
+    const ghost = await db
+      .selectFrom("users")
+      .select(["deleted_at", "is_ghost"])
+      .where("id", "=", ghostId)
+      .executeTakeFirstOrThrow();
+    assert.equal(ghost.deleted_at, null);
+    assert.equal(ghost.is_ghost, 1);
+  });
+
+  test("does not merge an invite-only ghost with no Splitwise id", async () => {
+    const ghostId = await makeImportedGhost({
+      email: "invited@example.com",
+      name: "Invited Dan",
+    });
+
+    const { status, body } = await register("invited@example.com", "Dan");
+    assert.equal(status, 201);
+    assert.equal(body.claimedImportedHistory, false);
+
+    const ghost = await db
+      .selectFrom("users")
+      .select("deleted_at")
+      .where("id", "=", ghostId)
+      .executeTakeFirstOrThrow();
+    assert.equal(ghost.deleted_at, null);
+  });
+
+  test("does not merge when two confirmed ghosts share the invite email", async () => {
+    await makeImportedGhost({
+      email: "shared@example.com",
+      name: "One",
+      splitwiseId: 3001,
+      status: "confirmed",
+    });
+    await makeImportedGhost({
+      email: "shared@example.com",
+      name: "Two",
+      splitwiseId: 3002,
+      status: "confirmed",
+    });
+
+    const { status, body } = await register("shared@example.com", "Shared");
+    assert.equal(status, 201);
+    assert.equal(body.claimedImportedHistory, false);
+
+    const live = await db
+      .selectFrom("users")
+      .select("id")
+      .where("invite_email", "=", "shared@example.com")
+      .where("deleted_at", "is", null)
+      .execute();
+    assert.equal(live.length, 2, "ambiguous matches must be left for a guest-link claim");
   });
 });

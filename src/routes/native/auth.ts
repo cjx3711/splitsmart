@@ -32,6 +32,7 @@ import {
   identityColumns,
   identityPatchSchema,
 } from "./person-schema.ts";
+import { adoptConfirmedImportedGhostByEmail } from "../../domain/splitwise-identity.ts";
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -151,6 +152,10 @@ export const authRoutes = new Hono<AppEnv>()
       .executeTakeFirstOrThrow();
   });
 
+  // A confirmed Splitwise person imported as a placeholder at this address
+  // is this account. Dummy / invite-only ghosts still need a guest link.
+  const adopted = await adoptConfirmedImportedGhostByEmail(user.id, input.email);
+
   // Fire-and-forget: a mail outage must not turn a successful registration into
   // an error. sendEmail never throws, and the user can request another link.
   const verification = await issueVerificationToken(user.id);
@@ -165,6 +170,7 @@ export const authRoutes = new Hono<AppEnv>()
       // Lets the UI say "check your inbox" vs "email isn't configured on this
       // server" instead of claiming a message was sent when it wasn't.
       verificationEmailSent: verification.status === "sent" && verification.delivered,
+      claimedImportedHistory: adopted !== null,
     },
     201,
   );

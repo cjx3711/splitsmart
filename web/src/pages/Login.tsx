@@ -134,7 +134,7 @@ export function Login() {
         </button>
         <p className="field-hint" style={{ margin: 0 }}>
           {mode === "register"
-            ? "Sent a guest link? Create an account to claim that link."
+            ? "If a friend already imported you from Splitwise as a registered user, signing up with that same email claims that history. Sent a guest link? Create an account to claim that link."
             : "Sent a guest link? Open that link instead; it needs no account."}
         </p>
       </div>

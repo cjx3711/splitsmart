@@ -155,6 +155,7 @@ export type ImportFootprint = ImportStatus["local"];
 export type ImportExpensePage = InferResponseType<typeof client.import.expenses.$post, 200>;
 export type ImportCommentsPage = InferResponseType<typeof client.import.comments.$post, 200>;
 export type ImportSkip = ImportExpensePage["skipped"][number];
+export type ImportPausedSeries = ImportExpensePage["pausedSeries"][number];
 
 type AdminList = InferResponseType<typeof client.admin.users.$get, 200>;
 export type AdminUserUsage = AdminList["users"][number];
@@ -438,6 +439,13 @@ export const api = {
    */
   importComments: (apiKey: string, offset = 0) =>
     call(client.import.comments.$post, client.import.comments.$post({ json: { apiKey, offset } })),
+
+  /** Resume stopped series that import landed from Splitwise repeating bills. */
+  importContinueRecurring: (ids: string[]) =>
+    call(
+      client.import["continue-recurring"].$post,
+      client.import["continue-recurring"].$post({ json: { ids } }),
+    ),
 
   /** Hard-delete this account's ledger. Confirmation must be the exact phrase. */
   importWipe: (confirm: "DELETE ALL DATA") =>

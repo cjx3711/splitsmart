@@ -151,6 +151,54 @@ describe("friendships are stored canonically", () => {
 });
 
 describe("who counts as a friend", () => {
+  test("the list is newest shared expense first, not name or id", async () => {
+    const olderId = ulid();
+    const newerId = ulid();
+    await db
+      .insertInto("users")
+      .values([
+        { id: olderId, name: "AAA Older", default_currency: "USD", is_ghost: 1 },
+        { id: newerId, name: "ZZZ Newer", default_currency: "USD", is_ghost: 1 },
+      ])
+      .execute();
+    await addFriendship(aliceId, olderId);
+    await addFriendship(aliceId, newerId);
+
+    const t = Date.now();
+    await createExpense({
+      id: ulid(t),
+      description: "Older coffee",
+      costMinor: 400,
+      currencyCode: "USD",
+      date: "2026-08-01",
+      splitType: "equal",
+      createdBy: aliceId,
+      participants: [
+        { userId: aliceId, paidMinor: 400 },
+        { userId: olderId, paidMinor: 0 },
+      ],
+    });
+    await createExpense({
+      id: ulid(t + 60_000),
+      description: "Newer coffee",
+      costMinor: 500,
+      currencyCode: "USD",
+      date: "2026-07-01",
+      splitType: "equal",
+      createdBy: aliceId,
+      participants: [
+        { userId: aliceId, paidMinor: 500 },
+        { userId: newerId, paidMinor: 0 },
+      ],
+    });
+
+    const res = await authed("/api/v1/friends");
+    const body = (await res.json()) as { friends: Array<{ id: string }> };
+    const ids = body.friends.map((f) => f.id);
+    // AAA Older would win a name sort; ZZZ Newer has the later bill.
+    assert.ok(ids.indexOf(newerId) < ids.indexOf(olderId));
+  });
+
   test("sharing a group is enough (no friendships row needed)", async () => {
     const ids = await listRelatedUserIds(db, aliceId);
     assert.ok(ids.includes(bobId));

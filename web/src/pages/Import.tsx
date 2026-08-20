@@ -28,11 +28,19 @@ import {
   type ImportPreview,
   type ImportPerson,
   type ImportSkip,
+  type ImportPausedSeries,
 } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
+import { Amount } from "../money.tsx";
 import { HelpTip } from "../HelpTip.tsx";
 import { WipeLedgerButton } from "../WipeLedger.tsx";
+import {
+  isRepeatInterval,
+  nextOccurrenceOnOrAfter,
+  repeatLabel,
+  type RepeatInterval,
+} from "../../../src/domain/recurring.ts";
 
 type Step = "key" | "review" | "running" | "done";
 
@@ -89,8 +97,12 @@ interface Outcome {
   expensesRefreshed: number;
   commentsImported: number;
   skipped: ImportSkip[];
+  /** Imported with extra digits dropped. Same shape as skipped, different meaning. */
+  warnings: ImportSkip[];
   /** Placeholders created this run. They get no guest link; see the note below. */
   newPeople: ImportPerson[];
+  /** Splitwise repeating bills landed as stopped series this run. */
+  pausedSeries: ImportPausedSeries[];
 }
 
 export function Import() {
@@ -174,7 +186,9 @@ export function Import() {
         expensesRefreshed: 0,
         commentsImported: 0,
         skipped: [],
+        warnings: [],
         newPeople: [...friends.people, ...groups.people].filter((p) => p.matchedBy === "created"),
+        pausedSeries: [],
       };
 
       // Paged rather than one long request: progress is real, and a failure
@@ -190,6 +204,8 @@ export function Import() {
         result.expensesRefreshed += page.refreshed;
         result.commentsImported += page.commentsImported;
         result.skipped.push(...page.skipped);
+        result.warnings.push(...page.warnings);
+        result.pausedSeries.push(...page.pausedSeries);
 
         setProgress((prev) =>
           prev
@@ -356,7 +372,7 @@ function KeyStep({
       <div className="notice">
         <strong>How people are matched. </strong>
         {status?.matchingRule ??
-          "People from Splitwise are matched to existing SplitSmart accounts by email address."}{" "}
+          "People from Splitwise are matched to existing SplitSmart accounts by Splitwise id, then by email address."}{" "}
         You will see exactly who matched before anything is written.
       </div>
 
@@ -583,6 +599,52 @@ function ImportPhaseRow({
 // ---------------------------------------------------------------------------
 
 function DoneStep({ outcome }: { outcome: Outcome }) {
+  const refreshSidebar = useSidebarRefresh();
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(outcome.pausedSeries.map((s) => s.id)),
+  );
+  const [seriesState, setSeriesState] = useState<"pick" | "busy" | "continued" | "left">(
+    outcome.pausedSeries.length > 0 ? "pick" : "left",
+  );
+  const [continuedCount, setContinuedCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const allSelected =
+    outcome.pausedSeries.length > 0 && outcome.pausedSeries.every((s) => selected.has(s.id));
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(outcome.pausedSeries.map((s) => s.id)));
+  }
+
+  async function continueSelected() {
+    const ids = outcome.pausedSeries.map((s) => s.id).filter((id) => selected.has(id));
+    if (ids.length === 0) {
+      setSeriesState("left");
+      return;
+    }
+    setError(null);
+    setSeriesState("busy");
+    try {
+      const result = await api.importContinueRecurring(ids);
+      setContinuedCount(result.continued.length);
+      setSeriesState("continued");
+      refreshSidebar();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not continue those series");
+      setSeriesState("pick");
+    }
+  }
+
   return (
     <div className="stack">
       <div className="notice">
@@ -611,6 +673,76 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
         balances against the Splitwise UI before you trust this. A row that could not be imported
         exactly was skipped rather than guessed at, and the list below says which.
       </div>
+
+      {outcome.pausedSeries.length > 0 && seriesState !== "left" && seriesState !== "continued" && (
+        <div className="card stack">
+          <strong className="with-help">
+            Repeating bills ({outcome.pausedSeries.length})
+            <HelpTip label="About imported repeats">
+              These came across as stopped series, so import does not start creating future bills on
+              its own. Continue any you still want generated here. Resume starts from today and does
+              not create months that already happened.
+            </HelpTip>
+          </strong>
+          <label className="import-series-all">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+            Select all
+          </label>
+          <ul className="import-series-list">
+            {outcome.pausedSeries.map((series) => {
+              if (!isRepeatInterval(series.interval)) return null;
+              const interval: RepeatInterval = series.interval;
+              const nextOn = nextOccurrenceOnOrAfter(series.date, interval).slice(0, 10);
+              return (
+                <li key={series.id}>
+                  <label className="import-series-row">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(series.id)}
+                      onChange={() => toggle(series.id)}
+                    />
+                    <span className="import-series-body">
+                      <span>
+                        {series.description} · {repeatLabel(interval)}
+                      </span>
+                      <span className="muted">
+                        <Amount minor={series.costMinor} currency={series.currencyCode} />
+                        {" · "}
+                        last {series.date.slice(0, 10)}
+                        {" · "}
+                        next {nextOn}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          {error && <p className="error">{error}</p>}
+          <div className="import-actions">
+            <button
+              className="secondary"
+              disabled={seriesState === "busy"}
+              onClick={() => setSeriesState("left")}
+            >
+              Leave stopped
+            </button>
+            <button
+              disabled={seriesState === "busy" || selected.size === 0}
+              onClick={() => void continueSelected()}
+            >
+              {seriesState === "busy" ? "Continuing…" : "Continue selected"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {seriesState === "continued" && (
+        <div className="notice">
+          {continuedCount} series will now repeat. The next bill is dated from today; months that
+          already happened are not created.
+        </div>
+      )}
 
       {outcome.newPeople.length > 0 && (
         <div className="card stack">
@@ -646,6 +778,25 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
             {outcome.skipped.map((skip) => (
               <li key={skip.splitwiseId}>
                 {skip.description} <span className="muted">: {skip.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {outcome.warnings.length > 0 && (
+        <div className="card stack">
+          <strong className="with-help">
+            Warnings ({outcome.warnings.length})
+            <HelpTip label="About import warnings">
+              These were imported. Extra digits past what the currency allows were dropped, and a
+              note was left on each bill.
+            </HelpTip>
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {outcome.warnings.map((warning) => (
+              <li key={warning.splitwiseId}>
+                {warning.description} <span className="muted">: {warning.reason}</span>
               </li>
             ))}
           </ul>

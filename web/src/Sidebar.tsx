@@ -6,6 +6,9 @@
  * when a sync lands or a write is queued. useSidebarRefresh() survives for the
  * screens that still do an online-only write (adding a friend, creating a group)
  * and want the rail to catch up before the next sync tick.
+ *
+ * Friends are ordered by last shared expense (web/src/db/queries.ts); groups by
+ * newest id. Counts live on the headings; "Show all" is a link, not a tally.
  */
 import { useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
@@ -19,9 +22,13 @@ import { GroupTypeIcon } from "./groupTypes.tsx";
 const SIDEBAR_GROUP_LIMIT = 5;
 const SIDEBAR_FRIEND_LIMIT = 10;
 
-/** ULIDs sort in creation order, which is close enough to "latest" for the rail. */
+/** ULIDs sort in creation order, which is close enough to "latest" for groups. */
 function byNewestId<T extends { id: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+}
+
+function withCount(label: string, count: number): string {
+  return count > 0 ? `${label} (${count})` : label;
 }
 
 export function Sidebar({ className }: { className: string }) {
@@ -44,8 +51,8 @@ export function Sidebar({ className }: { className: string }) {
     return query ? sorted : sorted.slice(0, SIDEBAR_GROUP_LIMIT);
   }, [filteredGroups, query]);
   const sidebarFriends = useMemo(() => {
-    const sorted = byNewestId(filteredFriends);
-    return query ? sorted : sorted.slice(0, SIDEBAR_FRIEND_LIMIT);
+    // Friends arrive from the mirror already ordered by last shared expense.
+    return query ? filteredFriends : filteredFriends.slice(0, SIDEBAR_FRIEND_LIMIT);
   }, [filteredFriends, query]);
   const hasMoreGroups = !query && filteredGroups.length > SIDEBAR_GROUP_LIMIT;
   const hasMoreFriends = !query && filteredFriends.length > SIDEBAR_FRIEND_LIMIT;
@@ -109,7 +116,7 @@ export function Sidebar({ className }: { className: string }) {
       <div className="nav-section">
         <div className="nav-heading">
           <NavLink to="/groups" end style={{ textDecoration: "none", color: "inherit" }}>
-            Groups
+            {withCount("Groups", groups.length)}
           </NavLink>
           <NavLink to="/groups/new" className="link" style={{ textDecoration: "none" }}>
             + add
@@ -127,7 +134,7 @@ export function Sidebar({ className }: { className: string }) {
         )}
         {hasMoreGroups && (
           <NavLink to="/groups" className="nav-show-more">
-            Show more ({filteredGroups.length - SIDEBAR_GROUP_LIMIT})
+            Show all
           </NavLink>
         )}
       </div>
@@ -135,7 +142,7 @@ export function Sidebar({ className }: { className: string }) {
       <div className="nav-section">
         <div className="nav-heading">
           <NavLink to="/friends" end style={{ textDecoration: "none", color: "inherit" }}>
-            Friends
+            {withCount("Friends", friends.length)}
           </NavLink>
           <NavLink to="/friends/new" className="link" style={{ textDecoration: "none" }}>
             + add
@@ -153,7 +160,7 @@ export function Sidebar({ className }: { className: string }) {
         )}
         {hasMoreFriends && (
           <NavLink to="/friends" className="nav-show-more">
-            Show more ({filteredFriends.length - SIDEBAR_FRIEND_LIMIT})
+            Show all
           </NavLink>
         )}
       </div>

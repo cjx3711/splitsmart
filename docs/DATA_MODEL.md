@@ -166,9 +166,11 @@ filtered on, except for one key:
 `splitwise_id` is the import matching key. Entity PKs are always fresh ULIDs;
 the original Splitwise integer is **not** reused as `id` and is **not**
 returned on `/api/sw/v3.0`. A unique expression index on
-`json_extract(metadata, '$.splitwise_id')` lets a second import match instead
-of duplicating. `notes` and other leftovers share the same object. See
-`src/domain/metadata.ts` and `docs/ULIDS.md`.
+`json_extract(metadata, '$.splitwise_id')` (live rows only, for users) lets a
+second import match instead of duplicating, including a friend's later import
+of the same Splitwise person. `notes` and other leftovers share the same
+object. See `src/domain/metadata.ts`, `src/domain/splitwise-identity.ts` and
+`docs/ULIDS.md`.
 
 ## Payments
 

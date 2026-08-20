@@ -30,6 +30,7 @@ const { mergeUsers, previewMerge, MergeError } = await import("./merge.ts");
 const { addFriendship } = await import("./friends.ts");
 const { getBalanceBetween, getGroupBalances } = await import("./balances.ts");
 const { ulid } = await import("./ulid.ts");
+const { serializeMetadata, splitwiseIdOf, parseMetadata } = await import("./metadata.ts");
 
 before(() => {
   migrate(process.env.DATABASE_PATH!);
@@ -574,6 +575,38 @@ describe("mergeUsers: what happens to the ghost row", () => {
     assert.ok(link.revoked_at);
 
     await assertInvariants();
+  });
+
+  test("moves Splitwise identity onto the survivor and off the stub", async () => {
+    const ghost = await makeGhost("Imported Bob");
+    await db
+      .updateTable("users")
+      .set({
+        metadata: serializeMetadata({
+          splitwise_id: 2001,
+          splitwise_registration_status: "confirmed",
+        }),
+      })
+      .where("id", "=", ghost)
+      .execute();
+    const account = await makeAccount("Bob");
+
+    await mergeUsers(ghost, account);
+
+    const survivor = await db
+      .selectFrom("users")
+      .select("metadata")
+      .where("id", "=", account)
+      .executeTakeFirstOrThrow();
+    assert.equal(splitwiseIdOf(survivor.metadata), 2001);
+    assert.equal(parseMetadata(survivor.metadata).splitwise_registration_status, "confirmed");
+
+    const stub = await db
+      .selectFrom("users")
+      .select("metadata")
+      .where("id", "=", ghost)
+      .executeTakeFirstOrThrow();
+    assert.equal(splitwiseIdOf(stub.metadata), null, "the tombstone must not keep the unique slot");
   });
 
   test("refuses to merge a real account, or to run twice", async () => {

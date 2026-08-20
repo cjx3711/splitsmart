@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { computeSplit, deriveRepayments, simpleEqualSplit, SplitError } from "./split.ts";
-import { parseAmount, formatAmount, splitEvenly, splitByWeights, MoneyError } from "./money.ts";
+import { parseAmount, parseAmountTruncating, formatAmount, splitEvenly, splitByWeights, MoneyError } from "./money.ts";
 
 describe("money", () => {
   test("parses decimal strings without float error", () => {
@@ -19,9 +19,27 @@ describe("money", () => {
     assert.equal(formatAmount(1234, 3), "1.234");
   });
 
+  test("ignores trailing zeros past the currency's scale", () => {
+    assert.equal(parseAmount("3400.0", 0), 3400);
+    assert.equal(parseAmount("3400.00", 0), 3400);
+    assert.equal(parseAmount("-800.0", 0), -800);
+    assert.equal(parseAmount("10.500", 2), 1050);
+    assert.equal(parseAmount("1.2300", 3), 1230);
+  });
+
   test("rejects excess precision rather than silently rounding", () => {
     assert.throws(() => parseAmount("1.234"), MoneyError);
     assert.throws(() => parseAmount("10.5", 0), MoneyError);
+    assert.throws(() => parseAmount("197529.02", 0), MoneyError);
+  });
+
+  test("truncating import parser drops extra digits and reports them", () => {
+    assert.deepEqual(parseAmountTruncating("3400.0", 0), { minor: 3400, dropped: null });
+    assert.deepEqual(parseAmountTruncating("197529.02", 0), { minor: 197529, dropped: "0.02" });
+    assert.deepEqual(parseAmountTruncating("71845.33", 0), { minor: 71845, dropped: "0.33" });
+    assert.deepEqual(parseAmountTruncating("143690.66", 0), { minor: 143690, dropped: "0.66" });
+    assert.deepEqual(parseAmountTruncating("10.501", 2), { minor: 1050, dropped: "0.001" });
+    assert.deepEqual(parseAmountTruncating("-800.5", 0), { minor: -800, dropped: "0.5" });
   });
 
   test("rejects junk input", () => {

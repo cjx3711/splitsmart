@@ -24,6 +24,11 @@ import { deriveRepayments } from "./split.ts";
 import { friendPair, listRelatedUserIds } from "./friends.ts";
 import { logChange } from "./sync-log.ts";
 import { ulid } from "./ulid.ts";
+import {
+  parseMetadata,
+  serializeMetadata,
+  splitwiseIdOf,
+} from "./metadata.ts";
 
 export class MergeError extends Error {}
 
@@ -320,12 +325,12 @@ export async function mergeUsers(
     const [from, to] = await Promise.all([
       trx
         .selectFrom("users")
-        .select(["id", "is_ghost", "deleted_at", "merged_into_user_id"])
+        .select(["id", "is_ghost", "deleted_at", "merged_into_user_id", "metadata"])
         .where("id", "=", fromUserId)
         .executeTakeFirst(),
       trx
         .selectFrom("users")
-        .select(["id", "is_ghost", "deleted_at"])
+        .select(["id", "is_ghost", "deleted_at", "metadata"])
         .where("id", "=", toUserId)
         .executeTakeFirst(),
     ]);
@@ -577,6 +582,29 @@ export async function mergeUsers(
       .where("revoked_at", "is", null)
       .executeTakeFirst();
 
+    // --- Splitwise identity ----------------------------------------------
+    // Strip the id off the ghost first so the unique index cannot see two
+    // live holders, then copy it onto the survivor when they do not already
+    // have one. A later import stamps the real account rather than bouncing
+    // off a tombstone.
+    const fromMeta = parseMetadata(from.metadata);
+    const toMeta = parseMetadata(to.metadata);
+    const ghostSplitwiseId = splitwiseIdOf(from.metadata);
+    const strippedFrom = { ...fromMeta };
+    delete strippedFrom.splitwise_id;
+    delete strippedFrom.splitwise_registration_status;
+
+    const nextTo = { ...toMeta };
+    if (ghostSplitwiseId != null && splitwiseIdOf(to.metadata) == null) {
+      nextTo.splitwise_id = ghostSplitwiseId;
+      if (
+        typeof fromMeta.splitwise_registration_status === "string" &&
+        typeof toMeta.splitwise_registration_status !== "string"
+      ) {
+        nextTo.splitwise_registration_status = fromMeta.splitwise_registration_status;
+      }
+    }
+
     // --- retire the ghost -------------------------------------------------
     // The row stays so a pointer we missed resolves to a stub instead of
     // dangling, and so support can see what happened. It is not a participant
@@ -590,8 +618,15 @@ export async function mergeUsers(
         // as a new placeholder. users.email was already null on a ghost.
         email: null,
         invite_email: null,
+        metadata: serializeMetadata(strippedFrom),
       })
       .where("id", "=", fromUserId)
+      .execute();
+
+    await trx
+      .updateTable("users")
+      .set({ metadata: serializeMetadata(nextTo) })
+      .where("id", "=", toUserId)
       .execute();
 
     await trx

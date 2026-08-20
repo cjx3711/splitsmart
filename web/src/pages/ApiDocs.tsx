@@ -564,7 +564,10 @@ export function ApiDocs() {
         <p>
           One page. Returns <code>imported</code>, <code>alreadyPresent</code>,{" "}
           <code>refreshed</code>, <code>commentsImported</code>,{" "}
-          <code>skipped[]</code> with reasons, and <code>nextOffset</code>. An
+          <code>skipped[]</code> with reasons, <code>warnings[]</code> for
+          amounts whose extra digits were dropped, <code>pausedSeries[]</code>{" "}
+          for newly imported repeating bills (landed stopped), and{" "}
+          <code>nextOffset</code>. An
           expense that changed in Splitwise is refreshed only when nothing has
           edited the local row since import; otherwise it is skipped as{" "}
           <code>local edits, not refreshed</code>.
@@ -584,6 +587,14 @@ export function ApiDocs() {
       <Endpoint method="POST" path="/api/v1/import/run">
         <Code>{`{ "apiKey": "…", "maxPages": 50 }`}</Code>
         <p>Friends, groups, expenses up to the page cap, then comments.</p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/import/continue-recurring">
+        <Code>{`{ "ids": ["01…"] }`}</Code>
+        <p>
+          Resume stopped series that import landed from Splitwise repeating
+          bills. Starts from today; does not create months that already
+          happened. No API key: the rows are already here.
+        </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/wipe">
         <Code>{`{ "confirm": "DELETE ALL DATA" }`}</Code>

@@ -22,6 +22,10 @@
  */
 import { deriveRepayments } from "../../../src/domain/split.ts";
 import { displayName } from "../../../src/domain/person.ts";
+import {
+  compareByLastExpense,
+  lastSharedExpenseIdByUser,
+} from "../../../src/domain/friend-recency.ts";
 import { simplifyDebts } from "../../../src/domain/settle.ts";
 import {
   csvDocument,
@@ -448,9 +452,11 @@ export async function localFriends(
   const ids = await relatedUserIds(db, selfId);
   if (ids.size === 0) return { friends: [] };
 
-  const moves = movements(await liveExpenses(db));
+  const expenses = await liveExpenses(db);
+  const moves = movements(expenses);
   const balances = pairwise(moves, selfId);
   const breakdowns = pairwiseByGroup(moves, selfId);
+  const lastByUser = lastSharedExpenseIdByUser(expenses, selfId);
 
   const explicit = new Set(
     (await db.friendships.toArray()).map((f) =>
@@ -464,8 +470,11 @@ export async function localFriends(
     (u): u is SyncUser => u !== undefined && u.deletedAt === null,
   );
 
+  // Same order as GET /api/v1/friends: last shared expense, then name.
   const friends = users
-    .sort((a, b) => displayName(a).localeCompare(displayName(b)))
+    .sort((a, b) =>
+      compareByLastExpense(a.id, b.id, lastByUser, displayName(a), displayName(b)),
+    )
     .map((user) => toApiFriend(user, balances, breakdowns, explicit, groupNames));
 
   return { friends };

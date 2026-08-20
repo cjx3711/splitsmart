@@ -21,8 +21,10 @@
  *   POST /api/v1/import/friends   step 1
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call
- *   POST /api/v1/import/run       all three, server-side, for small accounts
- *   POST /api/v1/import/wipe      hard-delete this account's ledger (reimport)
+ *   POST /api/v1/import/comments         step 4, one page of expenses per call
+ *   POST /api/v1/import/continue-recurring  resume stopped imported series
+ *   POST /api/v1/import/run              all four server-side, for small accounts
+ *   POST /api/v1/import/wipe             hard-delete this account's ledger (reimport)
  */
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
@@ -37,9 +39,11 @@ import {
   importGroups,
   importExpensePage,
   importCommentsPage,
+  continueImportedRepeats,
   localFootprint,
   type CommentsPageResult,
   type ExpensePageResult,
+  type PausedImportedSeries,
   type SkippedRow,
 } from "../../domain/import.ts";
 import { wipeUserLedger, WipeBlockedError, WIPE_CONFIRMATION } from "../../domain/wipe.ts";
@@ -165,8 +169,9 @@ export const importRoutes = new Hono<AppEnv>()
      * cannot end up promising different matching behaviour.
      */
     matchingRule:
-      "People from Splitwise are matched to existing SplitSmart accounts by email address. " +
-      "Anyone with no matching account is created as a placeholder person you can invite later.",
+      "People from Splitwise are matched to existing SplitSmart accounts by Splitwise id, then by email address. " +
+      "Anyone with no matching account is created as a placeholder person you can invite later. " +
+      "Groups and expenses are unique on Splitwise id, so a friend's later import joins what is already here.",
   });
 })
   .post("/preview", zValidator("json", keySchema), async (c) => {
@@ -231,6 +236,8 @@ export const importRoutes = new Hono<AppEnv>()
     let refreshed = 0;
     let commentsImported = 0;
     const skipped: SkippedRow[] = [];
+    const warnings: SkippedRow[] = [];
+    const pausedSeries: PausedImportedSeries[] = [];
     let offset = 0;
     let complete = false;
 
@@ -242,6 +249,8 @@ export const importRoutes = new Hono<AppEnv>()
       refreshed += result.refreshed;
       commentsImported += result.commentsImported;
       skipped.push(...result.skipped);
+      warnings.push(...result.warnings);
+      pausedSeries.push(...result.pausedSeries);
 
       if (result.done || result.nextOffset === null) {
         complete = true;
@@ -278,6 +287,8 @@ export const importRoutes = new Hono<AppEnv>()
         alreadyPresent,
         refreshed,
         skipped,
+        warnings,
+        pausedSeries,
         pages: pages.length,
         // False means the cap was hit, not that anything failed. Call
         // /import/expenses with this offset to carry on.
@@ -295,6 +306,26 @@ export const importRoutes = new Hono<AppEnv>()
   }
   return c.json(result.value);
 })
+  /**
+   * Resume Splitwise repeating bills that import landed as stopped series.
+   *
+   * Same resume as the expense page: starts from today, does not backfill.
+   * No API key: the rows are already here. Unknown or unseen ids are skipped
+   * rather than failing the batch.
+   */
+  .post(
+    "/continue-recurring",
+    zValidator(
+      "json",
+      z.object({
+        ids: z.array(z.string()).max(200),
+      }),
+    ),
+    async (c) => {
+      const auth = c.get("user");
+      return c.json(await continueImportedRepeats(auth.id, c.req.valid("json").ids));
+    },
+  )
   /**
    * Hard-delete this account's groups, expenses, friendships and placeholder
    * people so a Splitwise import can run on an empty book. The account itself

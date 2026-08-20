@@ -5,7 +5,7 @@ import {
   serializeMetadata,
   splitwiseIdOf,
   metadataFromSplitwise,
-  metadataWithSplitwiseId,
+  metadataWithSplitwiseIdentity,
   repeatPausedOf,
 } from "./metadata.ts";
 
@@ -43,13 +43,21 @@ describe("repeatPausedOf", () => {
   });
 });
 
-describe("metadataWithSplitwiseId", () => {
-  test("stamps without clobbering notes, and does not overwrite an existing id", () => {
-    const first = metadataWithSplitwiseId(serializeMetadata({ notes: "keep me" }), 7);
+describe("metadataWithSplitwiseIdentity", () => {
+  test("stamps id and status without clobbering notes, and does not overwrite an existing id", () => {
+    const first = metadataWithSplitwiseIdentity(serializeMetadata({ notes: "keep me" }), 7, "Confirmed");
     assert.equal(splitwiseIdOf(first), 7);
     assert.equal(parseMetadata(first).notes, "keep me");
+    assert.equal(parseMetadata(first).splitwise_registration_status, "confirmed");
 
-    const second = metadataWithSplitwiseId(first, 99);
-    assert.equal(splitwiseIdOf(second), 7);
+    const second = metadataWithSplitwiseIdentity(first, 99, "dummy");
+    assert.equal(splitwiseIdOf(second), 7, "splitwise_id is write-once");
+    assert.equal(parseMetadata(second).splitwise_registration_status, "confirmed", "must not demote confirmed to dummy");
+  });
+
+  test("upgrades dummy to confirmed when a later import sees a real account", () => {
+    const dummy = metadataFromSplitwise(7, "dummy");
+    const upgraded = metadataWithSplitwiseIdentity(dummy, 7, "confirmed");
+    assert.equal(parseMetadata(upgraded).splitwise_registration_status, "confirmed");
   });
 });

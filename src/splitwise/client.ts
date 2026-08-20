@@ -107,7 +107,7 @@ export interface SplitwiseExpense {
    * live account while the API is still free.
    */
   comments?: SplitwiseComment[];
-  /** Splitwise's recurrence fields. Read for the preview warning ONLY. */
+  /** Splitwise's recurrence fields. Imported as a stopped series, never armed. */
   repeats?: boolean | null;
   repeat_interval?: string | null;
   next_repeat?: string | null;
