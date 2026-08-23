@@ -115,7 +115,12 @@ export async function putComments(db: LocalDb, comments: SyncComment[]): Promise
 
 export async function putGroups(db: LocalDb, groups: SyncGroup[]): Promise<void> {
   if (groups.length === 0) return;
-  await db.groups.bulkPut(groups);
+  await db.groups.bulkPut(
+    groups.map((group) => ({
+      ...group,
+      simplifyByDefault: group.simplifyByDefault !== false,
+    })),
+  );
 }
 
 export async function putGroupMembers(

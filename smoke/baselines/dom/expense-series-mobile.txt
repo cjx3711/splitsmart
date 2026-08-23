@@ -24,9 +24,10 @@
           - /url: /app/expenses/<ULID>
       - listitem: /Series
   - heading "Rent" [level=1]
-  - paragraph: Monthly series
+  - paragraph:
+    - text: Monthly series
+    - button "About this series": "?"
   - button "Stop repeating"
-  - paragraph: Each bill is its own expense. Deleting a later one does not stop the series. Deleting the first bill (the one marked repeats) stops new bills; the ones already made stay.
   - heading "Bills" [level=2]
   - link "Rent <DATE> · Rent · You paid repeats 1800.00USD you lent 900.00USD"
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
@@ -37,6 +38,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

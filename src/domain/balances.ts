@@ -12,11 +12,12 @@
  */
 import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
+import { pairwiseWithSimplify, type PairwiseEdge } from "./settle.ts";
 
 // `simplifyDebts` lives in a pure module so the offline mirror can run the same
 // implementation in the browser. Re-exported here so existing callers are
 // unaffected by where it sits.
-export { simplifyDebts } from "./settle.ts";
+export { simplifyDebts, pairwiseWithSimplify } from "./settle.ts";
 
 export interface CurrencyAmount {
   currencyCode: string;
@@ -39,54 +40,37 @@ export interface GroupMemberBalance {
  * across all groups and one-on-one expenses.
  *
  * This is what the friends list and the Splitwise-compatible `get_friends`
- * endpoint are built on.
+ * endpoint are built on. Groups with `simplify_by_default` contribute their
+ * simplified edges, not the raw per-bill who-owes-whom. One-on-one expenses
+ * stay pairwise: friends who are not in a group together are not asked to
+ * settle with a third person. Summing a person's rows from
+ * `getPairwiseBalancesByGroup` reproduces this exactly.
  */
 export async function getPairwiseBalances(
   db: DB,
   userId: string,
 ): Promise<PairwiseBalance[]> {
-  // Repayments where the user is the debtor count negative; where they are the
-  // creditor, positive. UNION ALL then aggregate, so each direction is a simple
-  // indexed scan rather than an OR across two columns.
-  const rows = await sql<{
-    other_user_id: string;
-    currency_code: string;
-    amount_minor: number;
-  }>`
-    SELECT other_user_id, currency_code, SUM(amount_minor) AS amount_minor
-    FROM (
-      SELECT r.to_user_id   AS other_user_id,
-             e.currency_code,
-             -r.amount_minor AS amount_minor
-      FROM expense_repayments r
-      JOIN expenses e ON e.id = r.expense_id
-      WHERE r.from_user_id = ${userId} AND e.deleted_at IS NULL
+  const byGroup = await getPairwiseBalancesByGroup(db, userId);
+  const byUser = new Map<string, Map<string, number>>();
 
-      UNION ALL
-
-      SELECT r.from_user_id AS other_user_id,
-             e.currency_code,
-             r.amount_minor AS amount_minor
-      FROM expense_repayments r
-      JOIN expenses e ON e.id = r.expense_id
-      WHERE r.to_user_id = ${userId} AND e.deleted_at IS NULL
-    )
-    GROUP BY other_user_id, currency_code
-    HAVING SUM(amount_minor) <> 0
-    ORDER BY other_user_id, currency_code
-  `.execute(db);
-
-  const byUser = new Map<string, CurrencyAmount[]>();
-  for (const row of rows.rows) {
-    const list = byUser.get(row.other_user_id) ?? [];
-    list.push({ currencyCode: row.currency_code, amountMinor: row.amount_minor });
-    byUser.set(row.other_user_id, list);
+  for (const row of byGroup) {
+    const totals = byUser.get(row.otherUserId) ?? new Map<string, number>();
+    for (const b of row.balances) {
+      totals.set(b.currencyCode, (totals.get(b.currencyCode) ?? 0) + b.amountMinor);
+    }
+    byUser.set(row.otherUserId, totals);
   }
 
-  return [...byUser.entries()].map(([otherUserId, balances]) => ({
-    otherUserId,
-    balances,
-  }));
+  return [...byUser.entries()]
+    .map(([otherUserId, totals]) => ({
+      otherUserId,
+      balances: [...totals.entries()]
+        .filter(([, amount]) => amount !== 0)
+        .map(([currencyCode, amountMinor]) => ({ currencyCode, amountMinor }))
+        .sort((a, b) => a.currencyCode.localeCompare(b.currencyCode)),
+    }))
+    .filter((row) => row.balances.length > 0)
+    .sort((a, b) => (a.otherUserId < b.otherUserId ? -1 : 1));
 }
 
 export interface PairwiseGroupBalance {
@@ -103,12 +87,33 @@ export interface PairwiseGroupBalance {
  * This is what lets the dashboard say "Grace owes you 74.02 USD for Non-group
  * expenses and 6198 JPY for 2025 Kyushu Autumn" rather than one opaque net
  * number. Summing a person's rows here reproduces `getPairwiseBalances`
- * exactly; same source table, one extra GROUP BY column.
+ * exactly; same source table, one extra GROUP BY column, then the same
+ * per-group simplify pass.
  */
 export async function getPairwiseBalancesByGroup(
   db: DB,
   userId: string,
 ): Promise<PairwiseGroupBalance[]> {
+  const [raw, nets, flags] = await Promise.all([
+    rawPairwiseByGroup(db, userId),
+    groupNets(db, userId),
+    simplifyFlags(db),
+  ]);
+
+  const edges = pairwiseWithSimplify({
+    viewerId: userId,
+    raw,
+    nets,
+    simplifyByGroupId: flags,
+  });
+
+  return assemblePairwiseByGroup(edges);
+}
+
+async function rawPairwiseByGroup(db: DB, userId: string): Promise<PairwiseEdge[]> {
+  // Repayments where the user is the debtor count negative; where they are the
+  // creditor, positive. UNION ALL then aggregate, so each direction is a simple
+  // indexed scan rather than an OR across two columns.
   const rows = await sql<{
     other_user_id: string;
     group_id: string | null;
@@ -137,28 +142,112 @@ export async function getPairwiseBalancesByGroup(
     )
     GROUP BY other_user_id, group_id, currency_code
     HAVING SUM(amount_minor) <> 0
-    ORDER BY other_user_id, group_id, currency_code
   `.execute(db);
 
-  // SQLite groups NULL group_ids together, so non-group expenses collapse into
-  // a single bucket per person rather than one bucket each.
+  return rows.rows.map((row) => ({
+    otherUserId: row.other_user_id,
+    groupId: row.group_id,
+    currencyCode: row.currency_code,
+    amountMinor: row.amount_minor,
+  }));
+}
+
+/**
+ * Every participant's net in each group the viewer belongs to (including
+ * groups they have left).
+ *
+ * Group nets include bills the viewer is not on: that is how simplify can
+ * reroute a third party's debt onto them. Other people's groups are not
+ * scanned. One-on-one expenses are never simplified, so they stay out.
+ */
+async function groupNets(db: DB, userId: string): Promise<Array<{
+  groupId: string | null;
+  userId: string;
+  currencyCode: string;
+  amountMinor: number;
+}>> {
+  const rows = await sql<{
+    group_id: string | null;
+    user_id: string;
+    currency_code: string;
+    amount_minor: number;
+  }>`
+    SELECT group_id, user_id, currency_code, SUM(amount_minor) AS amount_minor
+    FROM (
+      SELECT e.group_id,
+             r.from_user_id AS user_id,
+             e.currency_code,
+             -r.amount_minor AS amount_minor
+      FROM expense_repayments r
+      JOIN expenses e ON e.id = r.expense_id
+      WHERE e.deleted_at IS NULL
+        AND e.group_id IN (SELECT group_id FROM group_members WHERE user_id = ${userId})
+
+      UNION ALL
+
+      SELECT e.group_id,
+             r.to_user_id AS user_id,
+             e.currency_code,
+             r.amount_minor AS amount_minor
+      FROM expense_repayments r
+      JOIN expenses e ON e.id = r.expense_id
+      WHERE e.deleted_at IS NULL
+        AND e.group_id IN (SELECT group_id FROM group_members WHERE user_id = ${userId})
+    )
+    GROUP BY group_id, user_id, currency_code
+    HAVING SUM(amount_minor) <> 0
+  `.execute(db);
+
+  return rows.rows.map((row) => ({
+    groupId: row.group_id,
+    userId: row.user_id,
+    currencyCode: row.currency_code,
+    amountMinor: row.amount_minor,
+  }));
+}
+
+async function simplifyFlags(db: DB): Promise<Map<string, boolean>> {
+  const rows = await db
+    .selectFrom("groups")
+    .select(["id", "simplify_by_default"])
+    .where("deleted_at", "is", null)
+    .execute();
+  return new Map(rows.map((row) => [row.id, row.simplify_by_default === 1]));
+}
+
+function assemblePairwiseByGroup(edges: PairwiseEdge[]): PairwiseGroupBalance[] {
   const byPair = new Map<string, PairwiseGroupBalance>();
 
-  for (const row of rows.rows) {
-    const key = `${row.other_user_id}:${row.group_id ?? "none"}`;
+  for (const edge of edges) {
+    const key = `${edge.otherUserId}:${edge.groupId ?? "none"}`;
     const entry = byPair.get(key) ?? {
-      otherUserId: row.other_user_id,
-      groupId: row.group_id,
+      otherUserId: edge.otherUserId,
+      groupId: edge.groupId,
       balances: [],
     };
-    entry.balances.push({
-      currencyCode: row.currency_code,
-      amountMinor: row.amount_minor,
-    });
+    const existing = entry.balances.find((b) => b.currencyCode === edge.currencyCode);
+    if (existing) existing.amountMinor += edge.amountMinor;
+    else entry.balances.push({ currencyCode: edge.currencyCode, amountMinor: edge.amountMinor });
     byPair.set(key, entry);
   }
 
-  return [...byPair.values()];
+  const result: PairwiseGroupBalance[] = [];
+  for (const entry of byPair.values()) {
+    entry.balances = entry.balances
+      .filter((b) => b.amountMinor !== 0)
+      .sort((a, b) => a.currencyCode.localeCompare(b.currencyCode));
+    if (entry.balances.length > 0) result.push(entry);
+  }
+
+  result.sort((a, b) => {
+    const user = a.otherUserId < b.otherUserId ? -1 : a.otherUserId > b.otherUserId ? 1 : 0;
+    if (user !== 0) return user;
+    if (a.groupId === b.groupId) return 0;
+    if (a.groupId === null) return 1;
+    if (b.groupId === null) return -1;
+    return a.groupId < b.groupId ? -1 : 1;
+  });
+  return result;
 }
 
 /** Net balance between exactly two users, across all shared history. */
@@ -222,9 +311,8 @@ export async function getGroupBalances(
 /**
  * A user's overall position: one signed total per currency.
  *
- * Note this is a SUM of pairwise balances, which is not the same as "how much
- * cash would settle everything" when debts can be routed through third parties.
- * For that, use simplifyDebts.
+ * This is a SUM of pairwise balances. Simplify-debts redistributes who those
+ * balances sit with, but not this total: a viewer's net in a group is invariant.
  */
 export async function getTotalBalance(
   db: DB,

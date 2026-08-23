@@ -36,7 +36,10 @@ RUN apt-get purge -y python3 make g++ && apt-get autoremove -y
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/web/dist ./web/dist
-COPY migrations ./migrations
+# migrate.ts resolves this path relative to its own file location
+# (src/db/migrate.ts -> ../../migrations); once compiled, that file lives at
+# dist/src/db/migrate.js, so the same relative path lands on dist/migrations.
+COPY migrations ./dist/migrations
 
 # The database must outlive the container.
 VOLUME ["/data"]

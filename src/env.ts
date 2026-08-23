@@ -1,5 +1,32 @@
 import { z } from "zod";
 
+/** Missing or whitespace-only env values are unset, not empty strings. */
+const blankToUndef = (value: unknown) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+};
+
+const optionalSecret = z.preprocess(blankToUndef, z.string().optional());
+
+/**
+ * Bare email, or `Name <email>`. Resend documents the named form; Postmark
+ * accepts it too.
+ */
+function isMailFrom(value: string): boolean {
+  const named = value.match(/^(.+?)\s*<([^<>]+)>$/);
+  const email = (named?.[2] ?? value).trim();
+  return z.string().email().safeParse(email).success;
+}
+
+const optionalFromAddress = z.preprocess(
+  blankToUndef,
+  z
+    .string()
+    .refine(isMailFrom, "must be an email address, optionally 'Name <email>'")
+    .optional(),
+);
+
 /**
  * Environment is validated once at import time and then frozen. If a required
  * var is missing the process exits immediately with a readable message rather
@@ -25,25 +52,26 @@ const schema = z.object({
    */
   SPLITWISE_API_BASE: z.string().url().default("https://secure.splitwise.com/api/v3.0"),
 
-  // Postmark. Absence must be a no-op, never a boot failure; sending degrades
-  // to a console log (see src/email/postmark.ts), which is also how you complete
-  // the verification flow locally without a mail provider.
-  POSTMARK_SERVER_TOKEN: z.string().optional(),
-  POSTMARK_FROM_ADDRESS: z
-    .string()
-    .email()
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
+  // Mail. Configure Resend OR Postmark, never both complete pairs. Absence of
+  // both is a no-op, never a boot failure; sending degrades to a console log
+  // (see src/email/send.ts), which is also how you complete the verification
+  // flow locally without a mail provider.
+  RESEND_API_KEY: optionalSecret,
+  RESEND_FROM_ADDRESS: optionalFromAddress,
+  POSTMARK_SERVER_TOKEN: optionalSecret,
+  POSTMARK_FROM_ADDRESS: optionalFromAddress,
   // Transactional mail must not go out on a broadcast stream.
   POSTMARK_MESSAGE_STREAM: z.string().default("outbound"),
 
   /**
-   * When false (the default), verification is ADVISORY: unverified users can
-   * log in and use everything, and the UI shows a banner.
+   * When false (the default), signup returns the verification URL to the
+   * client so the complete-account form can open without a mail provider.
+   * Unverified existing accounts can still log in; the UI shows a banner.
    *
-   * When true, login is blocked until the address is confirmed. Defaulting to
-   * false is deliberate for self-hosted use; combined with a misconfigured
-   * Postmark it would otherwise lock you out of your own server. The escape
+   * When true, that URL is emailed and omitted from the API response, and
+   * login is blocked until the address is confirmed. Defaulting to false is
+   * deliberate for self-hosted use; combined with a misconfigured mail
+   * provider it would otherwise lock you out of your own server. The escape
    * hatch is `yarn verify:user <email>`.
    */
   EMAIL_VERIFICATION_REQUIRED: z
@@ -83,6 +111,32 @@ export function parseAdminEmails(raw: string): ReadonlySet<string> {
   return new Set(emails);
 }
 
+export type EmailProvider = "resend" | "postmark";
+
+export type EmailCredentials = {
+  RESEND_API_KEY?: string;
+  RESEND_FROM_ADDRESS?: string;
+  POSTMARK_SERVER_TOKEN?: string;
+  POSTMARK_FROM_ADDRESS?: string;
+};
+
+/**
+ * Picks at most one mail provider. A complete pair is token/key + from-address.
+ * Both pairs is a misconfiguration: we refuse to guess which one to send with.
+ */
+export function resolveEmailProvider(input: EmailCredentials): EmailProvider | null {
+  const resend = Boolean(input.RESEND_API_KEY && input.RESEND_FROM_ADDRESS);
+  const postmark = Boolean(input.POSTMARK_SERVER_TOKEN && input.POSTMARK_FROM_ADDRESS);
+  if (resend && postmark) {
+    throw new Error(
+      "Set either Resend (RESEND_API_KEY + RESEND_FROM_ADDRESS) or Postmark (POSTMARK_SERVER_TOKEN + POSTMARK_FROM_ADDRESS), not both. See .env.example.",
+    );
+  }
+  if (resend) return "resend";
+  if (postmark) return "postmark";
+  return null;
+}
+
 function load() {
   // In test runs we don't want to require a real .env file.
   if (process.env.NODE_ENV === "test" && !process.env.SESSION_SECRET) {
@@ -97,14 +151,19 @@ function load() {
     console.error(`Invalid environment:\n${issues}\n\nSee .env.example.`);
     process.exit(1);
   }
+  try {
+    resolveEmailProvider(parsed.data);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
   return Object.freeze(parsed.data);
 }
 
 export const env = load();
 
-export const emailEnabled = Boolean(
-  env.POSTMARK_SERVER_TOKEN && env.POSTMARK_FROM_ADDRESS,
-);
+export const emailProvider = resolveEmailProvider(env);
+export const emailEnabled = emailProvider !== null;
 
 /** True when this authenticated user is listed in ADMIN_EMAILS. */
 export function isAdminUser(user: {

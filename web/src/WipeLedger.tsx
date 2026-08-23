@@ -36,15 +36,26 @@ export function WipeLedgerButton({
     setError(null);
     try {
       await api.importWipe(CONFIRM_PHRASE);
-      await resetMirror();
-      setStep("closed");
-      setTyped("");
-      onWiped?.();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not wipe this account's data");
-    } finally {
       setBusy(false);
+      return;
     }
+
+    // Past this line the server has already committed, so nothing below may
+    // report failure: telling someone the wipe failed when their ledger is gone
+    // sends them to do it again, and the second attempt looks like a no-op.
+    // A mirror that will not clear is a stale local cache, not lost data, and
+    // the next sync reconciles it.
+    try {
+      await resetMirror();
+    } catch (err) {
+      console.error("Wipe succeeded but the local mirror did not reset:", err);
+    }
+    setStep("closed");
+    setTyped("");
+    setBusy(false);
+    onWiped?.();
   }
 
   return (

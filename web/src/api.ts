@@ -154,6 +154,7 @@ export type ImportPerson = ImportPreview["people"][number];
 export type ImportFootprint = ImportStatus["local"];
 export type ImportExpensePage = InferResponseType<typeof client.import.expenses.$post, 200>;
 export type ImportCommentsPage = InferResponseType<typeof client.import.comments.$post, 200>;
+export type ImportRounding = InferResponseType<typeof client.import.rounding.$post, 200>;
 export type ImportSkip = ImportExpensePage["skipped"][number];
 export type ImportPausedSeries = ImportExpensePage["pausedSeries"][number];
 
@@ -248,6 +249,9 @@ async function pushRequest(
 }
 
 export const api = {
+  signup: (input: InferRequestType<typeof client.auth.signup.$post>["json"]) =>
+    call(client.auth.signup.$post, client.auth.signup.$post({ json: input })),
+
   register: (input: InferRequestType<typeof client.auth.register.$post>["json"]) =>
     call(client.auth.register.$post, client.auth.register.$post({ json: input }), 201),
 
@@ -283,6 +287,12 @@ export const api = {
 
   getGroup: (id: string) =>
     call(client.groups[":id"].$get, client.groups[":id"].$get({ param: { id } })),
+
+  updateGroup: (
+    id: string,
+    input: InferRequestType<typeof client.groups[":id"]["$patch"]>["json"],
+  ) =>
+    call(client.groups[":id"].$patch, client.groups[":id"].$patch({ param: { id }, json: input })),
 
   addGroupMember: (
     groupId: string,
@@ -439,6 +449,14 @@ export const api = {
    */
   importComments: (apiKey: string, offset = 0) =>
     call(client.import.comments.$post, client.import.comments.$post({ json: { apiKey, offset } })),
+
+  /**
+   * Step 5. Compares Splitwise friend totals with ours and records settle-ups
+   * for leftover cents from dropped fractions. Safe to call twice: a match is
+   * a no-op.
+   */
+  importRounding: (apiKey: string) =>
+    call(client.import.rounding.$post, client.import.rounding.$post({ json: { apiKey } })),
 
   /** Resume stopped series that import landed from Splitwise repeating bills. */
   importContinueRecurring: (ids: string[]) =>

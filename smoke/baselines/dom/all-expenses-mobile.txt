@@ -23,20 +23,20 @@
     - option "Yosemite Camping"
   - combobox "With":
     - option "Anyone" [selected]
-    - option "Ah Beng"
-    - option "Ah Lian"
-    - option "Aisyah"
-    - option "Danial"
-    - option "Gerry"
-    - option "Hana"
-    - option "James"
-    - option "Jas"
-    - option "Jen"
     - option "JJ"
-    - option "John"
+    - option "Aisyah"
     - option "Mel"
-    - option "Priya"
+    - option "Ah Beng"
+    - option "John"
     - option "Taro"
+    - option "Danial"
+    - option "Jas"
+    - option "Hana"
+    - option "Ah Lian"
+    - option "Gerry"
+    - option "James"
+    - option "Jen"
+    - option "Priya"
     - option "Yuki"
   - combobox "Category":
     - option "Any category" [selected]
@@ -90,12 +90,15 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "Settle up <DATE> · Apartment 4B · You paid 50.00USD you lent 50.00USD":
-    - text: Settle up <DATE> ·
+  - link "You paid JJ <DATE> · Apartment 4B 50.00USD":
+    - text: You paid
+    - link "JJ":
+      - /url: /app/friends/<ULID>
+    - text: <DATE> ·
     - link "Apartment 4B":
       - /url: /app/groups/<ULID>
-    - text: · You paid 50.00USD you lent 50.00USD
-  - link "Coffee catch-up <DATE> · One-on-one · Dining out · You paid 18.50USD you lent 9.25USD"
+    - text: 50.00USD
+  - link "Coffee catch-up <DATE> · Dining out · You paid 18.50USD you lent 9.25USD"
   - link "TeamLab tickets <DATE> · Weekend in Tokyo · Life · JJ paid 9600JPY you borrowed 2400JPY":
     - text: TeamLab tickets <DATE> ·
     - link "Weekend in Tokyo":
@@ -104,25 +107,25 @@
     - link "JJ":
       - /url: /app/friends/<ULID>
     - text: paid 9600JPY you borrowed 2400JPY
-  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid 4800JPY 2 comments you lent 3600JPY":
+  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY":
     - text: Ramen at Ichiran <DATE> ·
     - link "Weekend in Tokyo":
       - /url: /app/groups/<ULID>
-    - text: · Dining out · You paid 4800JPY 2 comments you lent 3600JPY
-  - link "Trader Joe's run <DATE> · Apartment 4B · Groceries · You paid 92.43USD 2 comments you lent 46.21USD":
+    - text: · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY
+  - link "Trader Joe's run <DATE> · Apartment 4B · Groceries · You paid · 2 comments 92.43USD you lent 46.21USD":
     - text: Trader Joe's run <DATE> ·
     - link "Apartment 4B":
       - /url: /app/groups/<ULID>
-    - text: · Groceries · You paid 92.43USD 2 comments you lent 46.21USD
-  - link "Concert tickets <DATE> · One-on-one · Life · You paid 120.00USD you lent 60.00USD"
-  - link "Team sushi lunch <DATE> · Office Lunch Club · Dining out · Mel paid 156.40USD 1 comment you borrowed 39.10USD":
+    - text: · Groceries · You paid · 2 comments 92.43USD you lent 46.21USD
+  - link "Concert tickets <DATE> · Life · You paid 120.00USD you lent 60.00USD"
+  - link "Team sushi lunch <DATE> · Office Lunch Club · Dining out · Mel paid · 1 comment 156.40USD you borrowed 39.10USD":
     - text: Team sushi lunch <DATE> ·
     - link "Office Lunch Club":
       - /url: /app/groups/<ULID>
     - text: · Dining out ·
     - link "Mel":
       - /url: /app/friends/<ULID>
-    - text: paid 156.40USD 1 comment you borrowed 39.10USD
+    - text: paid · 1 comment 156.40USD you borrowed 39.10USD
   - link "Hotel block deposit <DATE> · Jess & Marco's Wedding · Hotel · Jas paid 325.00USD you borrowed 65.00USD":
     - text: Hotel block deposit <DATE> ·
     - link "Jess & Marco's Wedding":
@@ -192,6 +195,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

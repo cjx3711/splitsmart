@@ -2,13 +2,71 @@
  * Email bodies.
  *
  * Plain functions returning strings; no template engine, no HTML framework.
- * Every message ships both an HTML and a text part because Postmark scores
+ * Every message ships both an HTML and a text part because providers score
  * text-less mail worse for deliverability, and text is what shows up in the
- * console when Postmark is unconfigured.
+ * console when no mail provider is configured.
  *
  * Inline styles only: email clients strip <style> blocks, and Gmail in
  * particular drops anything in <head>.
  */
+
+interface SignupEmail {
+  verifyUrl: string;
+  expiresInHours: number;
+}
+
+/**
+ * First email of the signup flow. There is no account yet, so there is no
+ * name to greet; the address itself is the subject.
+ */
+export function signupEmail(input: SignupEmail): {
+  subject: string;
+  htmlBody: string;
+  textBody: string;
+} {
+  const { verifyUrl, expiresInHours } = input;
+
+  return {
+    subject: "Finish creating your SplitSmart account",
+
+    textBody: `Confirm this email address to finish creating your SplitSmart account:
+
+${verifyUrl}
+
+This link expires in ${expiresInHours} hours and can only be used once.
+
+If you didn't request this, you can ignore this email.
+`,
+
+    htmlBody: `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#f6f7f9;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:#16191d;line-height:1.5;">
+    <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #dfe3e8;border-radius:8px;padding:32px;">
+      <h1 style="margin:0 0 16px;font-size:20px;">Finish creating your account</h1>
+      <p style="margin:0 0 24px;">
+        Confirm this email address to finish creating your SplitSmart account.
+      </p>
+      <p style="margin:0 0 24px;">
+        <a href="${escapeAttribute(verifyUrl)}"
+           style="display:inline-block;background:#10806a;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;">
+          Continue
+        </a>
+      </p>
+      <p style="margin:0 0 8px;font-size:14px;color:#6b7280;">
+        This link expires in ${expiresInHours} hours and can only be used once.
+      </p>
+      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
+        If the button doesn't work, paste this into your browser:<br />
+        <span style="word-break:break-all;">${escapeHtml(verifyUrl)}</span>
+      </p>
+      <p style="margin:0;font-size:14px;color:#6b7280;border-top:1px solid #dfe3e8;padding-top:16px;">
+        If you didn't request this, you can ignore this email.
+      </p>
+    </div>
+  </body>
+</html>`,
+  };
+}
 
 interface VerificationEmail {
   name: string;

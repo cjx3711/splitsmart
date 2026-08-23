@@ -26,7 +26,7 @@ import {
   compareByLastExpense,
   lastSharedExpenseIdByUser,
 } from "../../../src/domain/friend-recency.ts";
-import { simplifyDebts } from "../../../src/domain/settle.ts";
+import { simplifyDebts, pairwiseWithSimplify, type PairwiseEdge } from "../../../src/domain/settle.ts";
 import {
   csvDocument,
   type CsvExpenseRow,
@@ -167,6 +167,122 @@ function movements(expenses: LocalExpense[]): Movement[] {
   }
 
   return result;
+}
+
+function netsFromMoves(moves: Movement[]): Array<{
+  groupId: string | null;
+  userId: string;
+  currencyCode: string;
+  amountMinor: number;
+}> {
+  const totals = new Map<string, number>();
+  const add = (groupId: string | null, userId: string, currency: string, amount: number) => {
+    const key = `${groupId ?? ""}\0${userId}\0${currency}`;
+    totals.set(key, (totals.get(key) ?? 0) + amount);
+  };
+  for (const move of moves) {
+    add(move.groupId, move.fromUserId, move.currencyCode, -move.amountMinor);
+    add(move.groupId, move.toUserId, move.currencyCode, move.amountMinor);
+  }
+  const result: Array<{
+    groupId: string | null;
+    userId: string;
+    currencyCode: string;
+    amountMinor: number;
+  }> = [];
+  for (const [key, amountMinor] of totals) {
+    if (amountMinor === 0) continue;
+    const [group = "", userId = "", currencyCode = ""] = key.split("\0");
+    result.push({
+      groupId: group === "" ? null : group,
+      userId,
+      currencyCode,
+      amountMinor,
+    });
+  }
+  return result;
+}
+
+function flattenPairwise(
+  byUser: Map<string, Array<{ groupId: string | null; balances: CurrencyAmount[] }>>,
+): PairwiseEdge[] {
+  const edges: PairwiseEdge[] = [];
+  for (const [otherUserId, buckets] of byUser) {
+    for (const bucket of buckets) {
+      for (const b of bucket.balances) {
+        edges.push({
+          otherUserId,
+          groupId: bucket.groupId,
+          currencyCode: b.currencyCode,
+          amountMinor: b.amountMinor,
+        });
+      }
+    }
+  }
+  return edges;
+}
+
+function viewerPairwise(
+  moves: Movement[],
+  selfId: string,
+  simplifyByGroupId: Map<string, boolean>,
+): {
+  balances: Map<string, CurrencyAmount[]>;
+  breakdowns: Map<string, Array<{ groupId: string | null; balances: CurrencyAmount[] }>>;
+} {
+  const edges = pairwiseWithSimplify({
+    viewerId: selfId,
+    raw: flattenPairwise(pairwiseByGroup(moves, selfId)),
+    nets: netsFromMoves(moves),
+    simplifyByGroupId,
+  });
+
+  const balances = new Map<string, Map<string, number>>();
+  const breakdowns = new Map<string, Map<string, Map<string, number>>>();
+
+  const addBal = (otherId: string, currency: string, amount: number) => {
+    const totals = balances.get(otherId) ?? new Map<string, number>();
+    totals.set(currency, (totals.get(currency) ?? 0) + amount);
+    balances.set(otherId, totals);
+  };
+  const addBreak = (otherId: string, groupId: string | null, currency: string, amount: number) => {
+    const groups = breakdowns.get(otherId) ?? new Map<string, Map<string, number>>();
+    const key = groupId ?? "";
+    const totals = groups.get(key) ?? new Map<string, number>();
+    totals.set(currency, (totals.get(currency) ?? 0) + amount);
+    groups.set(key, totals);
+    breakdowns.set(otherId, groups);
+  };
+
+  for (const edge of edges) {
+    addBal(edge.otherUserId, edge.currencyCode, edge.amountMinor);
+    addBreak(edge.otherUserId, edge.groupId, edge.currencyCode, edge.amountMinor);
+  }
+
+  const balanceMap = new Map<string, CurrencyAmount[]>();
+  for (const [otherId, totals] of balances) {
+    const amounts = toAmounts(totals);
+    if (amounts.length > 0) balanceMap.set(otherId, amounts);
+  }
+
+  const breakdownMap = new Map<string, Array<{ groupId: string | null; balances: CurrencyAmount[] }>>();
+  for (const [otherId, groups] of breakdowns) {
+    const list: Array<{ groupId: string | null; balances: CurrencyAmount[] }> = [];
+    for (const [key, totals] of groups) {
+      const amounts = toAmounts(totals);
+      if (amounts.length === 0) continue;
+      list.push({ groupId: key === "" ? null : key, balances: amounts });
+    }
+    list.sort((a, b) => {
+      if (a.groupId === b.groupId) return 0;
+      if (a.groupId === null) return 1;
+      if (b.groupId === null) return -1;
+      return a.groupId < b.groupId ? -1 : 1;
+    });
+    if (list.length > 0) breakdownMap.set(otherId, list);
+  }
+
+  return { balances: balanceMap, breakdowns: breakdownMap };
 }
 
 /** Per-currency totals, zeroes dropped, sorted by code. Mirrors the SQL's HAVING. */
@@ -360,14 +476,37 @@ export async function localGroups(
   return { groups, totalBalance: toAmounts(totals) };
 }
 
-function toApiGroup(group: { id: string; name: string; groupType: string; defaultCurrency: string; simplifyByDefault: boolean }): Group {
+function toApiGroup(group: { id: string; name: string; groupType: string; defaultCurrency: string; simplifyByDefault?: boolean }): Group {
   return {
     id: group.id,
     name: group.name,
     group_type: group.groupType,
     default_currency: group.defaultCurrency,
-    simplify_by_default: group.simplifyByDefault ? 1 : 0,
+    simplify_by_default: groupSimplifies(group.simplifyByDefault) ? 1 : 0,
   };
+}
+
+/** Missing means on: Splitwise's default, and what a mirror bootstrapped before the field existed would otherwise treat as off. */
+function groupSimplifies(flag: boolean | undefined): boolean {
+  return flag !== false;
+}
+
+function simplifyFlagsForMoves(
+  groups: Array<{ id: string; deletedAt: string | null; simplifyByDefault?: boolean }>,
+  moves: Movement[],
+): Map<string, boolean> {
+  const flags = new Map(
+    groups
+      .filter((g) => g.deletedAt === null)
+      .map((g) => [g.id, groupSimplifies(g.simplifyByDefault)]),
+  );
+  // Expenses can name a group the mirror has not stored yet (import without a
+  // sync_log row, a bootstrap that ran before groups were on the first page).
+  // Unknown groups default on, matching new groups and Splitwise.
+  for (const move of moves) {
+    if (move.groupId && !flags.has(move.groupId)) flags.set(move.groupId, true);
+  }
+  return flags;
 }
 
 export async function localGroup(
@@ -407,6 +546,41 @@ export async function localGroup(
     balances: groupBalances(movements(await liveExpenses(db)), groupId),
     role: own.role,
   };
+}
+
+/**
+ * Current members of several groups at once, keyed by group id.
+ *
+ * Used to show who else is on a shared bill without a full `localGroup` call
+ * per row (that also demands the viewer be a live member, which a settled or
+ * left group's breakdown entry may not satisfy).
+ */
+export async function localGroupMembers(
+  db: LocalDb,
+  groupIds: string[],
+): Promise<Map<string, GroupMember[]>> {
+  const ids = [...new Set(groupIds)];
+  if (ids.length === 0) return new Map();
+
+  const rows = await db.groupMembers.where("groupId").anyOf(ids).toArray();
+  const byGroup = new Map<string, GroupMember[]>();
+  for (const m of rows) {
+    if (m.leftAt !== null) continue;
+    const list = byGroup.get(m.groupId) ?? [];
+    list.push({
+      id: m.userId,
+      name: m.user?.name ?? "",
+      nickname: m.user?.nickname ?? null,
+      icon_letters: m.user?.iconLetters ?? null,
+      icon_emoji: m.user?.iconEmoji ?? null,
+      icon_hue: m.user?.iconHue ?? null,
+      is_ghost: m.user?.isGhost ? 1 : 0,
+      role: m.role,
+      joined_via: m.joinedVia,
+    });
+    byGroup.set(m.groupId, list);
+  }
+  return byGroup;
 }
 
 /**
@@ -454,8 +628,8 @@ export async function localFriends(
 
   const expenses = await liveExpenses(db);
   const moves = movements(expenses);
-  const balances = pairwise(moves, selfId);
-  const breakdowns = pairwiseByGroup(moves, selfId);
+  const simplifyByGroupId = simplifyFlagsForMoves(await db.groups.toArray(), moves);
+  const { balances, breakdowns } = viewerPairwise(moves, selfId, simplifyByGroupId);
   const lastByUser = lastSharedExpenseIdByUser(expenses, selfId);
 
   const explicit = new Set(
@@ -475,7 +649,16 @@ export async function localFriends(
     .sort((a, b) =>
       compareByLastExpense(a.id, b.id, lastByUser, displayName(a), displayName(b)),
     )
-    .map((user) => toApiFriend(user, balances, breakdowns, explicit, groupNames));
+    .map((user) =>
+      toApiFriend(
+        user,
+        balances,
+        breakdowns,
+        explicit,
+        groupNames,
+        simplifyByGroupId,
+      ),
+    );
 
   return { friends };
 }
@@ -492,6 +675,8 @@ export async function localFriend(
   if (!user || user.deletedAt !== null) return null;
 
   const moves = movements(await liveExpenses(db));
+  const simplifyByGroupId = simplifyFlagsForMoves(await db.groups.toArray(), moves);
+  const { balances, breakdowns } = viewerPairwise(moves, selfId, simplifyByGroupId);
   const explicit = new Set(
     (await db.friendships.toArray()).map((f) =>
       f.userAId === selfId ? f.userBId : f.userAId,
@@ -502,10 +687,11 @@ export async function localFriend(
   return {
     friend: toApiFriend(
       user,
-      pairwise(moves, selfId),
-      pairwiseByGroup(moves, selfId),
+      balances,
+      breakdowns,
       explicit,
       groupNames,
+      simplifyByGroupId,
     ),
   };
 }
@@ -516,6 +702,7 @@ function toApiFriend(
   breakdowns: Map<string, Array<{ groupId: string | null; balances: CurrencyAmount[] }>>,
   explicit: Set<string>,
   groupNames: Map<string, string>,
+  simplifyByGroupId: Map<string, boolean>,
 ): Friend {
   const breakdown: FriendBreakdown[] = (breakdowns.get(user.id) ?? [])
     .map((entry) => ({
@@ -523,6 +710,7 @@ function toApiFriend(
       // Null name means "one-on-one expenses"; the UI supplies that wording, so
       // the server does not invent a pseudo-group and neither does this.
       groupName: entry.groupId === null ? null : (groupNames.get(entry.groupId) ?? null),
+      simplified: entry.groupId !== null && simplifyByGroupId.get(entry.groupId) !== false,
       balances: entry.balances,
     }))
     .sort(byGroupName);
@@ -579,6 +767,40 @@ export async function localGroupExpenses(
     .sort(byDateDesc);
 
   return { expenses: await toSummaries(db, rows) };
+}
+
+/**
+ * Groups both people currently belong to.
+ *
+ * Membership, not balances: a settled trip still belongs on the friend page,
+ * and a leftover from a group one of you has left does not. There is no
+ * matching `/api/v1` endpoint; the mirror already has every membership the
+ * caller can see, so the friend screen reads this instead of inventing a
+ * network round trip for a list it already holds.
+ */
+export async function localSharedGroups(
+  db: LocalDb,
+  selfId: string,
+  friendId: string,
+): Promise<{ groups: Group[] }> {
+  const [mine, theirs] = await Promise.all([
+    db.groupMembers.where("userId").equals(selfId).toArray(),
+    db.groupMembers.where("userId").equals(friendId).toArray(),
+  ]);
+  const mineLive = new Set(mine.filter((m) => m.leftAt === null).map((m) => m.groupId));
+  const sharedIds = [
+    ...new Set(
+      theirs.filter((m) => m.leftAt === null && mineLive.has(m.groupId)).map((m) => m.groupId),
+    ),
+  ];
+  if (sharedIds.length === 0) return { groups: [] };
+
+  const groups = (await db.groups.bulkGet(sharedIds))
+    .filter((g): g is NonNullable<typeof g> => g != null && g.deletedAt === null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(toApiGroup);
+
+  return { groups };
 }
 
 /** Both of you on the same bill, across every group plus the one-on-one ones. */

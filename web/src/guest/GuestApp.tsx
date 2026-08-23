@@ -225,7 +225,7 @@ function Shell() {
 
       <ClaimBanner />
 
-      <main className="main">
+      <main className="main guest-main">
         <Routes>
           <Route path="/pick" element={<GuestPicker />} />
           <Route
@@ -265,7 +265,7 @@ function Standalone({ children }: { children: React.ReactNode }) {
       <header className="topbar">
         <Logo />
       </header>
-      <main className="main">
+      <main className="main guest-main">
         <div className="auth stack">{children}</div>
       </main>
       <Footer />

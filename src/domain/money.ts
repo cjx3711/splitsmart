@@ -14,24 +14,37 @@ const DEFAULT_DECIMAL_PLACES = 2;
 
 export class MoneyError extends Error {}
 
-export interface TruncatedAmount {
+export interface RoundedAmount {
   minor: number;
-  /** Decimal string of what was dropped, e.g. `"0.02"`. Null if nothing was. */
-  dropped: string | null;
+  /**
+   * Signed decimal string of the correction rounding applied, e.g. `"-0.02"`
+   * when `"197529.02"` JPY became 197529, or `"+0.34"` when `"6845.66"` JPY
+   * became 6846. Null when the input already fit the currency exactly.
+   */
+  adjustment: string | null;
 }
 
 /**
- * Parses a decimal string into minor units, dropping extra digits rather than
- * rounding them. Trailing zeros are not extra precision (`"3400.0"` JPY is 3400);
- * `"197529.02"` JPY becomes 197529 with `dropped: "0.02"`.
+ * Parses a decimal string into minor units, ROUNDING the digits the currency
+ * cannot hold rather than discarding them. Trailing zeros are not extra
+ * precision (`"3400.0"` JPY is 3400); `"197529.02"` JPY becomes 197529 with
+ * `adjustment: "-0.02"` and `"6845.66"` JPY becomes 6846 with `"+0.34"`.
  *
- * Import is the caller that wants this. Everywhere else uses `parseAmount`,
+ * Rounding rather than truncating is deliberate and it is about drift, not
+ * about any single bill. Splitwise stores JPY with cents, so a long shared
+ * history hits this on most rows. Truncation is biased - every correction is
+ * negative - so the error accumulates in one direction and a friend total ends
+ * up tens of yen off. Rounding half away from zero centres the error at zero,
+ * so the corrections cancel instead of compounding and the leftover stays
+ * inside what `POST /import/rounding` is allowed to settle.
+ *
+ * Import is the only caller that wants this. Everywhere else uses `parseAmount`,
  * which refuses the extra digits so a UI typo cannot silently move money.
  */
-export function parseAmountTruncating(
+export function parseAmountRounded(
   input: string | number,
   decimalPlaces = DEFAULT_DECIMAL_PLACES,
-): TruncatedAmount {
+): RoundedAmount {
   const raw = typeof input === "number" ? String(input) : input.trim();
 
   if (!/^-?\d*(\.\d*)?$/.test(raw) || raw === "" || raw === "." || raw === "-") {
@@ -46,16 +59,61 @@ export function parseAmountTruncating(
   const extra = fraction.slice(decimalPlaces).replace(/0+$/, "");
 
   const padded = kept.padEnd(decimalPlaces, "0");
-  const minor = Number(whole || "0") * 10 ** decimalPlaces + Number(padded || "0");
+  const floored = Number(whole || "0") * 10 ** decimalPlaces + Number(padded || "0");
+
+  // Half away from zero, decided on the digit string so no float is involved:
+  // "5" or higher in the first discarded place means the next minor unit is
+  // closer. The carry takes care of itself because `minor` is a plain integer
+  // ("9.99" at 1dp is 99 + 1 = 100, i.e. "10.0").
+  const roundsUp = extra.length > 0 && extra.charCodeAt(0) >= 53; // '5'
+  const minor = floored + (roundsUp ? 1 : 0);
 
   if (!Number.isSafeInteger(minor)) {
     throw new MoneyError(`Amount out of safe integer range: ${raw}`);
   }
 
   return {
-    minor: negative ? -minor : minor,
-    dropped: extra.length === 0 ? null : `0.${"0".repeat(decimalPlaces)}${extra}`,
+    // `-0` would round-trip through SQLite as a float; normalise it away.
+    minor: negative && minor !== 0 ? -minor : minor,
+    adjustment:
+      extra.length === 0
+        ? null
+        : roundingAdjustment(negative, extra, decimalPlaces),
   };
+}
+
+/**
+ * The signed decimal string describing what rounding moved.
+ *
+ * Rounding down discards `0.00<extra>`; rounding up adds the complement, one
+ * unit in the last place the currency keeps minus what was discarded. Computed
+ * on digit strings rather than floats so `"0.1"` + `"0.2"` cannot show up here.
+ */
+function roundingAdjustment(
+  negative: boolean,
+  extra: string,
+  decimalPlaces: number,
+): string {
+  const roundsUp = extra.charCodeAt(0) >= 53;
+  const magnitude = roundsUp
+    ? subtractFromOneUlp(extra)
+    : `0.${"0".repeat(decimalPlaces)}${extra}`;
+  // Rounding a negative amount up in magnitude moves it further below zero.
+  const movesUp = roundsUp !== negative;
+  return `${movesUp ? "+" : "-"}${roundsUp ? shiftRight(magnitude, decimalPlaces) : magnitude}`;
+}
+
+/** `"66"` -> `"0.34"`: one unit in the first discarded place, minus `extra`. */
+function subtractFromOneUlp(extra: string): string {
+  const borrowed = String(10 ** extra.length - Number(extra)).padStart(extra.length, "0");
+  return `0.${borrowed}`;
+}
+
+/** Moves a `0.x` string `places` digits to the right of the decimal point. */
+function shiftRight(value: string, places: number): string {
+  if (places === 0) return value;
+  const digits = value.slice(2);
+  return `0.${"0".repeat(places)}${digits}`;
 }
 
 /**
@@ -68,8 +126,8 @@ export function parseAmountTruncating(
  */
 export function parseAmount(input: string | number, decimalPlaces = DEFAULT_DECIMAL_PLACES): number {
   const raw = typeof input === "number" ? input.toFixed(decimalPlaces) : input.trim();
-  const parsed = parseAmountTruncating(raw, decimalPlaces);
-  if (parsed.dropped !== null) {
+  const parsed = parseAmountRounded(raw, decimalPlaces);
+  if (parsed.adjustment !== null) {
     throw new MoneyError(
       `${raw} has more than ${decimalPlaces} decimal place(s) for this currency`,
     );

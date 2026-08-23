@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * Interactive smoke flows: the clicks a screenshot of a seeded page cannot
  * cover (adding an expense, the split editor refusing a bad split, posting a

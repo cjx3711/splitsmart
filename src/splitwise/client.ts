@@ -42,6 +42,11 @@ export interface SplitwiseUser {
   registration_status?: string | null;
   picture?: { medium?: string | null; large?: string | null } | null;
   created_at?: string | null;
+  /**
+   * Friend totals from `get_friends`. Positive means they owe you. Omitted on
+   * nested member objects; the rounding step reads it off the friends list.
+   */
+  balance?: Array<{ currency_code: string; amount: string }> | null;
 }
 
 export interface SplitwiseGroup {
@@ -79,6 +84,21 @@ export interface SplitwiseComment {
   user?: SplitwiseUser | null;
 }
 
+/**
+ * Splitwise's own answer to "who pays whom" for one expense.
+ *
+ * Worth importing rather than re-deriving: the per-person nets in `users[]` do
+ * not determine this pairing, so our greedy matcher would pick a different -
+ * equally valid - one, and on a non-group expense that difference is visible as
+ * a one-on-one balance Splitwise does not show. `from` / `to` are Splitwise user
+ * ids; `amount` is a decimal string like every other Splitwise amount.
+ */
+export interface SplitwiseRepayment {
+  from: number;
+  to: number;
+  amount: string;
+}
+
 export interface SplitwiseExpense {
   id: number;
   group_id?: number | null;
@@ -93,6 +113,12 @@ export interface SplitwiseExpense {
   category?: { id: number; name: string } | null;
   deleted_at?: string | null;
   users?: SplitwiseExpenseUser[];
+  /**
+   * Splitwise's own pairwise settlement of `users[]`. Passed to `createExpense`
+   * as a preferred pairing so an imported bill nets between the same two people
+   * here as it does there. See `SplitwiseRepayment`.
+   */
+  repayments?: SplitwiseRepayment[];
   /**
    * Present on `get_expenses` even when `comments[]` is not, which is exactly
    * why the importer reads it: an expense whose count is 0 never needs a second

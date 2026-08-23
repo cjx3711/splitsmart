@@ -17,8 +17,9 @@
  *
  * Greedy largest-creditor / largest-debtor matching. This is not guaranteed
  * minimal in the general case; that problem is NP-hard, but it produces at
- * most n-1 transfers and matches what people expect. Purely presentational:
- * nothing here is written to the database.
+ * most n-1 transfers and matches what people expect. The ledger is untouched:
+ * `expense_repayments` stays the per-bill derivation, and friend totals apply
+ * this on read when a group has simplify on.
  */
 export function simplifyDebts(
   balances: Array<{ userId: string; amountMinor: number }>,
@@ -64,4 +65,122 @@ export function simplifyDebts(
   }
 
   return transfers;
+}
+
+/**
+ * One directed edge of a viewer's pairwise balance, in one group and currency.
+ *
+ * Positive `amountMinor` means `otherUserId` owes the viewer. The same sign
+ * convention as `getPairwiseBalances`.
+ */
+export interface PairwiseEdge {
+  otherUserId: string;
+  groupId: string | null;
+  currencyCode: string;
+  amountMinor: number;
+}
+
+export interface GroupNet {
+  groupId: string | null;
+  userId: string;
+  currencyCode: string;
+  amountMinor: number;
+}
+
+/**
+ * Rebuilds a viewer's pairwise edges after per-group simplify-debts.
+ *
+ * Splitwise's friend totals are this, not the raw who-owes-whom on each bill:
+ * a cycle A→B→C→A inside a group with simplify on collapses to nothing, and a
+ * third party's debt can be rerouted onto you. Nets are unchanged; only the
+ * edges are. Groups whose nets do not sum to zero (a truncated import residue
+ * that somehow escaped the writer) keep their raw edges rather than throwing.
+ *
+ * `groupId === null` is the one-on-one bucket. It is never simplified: people
+ * who only share separate 1-1 bills are not a group, and should not be asked
+ * to settle with each other.
+ */
+export function pairwiseWithSimplify(input: {
+  viewerId: string;
+  raw: PairwiseEdge[];
+  nets: GroupNet[];
+  /** `true` for a group whose `simplify_by_default` is on. Missing = off. */
+  simplifyByGroupId: ReadonlyMap<string, boolean>;
+}): PairwiseEdge[] {
+  const shouldSimplify = (groupId: string | null): boolean =>
+    groupId !== null && (input.simplifyByGroupId.get(groupId) ?? false);
+
+  const rawByKey = new Map<string, PairwiseEdge[]>();
+  for (const edge of input.raw) {
+    const key = bucketKey(edge.groupId, edge.currencyCode);
+    const list = rawByKey.get(key) ?? [];
+    list.push(edge);
+    rawByKey.set(key, list);
+  }
+
+  const netsByKey = new Map<string, Array<{ userId: string; amountMinor: number }>>();
+  for (const net of input.nets) {
+    if (net.amountMinor === 0) continue;
+    const key = bucketKey(net.groupId, net.currencyCode);
+    const list = netsByKey.get(key) ?? [];
+    list.push({ userId: net.userId, amountMinor: net.amountMinor });
+    netsByKey.set(key, list);
+  }
+
+  const keys = new Set([...rawByKey.keys(), ...netsByKey.keys()]);
+  const result: PairwiseEdge[] = [];
+
+  for (const key of keys) {
+    const { groupId, currencyCode } = parseBucketKey(key);
+    if (!shouldSimplify(groupId)) {
+      result.push(...(rawByKey.get(key) ?? []));
+      continue;
+    }
+
+    const nets = netsByKey.get(key) ?? [];
+    const total = nets.reduce((sum, n) => sum + n.amountMinor, 0);
+    // A cycle nets to zero, so the zero-nets were dropped above and `nets` is
+    // empty. That is a successful simplify (no edges), not a reason to keep the
+    // raw cycle. Only a nonzero residue — truncated import dust that escaped
+    // the writer — falls back to the unsimplified edges.
+    if (total !== 0) {
+      result.push(...(rawByKey.get(key) ?? []));
+      continue;
+    }
+    if (nets.length === 0) continue;
+
+    const transfers = simplifyDebts(nets);
+    for (const transfer of transfers) {
+      if (transfer.fromUserId === input.viewerId) {
+        result.push({
+          otherUserId: transfer.toUserId,
+          groupId,
+          currencyCode,
+          amountMinor: -transfer.amountMinor,
+        });
+      } else if (transfer.toUserId === input.viewerId) {
+        result.push({
+          otherUserId: transfer.fromUserId,
+          groupId,
+          currencyCode,
+          amountMinor: transfer.amountMinor,
+        });
+      }
+    }
+  }
+
+  return result.filter((edge) => edge.amountMinor !== 0);
+}
+
+function bucketKey(groupId: string | null, currencyCode: string): string {
+  return `${groupId ?? ""}\0${currencyCode}`;
+}
+
+function parseBucketKey(key: string): { groupId: string | null; currencyCode: string } {
+  const split = key.indexOf("\0");
+  const group = key.slice(0, split);
+  return {
+    groupId: group === "" ? null : group,
+    currencyCode: key.slice(split + 1),
+  };
 }

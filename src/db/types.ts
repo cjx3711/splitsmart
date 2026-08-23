@@ -203,6 +203,24 @@ export interface EmailTokensTable {
 }
 
 /**
+ * Pending signup proof: an address someone is confirming before a user exists.
+ * See migrations/001_initial_schema.sql.
+ */
+export interface EmailsTable {
+  id: string;
+  email: string;
+  token_hash: string;
+  requester_ip: string | null;
+  /** In-app return path after register (claim flow). */
+  next_path: string | null;
+  created_at: Generated<string>;
+  expires_at: string;
+  verified_at: string | null;
+  consumed_at: string | null;
+  user_id: string | null;
+}
+
+/**
  * The append-only change log offline clients pull from.
  *
  * `seq` is Generated because it is AUTOINCREMENT and is the sync cursor; never
@@ -253,6 +271,7 @@ export interface Database {
   activity: ActivityTable;
   sync_log: SyncLogTable;
   email_tokens: EmailTokensTable;
+  emails: EmailsTable;
 }
 
 export type User = Selectable<UsersTable>;

@@ -80,12 +80,32 @@ const BOOTSTRAP_PAGE = 400;
  * to render them. A group row is a name and a default currency; it is not access.
  */
 async function visibleGroupIds(userId: string): Promise<string[]> {
-  const rows = await db
+  const memberRows = await db
     .selectFrom("group_members")
     .select("group_id")
     .where("user_id", "=", userId)
     .execute();
-  return [...new Set(rows.map((r) => r.group_id))];
+
+  // Bills you are on in a group you never joined (or whose membership row did
+  // not sync) still need the group document, or friend-page breakdowns render
+  // as "11589 JPY in" with no name after.
+  const expenseRows = await db
+    .selectFrom("expenses")
+    .innerJoin("expense_users", "expense_users.expense_id", "expenses.id")
+    .select("expenses.group_id")
+    .where("expense_users.user_id", "=", userId)
+    .where("expenses.group_id", "is not", null)
+    .distinct()
+    .execute();
+
+  return [
+    ...new Set([
+      ...memberRows.map((r) => r.group_id),
+      ...expenseRows
+        .map((r) => r.group_id)
+        .filter((id): id is string => id !== null),
+    ]),
+  ];
 }
 
 /**

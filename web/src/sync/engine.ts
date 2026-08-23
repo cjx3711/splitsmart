@@ -84,6 +84,14 @@ const PUSH_BATCH = 100;
  */
 const MAX_PAGES = 50;
 
+/**
+ * Group document shape this client knows how to read. Existing mirrors that
+ * bootstrapped before `simplifyByDefault` was on the payload will not receive
+ * those rows again (import writes no sync_log), so `hydrateGroupDocs` stamps
+ * them once from GET /groups.
+ */
+const GROUP_SHAPE = 1;
+
 export interface SyncStatus {
   /** `navigator.onLine` plus whether the last attempt actually reached the server. */
   online: boolean;
@@ -104,7 +112,17 @@ export class SyncEngine {
   readonly selfId: string;
 
   private inFlight: Promise<void> | null = null;
+  /** Another sync() arrived while a cycle was running. Run one more after. */
+  private queued = false;
   private listeners = new Set<() => void>();
+
+  /**
+   * Set by SyncProvider. Fired when a cycle's own request comes back a
+   * confirmed 401 - the server itself said this session is invalid, not a
+   * dropped connection - so it is safe to treat as a real logout: nothing
+   * here touches the mirror or the outbox, they stay on disk either way.
+   */
+  onAuthInvalid: (() => void) | null = null;
 
   constructor(db: LocalDb, selfId: string) {
     this.db = db;
@@ -150,15 +168,26 @@ export class SyncEngine {
    * than an error to propagate into a render.
    */
   sync(): Promise<void> {
-    if (this.inFlight) return this.inFlight;
+    if (this.inFlight) {
+      // Callers that write then sync (the simplify-debts toggle) must not join
+      // a pull that already ran against the pre-write server. Queue a fresh
+      // cycle instead of returning the in-flight one as if it were theirs.
+      this.queued = true;
+      return this.inFlight;
+    }
 
     this.inFlight = this.run()
       .catch(async (err: unknown) => {
         await setMeta(this.db, "lastError", describeError(err));
+        if (err instanceof ApiError && err.status === 401) this.onAuthInvalid?.();
       })
       .finally(() => {
         this.inFlight = null;
         this.announce();
+        if (this.queued) {
+          this.queued = false;
+          void this.sync();
+        }
       });
 
     this.announce();
@@ -167,6 +196,7 @@ export class SyncEngine {
 
   private async run(): Promise<void> {
     if (!(await getMeta(this.db, "bootstrapped"))) await this.bootstrap();
+    await this.hydrateGroupDocs();
 
     await this.pullAll();
     const pushed = await this.pushAll();
@@ -232,6 +262,40 @@ export class SyncEngine {
 
     await setMeta(this.db, "cursor", firstSeq ?? 0);
     await setMeta(this.db, "bootstrapped", true);
+    await setMeta(this.db, "groupShape", GROUP_SHAPE);
+  }
+
+  /**
+   * Stamps fields that were added to group documents after this mirror
+   * bootstrapped. Pull will not rewrite a group that has not changed, so without
+   * this a friend total keeps using the raw edges forever.
+   */
+  private async hydrateGroupDocs(): Promise<void> {
+    if ((await getMeta(this.db, "groupShape")) === GROUP_SHAPE) return;
+
+    try {
+      const { groups } = await api.listGroups();
+      const existing = new Map((await this.db.groups.toArray()).map((g) => [g.id, g]));
+      await putGroups(
+        this.db,
+        groups.map((g) => {
+          const prev = existing.get(g.id);
+          return {
+            id: g.id,
+            name: g.name,
+            groupType: g.group_type,
+            defaultCurrency: g.default_currency,
+            simplifyByDefault: g.simplify_by_default === 1,
+            createdBy: prev?.createdBy ?? null,
+            deletedAt: prev?.deletedAt ?? null,
+          };
+        }),
+      );
+      await setMeta(this.db, "groupShape", GROUP_SHAPE);
+    } catch {
+      // Offline, or the list endpoint failed. Friend totals still default
+      // missing flags to on; this retries next cycle.
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -873,14 +937,14 @@ async function markExpenseDeleted(
 /**
  * A failure, as the offline indicator should word it.
  *
- * A 401 is deliberately NOT treated as a logout here. The 30-day session cookie
- * can expire while unsynced expenses are queued, and throwing the queue away
- * because of it would lose them; that is "reconnect to keep syncing", and
- * `Protected` in App.tsx has the matching rule.
+ * This text is transient for a 401: `onAuthInvalid` (set by SyncProvider) logs
+ * the account out in the same tick, which unmounts this status bar via
+ * `Protected`. It stays worded as a status rather than an alert because the
+ * catch above only ever stores it, never throws it further.
  */
 function describeError(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 401) return "Signed out on the server. Log in again to keep syncing.";
+    if (err.status === 401) return "Signed out on the server.";
     return err.message;
   }
   if (err instanceof TypeError) return "No connection.";

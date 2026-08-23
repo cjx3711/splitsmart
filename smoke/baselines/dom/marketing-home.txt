@@ -6,6 +6,8 @@
   - navigation:
     - link "About":
       - /url: /about
+    - link "Changelog":
+      - /url: /changelog
     - link "API":
       - /url: /docs
   - link "Log in":
@@ -147,6 +149,9 @@
     - text: The longer version of why this exists is on the
     - link "about page":
       - /url: /about
+    - text: ", what just landed is in the"
+    - link "changelog":
+      - /url: /changelog
     - text: ", and the endpoints are in the"
     - link "API docs":
       - /url: /docs
@@ -158,6 +163,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

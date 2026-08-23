@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * Shared helpers for the deterministic smoke suite.
  *

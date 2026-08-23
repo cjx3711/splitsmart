@@ -31,7 +31,14 @@ export function ClaimBanner() {
   return (
     <div className="banner guest-banner">
       <span>
-        You are using this as <strong>{displayName(session.actingAs)}</strong>, with a link. Create an
+        You are using this as <strong>{displayName(session.actingAs)}</strong>, with a link
+        {session.issuedBy && (
+          <>
+            {" "}
+            from <strong>{displayName(session.issuedBy)}</strong>
+          </>
+        )}
+        {session.expiresAt && <> that expires {session.expiresAt.slice(0, 10)}</>}. Create an
         account to keep it: everything you have already split stays yours.
       </span>
       <span className="banner-actions">

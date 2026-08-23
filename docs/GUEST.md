@@ -307,7 +307,7 @@ opening a link no longer creates anyone.
 
 On a friend: mint/revoke the friend link for that ghost. The email invite
 carries this URL (`/guest/l/:token`), not a recovery code. Same story if
-Postmark is off: the URL comes back in the API response so the owner can pass
+mail is off: the URL comes back in the API response so the owner can pass
 it on.
 
 **The URL is always copyable.** The secret is stored so the owner can copy it

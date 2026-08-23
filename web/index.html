@@ -12,6 +12,11 @@
       to install. The app lives at /app and the guest shell at /guest.
     -->
     <title>SplitSmart</title>
+    <!--
+      Deploy-only, opt-in telemetry hook. web/public/telemetry.js is a
+      committed no-op stub; see scripts/deploy/README.md.
+    -->
+    <script defer src="/telemetry.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -10,13 +10,36 @@ function inAppPath(next: string | null): string {
   return next?.startsWith("/") && !next.startsWith("//") ? next : "/";
 }
 
+function tokenFromVerifyUrl(verifyUrl: string): string {
+  try {
+    const parts = new URL(verifyUrl).pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function pathFromVerifyUrl(verifyUrl: string, fallbackNext: string | null): string {
+  try {
+    const url = new URL(verifyUrl);
+    const path = url.pathname.replace(/^\/app/, "") || "/";
+    const next = url.searchParams.get("next") ?? fallbackNext;
+    return next ? `${path}?next=${encodeURIComponent(next)}` : path;
+  } catch {
+    const token = tokenFromVerifyUrl(verifyUrl);
+    return fallbackNext
+      ? `/verify/${token}?next=${encodeURIComponent(fallbackNext)}`
+      : `/verify/${token}`;
+  }
+}
+
 /**
- * Log in or create an account. Two modes, one screen.
+ * Log in or start creating an account. Two modes, one screen.
  *
- * There used to be a third, "recover", where a ghost typed a code to get back
- * into a placeholder account. That is gone: a guest's credential is the invite
- * URL itself, which the owner can revoke, and turning a placeholder into a real
- * account is a claim rather than a login. See docs/GUEST.md.
+ * Register is email-first: this page only collects the address. Completing
+ * the account (name, password) happens on `/verify/:token` after the
+ * verification link is either returned here (mail not required) or opened
+ * from the inbox.
  *
  * `?next=` is honoured because the claim flow depends on it: the guest banner
  * sends people here to register and they have to come back to the same URL,
@@ -30,10 +53,9 @@ export function Login() {
   const next = searchParams.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [nickname, setNickname] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [inboxEmail, setInboxEmail] = useState<string | null>(null);
 
   const { user, setUser, loading } = useAuth();
   const navigate = useNavigate();
@@ -49,22 +71,53 @@ export function Login() {
     setBusy(true);
 
     try {
-      const { user } =
-        mode === "login"
-          ? await api.login(email, password)
-          : await api.register({
-              email,
-              password,
-              name,
-              nickname: nickname.trim() || null,
-            });
-      setUser(user);
-      navigate(inAppPath(next));
+      if (mode === "login") {
+        const { user } = await api.login(email, password);
+        setUser(user);
+        navigate(inAppPath(next));
+        return;
+      }
+
+      const result = await api.signup({
+        email,
+        ...(next ? { next } : {}),
+      });
+      if (result.verifyUrl) {
+        navigate(pathFromVerifyUrl(result.verifyUrl, next));
+        return;
+      }
+      setInboxEmail(email);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
+  }
+
+  if (inboxEmail) {
+    return (
+      <div className="auth stack">
+        <Logo size={30} />
+        <h1>Check your inbox</h1>
+        <p>
+          We sent a link to <strong>{inboxEmail}</strong>. Open it to choose a
+          name and password.
+        </p>
+        <p className="field-hint">
+          The link expires in 24 hours. Didn&apos;t get it? Wait a minute and
+          request another from this page.
+        </p>
+        <button
+          className="link"
+          onClick={() => {
+            setInboxEmail(null);
+            setError(null);
+          }}
+        >
+          Use a different email
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -75,31 +128,6 @@ export function Login() {
       <form onSubmit={handleSubmit} className="stack">
         {error && <p className="error">{error}</p>}
 
-        {mode === "register" && (
-          <>
-            <div>
-              <label htmlFor="name">Name</label>
-              <input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                autoComplete="name"
-              />
-            </div>
-            <div>
-              <label htmlFor="nickname">Nickname</label>
-              <input
-                id="nickname"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                maxLength={40}
-                autoComplete="nickname"
-                placeholder="Optional. Shown in lists instead of the full name."
-              />
-            </div>
-          </>
-        )}
         <div>
           <label htmlFor="email">Email</label>
           <input
@@ -108,28 +136,38 @@ export function Login() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
         </div>
-        <div>
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
-          />
-          {mode === "register" && <p className="field-hint">At least 8 characters.</p>}
-        </div>
+        {mode === "login" && (
+          <div>
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              required
+              autoComplete="current-password"
+            />
+          </div>
+        )}
 
         <button type="submit" disabled={busy}>
-          {busy ? "Working…" : mode === "login" ? "Log in" : "Create account"}
+          {busy ? "Working…" : mode === "login" ? "Log in" : "Continue"}
         </button>
       </form>
 
       <div className="stack" style={{ marginTop: "0.5rem", alignItems: "flex-start" }}>
-        <button className="link" onClick={() => setMode(mode === "login" ? "register" : "login")}>
+        <button
+          className="link"
+          onClick={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setError(null);
+            setInboxEmail(null);
+          }}
+        >
           {mode === "login" ? "Create an account" : "Log in instead"}
         </button>
         <p className="field-hint" style={{ margin: 0 }}>

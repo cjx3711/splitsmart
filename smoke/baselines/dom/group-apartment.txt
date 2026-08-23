@@ -13,9 +13,11 @@
     - /url: /app/activity
   - link "All expenses":
     - /url: /app/expenses
+  - link "Usage":
+    - /url: /app/admin
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -29,33 +31,33 @@
     - /url: /app/groups/<ULID>
   - link "Yosemite Camping":
     - /url: /app/groups/<ULID>
-  - link "Show more (5)":
+  - link "Show all":
     - /url: /app/groups
-  - link "Friends":
+  - link "Friends (15)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "Ah Lian":
-    - /url: /app/friends/<ULID>
-  - link "Yuki":
-    - /url: /app/friends/<ULID>
-  - link "Priya":
-    - /url: /app/friends/<ULID>
-  - link "Gerry":
-    - /url: /app/friends/<ULID>
-  - link "Hana":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
     - /url: /app/friends/<ULID>
-  - link "Show more (5)":
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Taro":
+    - /url: /app/friends/<ULID>
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Show all":
     - /url: /app/friends
 - main:
   - navigation "Breadcrumb":
@@ -71,6 +73,10 @@
   - paragraph: Home · default USD · 2 members
   - button "Settle up"
   - button "Add Expense"
+  - checkbox "Simplify debts About simplify debts Friend balances in this group are simplified." [checked]
+  - text: Simplify debts
+  - button "About simplify debts": "?"
+  - text: Friend balances in this group are simplified.
   - heading "Balances" [level=2]
   - text: You gets back 3696.21USD
   - link "JJ owes 3696.21USD":
@@ -135,8 +141,12 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "Settle up <DATE> · You paid 50.00USD you lent 50.00USD"
-  - link "Trader Joe's run <DATE> · Groceries · You paid 92.43USD 2 comments you lent 46.21USD"
+  - link "You paid JJ <DATE> 50.00USD":
+    - text: You paid
+    - link "JJ":
+      - /url: /app/friends/<ULID>
+    - text: <DATE> 50.00USD
+  - link "Trader Joe's run <DATE> · Groceries · You paid · 2 comments 92.43USD you lent 46.21USD"
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
   - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"

@@ -13,9 +13,11 @@
     - /url: /app/activity
   - link "All expenses":
     - /url: /app/expenses
+  - link "Usage":
+    - /url: /app/admin
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -29,33 +31,33 @@
     - /url: /app/groups/<ULID>
   - link "Yosemite Camping":
     - /url: /app/groups/<ULID>
-  - link "Show more (5)":
+  - link "Show all":
     - /url: /app/groups
-  - link "Friends":
+  - link "Friends (15)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "Ah Lian":
-    - /url: /app/friends/<ULID>
-  - link "Yuki":
-    - /url: /app/friends/<ULID>
-  - link "Priya":
-    - /url: /app/friends/<ULID>
-  - link "Gerry":
-    - /url: /app/friends/<ULID>
-  - link "Hana":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
     - /url: /app/friends/<ULID>
-  - link "Show more (5)":
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Taro":
+    - /url: /app/friends/<ULID>
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Show all":
     - /url: /app/friends
 - main:
   - navigation "Breadcrumb":
@@ -71,6 +73,10 @@
   - paragraph: Trip · default JPY · 4 members
   - button "Settle up"
   - button "Add Expense"
+  - checkbox "Simplify debts About simplify debts Friend balances show the raw who-owes-whom from each bill."
+  - text: Simplify debts
+  - button "About simplify debts": "?"
+  - text: Friend balances show the raw who-owes-whom from each bill.
   - heading "Balances" [level=2]
   - text: You gets back 1200JPY
   - link "JJ gets back 6000JPY":
@@ -146,7 +152,7 @@
     - link "JJ":
       - /url: /app/friends/<ULID>
     - text: paid 9600JPY you borrowed 2400JPY
-  - link "Ramen at Ichiran <DATE> · Dining out · You paid 4800JPY 2 comments you lent 3600JPY"
+  - link "Ramen at Ichiran <DATE> · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY"
   - heading "Members" [level=2]
   - button "+ Add member"
   - text: You owner · has an account

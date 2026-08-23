@@ -217,6 +217,45 @@ CREATE INDEX idx_email_tokens_user_purpose ON email_tokens(user_id, purpose);
 CREATE INDEX idx_email_tokens_expires_at ON email_tokens(expires_at);
 
 -- ---------------------------------------------------------------------------
+-- emails: proving an address before a user row exists
+-- ---------------------------------------------------------------------------
+-- Signup is email-first. POST /auth/signup writes a row here and issues a
+-- hashed token; POST /auth/register consumes that token to create the user.
+-- users.email stays the login unique index; this table is the pending proof,
+-- not a second identity.
+--
+-- requester_ip is stored so signup can be rate-limited per client, not only
+-- per address. It may be NULL (tests, or a request with no forwarded address).
+--
+-- consumed_at + user_id are set together when register succeeds. verified_at
+-- is set when the link is opened, which may be earlier (mail scanners).
+CREATE TABLE emails (
+  id            TEXT    PRIMARY KEY,           -- ULID
+  email         TEXT    NOT NULL COLLATE NOCASE,
+  token_hash    TEXT    NOT NULL UNIQUE,
+  requester_ip  TEXT,
+  -- In-app path to return to after register. The claim flow sends people
+  -- through signup and they have to come back still holding the link secret.
+  next_path     TEXT,
+
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  expires_at    TEXT    NOT NULL,
+  verified_at   TEXT,
+  consumed_at   TEXT,
+  user_id       TEXT    REFERENCES users(id) ON DELETE CASCADE,
+
+  CHECK (LENGTH(id) = 26),
+  CHECK (LENGTH(email) > 0),
+  -- A consumed row is an account that got created from it; an open row has
+  -- neither. Never one without the other.
+  CHECK ((consumed_at IS NULL) = (user_id IS NULL))
+) STRICT;
+
+CREATE INDEX idx_emails_email ON emails(email);
+CREATE INDEX idx_emails_expires_at ON emails(expires_at);
+CREATE INDEX idx_emails_requester_ip_created ON emails(requester_ip, created_at);
+
+-- ---------------------------------------------------------------------------
 -- groups
 -- ---------------------------------------------------------------------------
 -- There is no invite_token here any more. Sharing a group is a row in

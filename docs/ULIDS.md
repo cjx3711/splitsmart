@@ -32,7 +32,7 @@ Every **entity** primary key, and every foreign key that points at one:
 | `expenses` | ULID |
 | `comments` | ULID |
 | `activity` | ULID |
-| `sessions`, `api_tokens`, `email_tokens` | ULID (same helper) |
+| `sessions`, `api_tokens`, `email_tokens`, `emails` | ULID (same helper) |
 
 FKs follow: `sessions.user_id`, `group_members.*`, `friendships.*`,
 `expense_users.*`, `expense_repayments.from_user_id` / `to_user_id`,

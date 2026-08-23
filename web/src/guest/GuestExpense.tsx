@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { ExpenseDetail as ExpenseDetailData } from "../api.ts";
 import { Amount, useCurrencies } from "../money.tsx";
-import { makeLookup } from "../ExpenseList.tsx";
+import { makeLookup, PaymentMark, paymentTitle } from "../ExpenseList.tsx";
 import { reconstructExpenseForm } from "../reopenExpense.ts";
 import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
@@ -84,7 +84,8 @@ export function GuestExpense() {
     const person = people.find((p) => p.id === userId);
     return person ? avatarFromRow(person) : { id: userId, name: nameOf(userId) };
   };
-  const title = expense.is_payment === 1 ? "Settle up" : expense.description;
+  const isPayment = expense.is_payment === 1;
+  const title = isPayment ? paymentTitle(expense.shares, nameOf) : expense.description;
   const deleteSeriesNote = seriesDeleteNote(expense);
 
   // Only the people already on the bill, plus anyone in the same group. The
@@ -107,10 +108,13 @@ export function GuestExpense() {
 
       <div className="page-head">
         <div>
-          <h1>{title}</h1>
+          <h1 className="expense-title">
+            {isPayment && <PaymentMark size={16} />}
+            {title}
+          </h1>
           <p className="muted" style={{ margin: 0 }}>
             {expense.date.slice(0, 10)}
-            {expense.category_name && ` · ${expense.category_name}`}
+            {!isPayment && expense.category_name && ` · ${expense.category_name}`}
           </p>
         </div>
         <div className="page-actions">

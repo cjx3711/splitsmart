@@ -13,7 +13,10 @@
  *   2. No connection, with the unsynced count and when we last managed a sync.
  *   3. Unsynced writes while apparently online - a failing sync rather than a
  *      missing network, which is a different problem and worth distinguishing.
- *   4. Signed out on the server with a queue still waiting. Reconnect, not logout.
+ *   4. Working from the mirror because the server did not answer at all -
+ *      offline, timed out, 5xx. A confirmed 401 does not reach this bar: it
+ *      logs the account out (see SyncProvider's `forceLogout`) and `Protected`
+ *      takes the screen to /login before this would ever render for it.
  */
 import { Link } from "react-router-dom";
 import { useSync } from "./sync/SyncProvider.tsx";

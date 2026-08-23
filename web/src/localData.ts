@@ -30,9 +30,11 @@ import {
   localFriends,
   localGroup,
   localGroupExpenses,
+  localGroupMembers,
   localGroups,
   localSettleSuggestions,
   localSeries,
+  localSharedGroups,
 } from "./db/queries.ts";
 import type { ExpenseQuery } from "./api.ts";
 
@@ -67,6 +69,29 @@ export function useFriend(friendId: string | undefined) {
       user && friendId ? localFriend(db, user.id, friendId) : Promise.resolve(undefined),
     [user?.id, friendId],
   );
+}
+
+/** Groups both people currently belong to. Local-only; see `localSharedGroups`. */
+export function useSharedGroups(friendId: string | undefined) {
+  const { user } = useAuth();
+  return useLocal(
+    (db) =>
+      user && friendId
+        ? localSharedGroups(db, user.id, friendId)
+        : Promise.resolve(undefined),
+    [user?.id, friendId],
+  );
+}
+
+/**
+ * Current members of several groups at once, e.g. to show who else is on a
+ * shared bill next to a per-group balance line. Keyed by group id; a groupId
+ * list that is empty or all-null yields an empty map rather than a query.
+ */
+export function useGroupMembers(groupIds: Array<string | null>) {
+  const ids = groupIds.filter((id): id is string => id !== null);
+  const key = [...new Set(ids)].sort().join(",");
+  return useLocal((db) => localGroupMembers(db, ids), [key]);
 }
 
 export function useGroupView(groupId: string | undefined) {

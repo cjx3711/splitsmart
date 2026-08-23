@@ -22,8 +22,9 @@
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call
  *   POST /api/v1/import/comments         step 4, one page of expenses per call
+ *   POST /api/v1/import/rounding         step 5, settle leftover cents vs Splitwise
  *   POST /api/v1/import/continue-recurring  resume stopped imported series
- *   POST /api/v1/import/run              all four server-side, for small accounts
+ *   POST /api/v1/import/run              all five server-side, for small accounts
  *   POST /api/v1/import/wipe             hard-delete this account's ledger (reimport)
  */
 import { Hono } from "hono";
@@ -41,9 +42,11 @@ import {
   importCommentsPage,
   continueImportedRepeats,
   localFootprint,
+  reconcileImportedBalances,
   type CommentsPageResult,
   type ExpensePageResult,
   type PausedImportedSeries,
+  type RoundingResult,
   type SkippedRow,
 } from "../../domain/import.ts";
 import { wipeUserLedger, WipeBlockedError, WIPE_CONFIRMATION } from "../../domain/wipe.ts";
@@ -221,6 +224,14 @@ export const importRoutes = new Hono<AppEnv>()
 
   return c.json(result.value);
 })
+  .post("/rounding", zValidator("json", keySchema), async (c) => {
+  const auth = c.get("user");
+  const result = await withUpstream(() =>
+    reconcileImportedBalances(clientFor(c.req.valid("json").apiKey), auth.id),
+  );
+  if (!result.ok) return c.json({ error: result.error }, result.status);
+  return c.json(result.value);
+})
   .post("/run", zValidator("json", runSchema), async (c) => {
   const auth = c.get("user");
   const { apiKey, maxPages } = c.req.valid("json");
@@ -279,6 +290,11 @@ export const importRoutes = new Hono<AppEnv>()
       comments.complete = false;
     }
 
+    let rounding: RoundingResult | null = null;
+    if (complete && comments.complete) {
+      rounding = await reconcileImportedBalances(client, auth.id);
+    }
+
     return {
       friends,
       groups,
@@ -296,6 +312,7 @@ export const importRoutes = new Hono<AppEnv>()
         nextOffset: complete ? null : offset,
       },
       comments,
+      rounding,
     };
   });
 

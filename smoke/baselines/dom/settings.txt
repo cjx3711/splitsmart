@@ -14,9 +14,11 @@
     - /url: /app/activity
   - link "All expenses":
     - /url: /app/expenses
+  - link "Usage":
+    - /url: /app/admin
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -30,50 +32,51 @@
     - /url: /app/groups/<ULID>
   - link "Yosemite Camping":
     - /url: /app/groups/<ULID>
-  - link "Show more (5)":
+  - link "Show all":
     - /url: /app/groups
-  - link "Friends":
+  - link "Friends (15)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "Ah Lian":
-    - /url: /app/friends/<ULID>
-  - link "Yuki":
-    - /url: /app/friends/<ULID>
-  - link "Priya":
-    - /url: /app/friends/<ULID>
-  - link "Gerry":
-    - /url: /app/friends/<ULID>
-  - link "Hana":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
     - /url: /app/friends/<ULID>
-  - link "Show more (5)":
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Taro":
+    - /url: /app/friends/<ULID>
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Show all":
     - /url: /app/friends
 - main:
   - heading "Settings" [level=1]
   - text: Signed in as
   - strong: Test User
   - text: test@example.com
-  - heading "Name and icon" [level=2]
-  - paragraph: One name, not first and last. A nickname is what other people see in lists. The icon can be letters, an emoji, and a colour.
+  - heading "Name and icon About name and icon" [level=2]:
+    - text: Name and icon
+    - button "About name and icon": "?"
   - text: Test User Name
   - textbox "Name": Test User
   - text: Nickname
   - textbox "Nickname":
     - /placeholder: Optional. Shown in lists instead of the full name.
   - text: Icon letters
+  - button "About icon letters": "?"
   - textbox "Icon letters":
     - /placeholder: TU
-  - paragraph: Up to two characters. Leave blank to derive them from the name.
   - group "Icon emoji":
     - text: Icon emoji
     - button "No emoji" [pressed]: TU
@@ -125,28 +128,37 @@
     - button "Hue 292"
     - button "Hue 328"
   - button "Save name and icon"
-  - heading "Preferred currency" [level=2]
-  - paragraph: "Used as the default when you add an expense, and as the target for on-screen conversions (settle-up equivalents and estimated totals). Nothing in the ledger changes: balances stay in the currency they were recorded in."
+  - heading "Preferred currency About preferred currency" [level=2]:
+    - text: Preferred currency
+    - button "About preferred currency": "?"
   - text: Currency
   - button "Currency": USD · $
-  - heading "Import from Splitwise" [level=2]
-  - paragraph: Bring your groups, friends and expense history across. You supply your own Splitwise API key; it is used for that import only and never stored. People are matched to existing accounts by email address, and you see exactly who matched before anything is written.
+  - heading "Import from Splitwise About importing from Splitwise" [level=2]:
+    - text: Import from Splitwise
+    - button "About importing from Splitwise": "?"
   - link "Start an import":
     - /url: /app/import
-  - heading "API tokens" [level=2]
-  - paragraph:
-    - text: Use a token as the bearer credential for the Splitwise-compatible API at
-    - code: /api/sw/v3.0
-    - text: .
+  - heading "Delete all data" [level=2]
+  - paragraph: Permanently remove this account's groups, friends, expenses and guest links so you can import from Splitwise again. Your login is not deleted.
+  - button "Delete all my data"
+  - heading "API tokens About API tokens" [level=2]:
+    - text: API tokens
+    - button "About API tokens": "?"
   - text: New token name
   - textbox "New token name": splitwise-to-toshl
   - button "Create token"
+  - heading "This device About local data" [level=2]:
+    - text: This device
+    - button "About local data": "?"
+  - button "Clear local data and resync"
   - heading "Session" [level=2]
   - button "Log out"
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

@@ -54,13 +54,35 @@ export function ApiDocs() {
           once at creation
         </li>
       </ul>
+      <Endpoint method="POST" path="/api/v1/auth/signup" auth="public">
+        <p>
+          Start creating an account. Email-first: no user row is written yet.
+        </p>
+        <Code>{`{ "email": "you@example.com", "next": "/claim?link=…" }`}</Code>
+        <p>
+          <code>next</code> is optional: an in-app path to return to after the
+          account exists (the claim flow). Open redirects are dropped.
+        </p>
+        <p>
+          <code>200</code> with{" "}
+          <code>{`{ ok, email, delivered, verifyUrl }`}</code>.{" "}
+          <code>verifyUrl</code> is the complete-account link when{" "}
+          <code>EMAIL_VERIFICATION_REQUIRED</code> is off (so a box with no
+          mail provider can still finish). When that flag is on, the link is
+          emailed and <code>verifyUrl</code> is <code>null</code>.
+        </p>
+      </Endpoint>
       <Endpoint method="POST" path="/api/v1/auth/register" auth="public">
-        <p>Create an account and a session.</p>
-        <Code>{`{ "email": "you@example.com", "password": "at-least-8", "name": "Alex Chen",
+        <p>
+          Finish creating an account from a signup token (the{" "}
+          <code>/app/verify/:token</code> link) and open a session.
+        </p>
+        <Code>{`{ "token": "…", "password": "at-least-8", "name": "Alex Chen",
   "nickname": "Alex", "defaultCurrency": "USD" }`}</Code>
         <p>
-          <code>nickname</code> is optional. <code>201</code> with{" "}
-          <code>{`{ user, emailVerified, verificationEmailSent }`}</code>.
+          <code>nickname</code> is optional. The email comes from the token, not
+          the body. <code>201</code> with{" "}
+          <code>{`{ user, emailVerified, claimedImportedHistory }`}</code>.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/auth/login" auth="public">
@@ -146,7 +168,7 @@ export function ApiDocs() {
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/groups">
         <Code>{`{ "name": "Kyushu 2025", "groupType": "trip",
-  "defaultCurrency": "JPY", "simplifyByDefault": false }`}</Code>
+  "defaultCurrency": "JPY", "simplifyByDefault": true }`}</Code>
         <p>
           <code>groupType</code> is one of{" "}
           {GROUP_TYPES.map((type, index) => (
@@ -163,6 +185,16 @@ export function ApiDocs() {
         <p>
           <code>{`{ group, members, balances, role }`}</code>. <code>role</code>{" "}
           is the caller&apos;s own; only an owner may mint or revoke links.
+          Member nets are unsimplified; friend totals are what{" "}
+          <code>simplify_by_default</code> changes.
+        </p>
+      </Endpoint>
+      <Endpoint method="PATCH" path="/api/v1/groups/:id">
+        <Code>{`{ "simplifyByDefault": true }`}</Code>
+        <p>
+          Any member. Turns Splitwise-style simplify-debts on or off for this
+          group&apos;s contribution to friend totals. Nets on this page do not
+          change. New groups and imported Splitwise groups default on.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/groups/:id/members">
@@ -203,7 +235,9 @@ export function ApiDocs() {
         <p>
           Everyone you share a group or an expense with, plus anyone you added
           explicitly. Each row has <code>balances</code> and a per-group{" "}
-          <code>breakdown</code>.
+          <code>breakdown</code>. Groups with simplify on contribute simplified
+          edges; one-on-one expenses stay pairwise. Each breakdown row has{" "}
+          <code>simplified</code>.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/friends">
@@ -579,14 +613,26 @@ export function ApiDocs() {
           Step 4, after expenses, because a comment references one. Cheap and safe
           to call either way: when Splitwise nests comments on the expenses page
           they are already in, and each expense is stamped once fetched so a
-          second run does not ask again. Splitwise's automatic{" "}
-          <em>System</em> comments are imported too - they are the only edit
-          history it will hand over.
+          second run does not ask again. Returns <code>total</code> (how many
+          imported expenses the step will walk) so progress is exact once
+          expenses are in. Splitwise's automatic <em>System</em> comments are
+          imported too - they are the only edit history it will hand over.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/import/rounding">
+        <Code>{`{ "apiKey": "…" }`}</Code>
+        <p>
+          Step 5. Compares Splitwise <code>get_friends</code> totals with ours
+          and records a one-on-one settle-up for leftover cents (at most 100
+          minor units per friend per currency) from digits dropped on import.
+          Each payment gets a system comment explaining why. Larger gaps are
+          listed in <code>skipped[]</code> rather than settled. Re-running is a
+          no-op once the totals match.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/run">
         <Code>{`{ "apiKey": "…", "maxPages": 50 }`}</Code>
-        <p>Friends, groups, expenses up to the page cap, then comments.</p>
+        <p>Friends, groups, expenses up to the page cap, comments, then rounding.</p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/continue-recurring">
         <Code>{`{ "ids": ["01…"] }`}</Code>

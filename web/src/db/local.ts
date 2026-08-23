@@ -161,6 +161,12 @@ export interface MetaValues {
   lastError: string | null;
   /** False until a full bootstrap has finished draining its pages. */
   bootstrapped: boolean;
+  /**
+   * Shape of group documents in this mirror. Bumped when a field is added that
+   * existing rows will not have (pull does not rewrite unchanged groups).
+   * 1 = `simplifyByDefault` has been stamped from the server.
+   */
+  groupShape: number;
   /** The cached profile, so a reload with no network renders the app. */
   profile: SyncUser;
 }

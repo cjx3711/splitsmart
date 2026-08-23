@@ -12,6 +12,7 @@ import { Amount } from "../money.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
+import { useSync } from "../sync/SyncProvider.tsx";
 
 const VERBS: Record<string, string> = {
   "expense.created": "added",
@@ -28,6 +29,7 @@ const VERBS: Record<string, string> = {
 export function Activity() {
   const { user } = useAuth();
   const online = useOnline();
+  const { engine, db } = useSync();
   const [entries, setEntries] = useState<ActivityEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
@@ -51,7 +53,16 @@ export function Activity() {
   async function restore(expenseId: string) {
     setRestoring(expenseId);
     try {
-      await api.restoreExpense(expenseId);
+      const local = db ? await db.expenses.get(expenseId) : undefined;
+      if (engine && local) {
+        await engine.enqueue({
+          kind: "expense.restore",
+          id: expenseId,
+          baseVersion: local.version ?? 1,
+        });
+      } else {
+        await api.restoreExpense(expenseId);
+      }
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not restore that expense");

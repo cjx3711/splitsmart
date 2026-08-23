@@ -16,6 +16,7 @@ import { env } from "./env.ts";
 import type { AppEnv } from "./auth/middleware.ts";
 import { purgeExpiredSessions } from "./auth/session.ts";
 import { purgeExpiredEmailTokens } from "./email/verification.ts";
+import { purgeExpiredSignupEmails } from "./email/signup.ts";
 import { guestRoutes } from "./routes/native/guest.ts";
 import { nativeApi } from "./routes/native/v1.ts";
 import { startRecurringScheduler } from "./domain/scheduler.ts";
@@ -89,6 +90,10 @@ if (env.NODE_ENV === "production") {
   app.use("/guest/sw.js", serveStatic({ root: "./web/dist" }));
   app.use("/favicon.svg", serveStatic({ root: "./web/dist" }));
   app.use("/splitsmart.svg", serveStatic({ root: "./web/dist" }));
+  // web/public/telemetry.js: a committed no-op stub. deploy.sh optionally
+  // swaps in a local, gitignored .telemetry.js for the production build.
+  // See scripts/deploy/README.md.
+  app.use("/telemetry.js", serveStatic({ root: "./web/dist" }));
 
   const shell = async (c: Context, file: string) => {
     try {
@@ -110,6 +115,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const purge = () => {
     void purgeExpiredSessions().catch(() => {});
     void purgeExpiredEmailTokens().catch(() => {});
+    void purgeExpiredSignupEmails().catch(() => {});
   };
   purge();
   setInterval(purge, 86_400_000).unref();

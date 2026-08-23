@@ -1,22 +1,25 @@
 /**
- * Email verification: issuing, sending, and consuming tokens.
+ * Email verification for an EXISTING account: issuing, sending, and consuming
+ * tokens. New signups go through `src/email/signup.ts` (`emails` table) instead;
+ * this module is the banner / resend path for accounts that are not yet
+ * confirmed, and the future change-email path.
  *
  * Flow:
- *   1. register (or claim, or change email) -> issueVerificationToken()
+ *   1. resend (or change email) -> issueVerificationToken()
  *   2. user clicks the link -> consumeVerificationToken()
  *   3. users.email_verified_at is set
  *
  * Enforcement lives in the auth routes, not here. By default verification is
  * ADVISORY: the account works, the UI shows a banner. Set
  * EMAIL_VERIFICATION_REQUIRED=true to block login until verified; and read the
- * warning on `scripts/verify-user.ts` before you do, because a broken Postmark
+ * warning on `scripts/verify-user.ts` before you do, because a broken mail
  * config plus required verification locks you out of your own server.
  */
 import { ulid } from "../domain/ulid.ts";
 import { db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
-import { sendEmail } from "./postmark.ts";
+import { sendEmail } from "./send.ts";
 import { verificationEmail } from "./templates.ts";
 import { displayName } from "../domain/person.ts";
 
@@ -25,8 +28,8 @@ const TOKEN_TTL_HOURS = 24;
 /**
  * Minimum gap between verification emails to one user.
  *
- * Prevents someone hammering the resend endpoint to use your Postmark quota as
- * a mail cannon aimed at a third party.
+ * Prevents someone hammering the resend endpoint to use your mail quota as
+ * a cannon aimed at a third party.
  */
 const RESEND_COOLDOWN_MS = 60_000;
 

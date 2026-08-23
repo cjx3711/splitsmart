@@ -13,9 +13,11 @@
     - /url: /app/activity
   - link "All expenses":
     - /url: /app/expenses
+  - link "Usage":
+    - /url: /app/admin
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -29,33 +31,33 @@
     - /url: /app/groups/<ULID>
   - link "Yosemite Camping":
     - /url: /app/groups/<ULID>
-  - link "Show more (5)":
+  - link "Show all":
     - /url: /app/groups
-  - link "Friends":
+  - link "Friends (15)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "Ah Lian":
-    - /url: /app/friends/<ULID>
-  - link "Yuki":
-    - /url: /app/friends/<ULID>
-  - link "Priya":
-    - /url: /app/friends/<ULID>
-  - link "Gerry":
-    - /url: /app/friends/<ULID>
-  - link "Hana":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
     - /url: /app/friends/<ULID>
-  - link "Show more (5)":
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Taro":
+    - /url: /app/friends/<ULID>
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Show all":
     - /url: /app/friends
 - main:
   - navigation "Breadcrumb":
@@ -71,18 +73,22 @@
   - paragraph: Tan Ah Beng · ahbeng@example.com
   - button "Settle up"
   - button "Add Expense"
-  - text: Between you Ah Beng owes you 1200JPY Ah Beng owes you 149.25USD
-  - list:
-    - listitem:
-      - text: 140.00USD in
-      - link "Ski Trip 2026":
-        - /url: /app/groups/<ULID>
-    - listitem:
-      - text: 1200JPY in
-      - link "Weekend in Tokyo":
-        - /url: /app/groups/<ULID>
-    - listitem: 9.25USD in one-on-one expenses
+  - text: Between you
+  - button "About this balance": "?"
+  - text: Ah Beng owes you 1200JPY Ah Beng owes you 149.25USD
+  - link "Ski Trip 2026 140.00USD":
+    - /url: /app/groups/<ULID>
+  - link "Weekend in Tokyo 1200JPY":
+    - /url: /app/groups/<ULID>
+  - text: One-on-one 9.25USD
   - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+  - heading "Shared groups" [level=2]
+  - link "Ski Trip 2026 Trip 140.00USD":
+    - /url: /app/groups/<ULID>
+  - link "Summer BBQ Outing":
+    - /url: /app/groups/<ULID>
+  - link "Weekend in Tokyo Trip 1200JPY":
+    - /url: /app/groups/<ULID>
   - heading "Shared expenses" [level=2]
   - searchbox "Search descriptions"
   - combobox "Category":
@@ -137,7 +143,7 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "Coffee catch-up <DATE> · One-on-one · Dining out · You paid 18.50USD you lent 9.25USD"
+  - link "Coffee catch-up <DATE> · Dining out · You paid 18.50USD you lent 9.25USD"
   - link "TeamLab tickets <DATE> · Weekend in Tokyo · Life · JJ paid 9600JPY you borrowed 2400JPY":
     - text: TeamLab tickets <DATE> ·
     - link "Weekend in Tokyo":
@@ -146,11 +152,11 @@
     - link "JJ":
       - /url: /app/friends/<ULID>
     - text: paid 9600JPY you borrowed 2400JPY
-  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid 4800JPY 2 comments you lent 3600JPY":
+  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY":
     - text: Ramen at Ichiran <DATE> ·
     - link "Weekend in Tokyo":
       - /url: /app/groups/<ULID>
-    - text: · Dining out · You paid 4800JPY 2 comments you lent 3600JPY
+    - text: · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY
   - link "Lift tickets <DATE> · Ski Trip 2026 · Life · You paid 420.00USD you lent 280.00USD":
     - text: Lift tickets <DATE> ·
     - link "Ski Trip 2026":
@@ -160,6 +166,8 @@
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

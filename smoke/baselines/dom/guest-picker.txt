@@ -5,14 +5,17 @@
     - text: SplitSmart
   - text: Guest
 - main:
-  - heading "Which one are you?" [level=1]
+  - heading "Which one are you? Not on this list" [level=1]:
+    - text: Which one are you?
+    - button "Not on this list": "?"
   - paragraph: Everyone in Weekend in Tokyo. Pick your name to see what you owe. You can change this later.
   - button "Hana"
-  - paragraph: Not on this list? Ask whoever sent you the link to add you. Guests cannot add people.
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":
     - /url: /about
+  - link "Changelog":
+    - /url: /changelog
   - link "API":
     - /url: /docs
   - link "GitHub":

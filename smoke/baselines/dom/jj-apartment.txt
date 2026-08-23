@@ -15,7 +15,7 @@
     - /url: /app/expenses
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (3)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -25,15 +25,15 @@
     - /url: /app/groups/<ULID>
   - link "Apartment 4B":
     - /url: /app/groups/<ULID>
-  - link "Friends":
+  - link "Friends (3)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "Hana":
+  - link "Test User":
     - /url: /app/friends/<ULID>
   - link "Ah Beng":
     - /url: /app/friends/<ULID>
-  - link "Test User":
+  - link "Hana":
     - /url: /app/friends/<ULID>
 - main:
   - navigation "Breadcrumb":
@@ -49,6 +49,10 @@
   - paragraph: Home · default USD · 2 members
   - button "Settle up"
   - button "Add Expense"
+  - checkbox "Simplify debts About simplify debts Friend balances in this group are simplified." [checked]
+  - text: Simplify debts
+  - button "About simplify debts": "?"
+  - text: Friend balances in this group are simplified.
   - heading "Balances" [level=2]
   - link "Test User gets back 3696.21USD":
     - /url: /app/friends/<ULID>
@@ -113,16 +117,15 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "Settle up <DATE> · Test User paid 50.00USD you borrowed 50.00USD":
-    - text: Settle up <DATE> ·
+  - link "Test User paid You <DATE> 50.00USD":
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid 50.00USD you borrowed 50.00USD
-  - link "Trader Joe's run <DATE> · Groceries · Test User paid 92.43USD 2 comments you borrowed 46.21USD":
+    - text: paid You <DATE> 50.00USD
+  - link "Trader Joe's run <DATE> · Groceries · Test User paid · 2 comments 92.43USD you borrowed 46.21USD":
     - text: Trader Joe's run <DATE> · Groceries ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid 92.43USD 2 comments you borrowed 46.21USD
+    - text: paid · 2 comments 92.43USD you borrowed 46.21USD
   - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
     - text: Rent <DATE> · Rent ·
     - link "Test User":

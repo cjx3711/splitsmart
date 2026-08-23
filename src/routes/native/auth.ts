@@ -24,6 +24,13 @@ import {
   issueVerificationToken,
   consumeVerificationToken,
 } from "../../email/verification.ts";
+import {
+  startEmailSignup,
+  lookupSignupToken,
+  takeSignupForRegister,
+  attachSignupUser,
+  requestIp,
+} from "../../email/signup.ts";
 import { logChange } from "../../domain/sync-log.ts";
 import { ulid } from "../../domain/ulid.ts";
 import { MAX_NAME_LENGTH, personCamel } from "../../domain/person.ts";
@@ -34,8 +41,13 @@ import {
 } from "./person-schema.ts";
 import { adoptConfirmedImportedGhostByEmail } from "../../domain/splitwise-identity.ts";
 
-const registerSchema = z.object({
+const signupSchema = z.object({
   email: z.string().email(),
+  next: z.string().max(2000).optional(),
+});
+
+const registerSchema = z.object({
+  token: z.string().min(16),
   password: z.string().min(8, "Password must be at least 8 characters"),
   name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
   nickname: identityPatchSchema.shape.nickname,
@@ -102,20 +114,53 @@ function toPublicUser(user: {
   };
 }
 
+class SignupTokenError extends Error {
+  readonly code: "invalid" | "exists";
+  constructor(code: "invalid" | "exists") {
+    super(code);
+    this.name = "SignupTokenError";
+    this.code = code;
+  }
+}
+
 export const authRoutes = new Hono<AppEnv>()
+  .post("/signup", zValidator("json", signupSchema), async (c) => {
+  const { email, next } = c.req.valid("json");
+  const result = await startEmailSignup({
+    email,
+    ip: requestIp(c),
+    emailVerificationRequired: env.EMAIL_VERIFICATION_REQUIRED,
+    nextPath: next,
+  });
+
+  switch (result.status) {
+    case "exists":
+      return c.json({ error: "An account with that email already exists" }, 409);
+    case "cooldown":
+    case "ip_limited":
+      return c.json(
+        {
+          error: `Please wait ${result.retryAfterSeconds}s before trying again.`,
+          retryAfterSeconds: result.retryAfterSeconds,
+        },
+        429,
+        { "Retry-After": String(result.retryAfterSeconds) },
+      );
+    default:
+      return c.json({
+        ok: true,
+        email,
+        delivered: result.delivered,
+        // Present only when verification is not required. The frontend follows
+        // this URL to the complete-account form so a box with no mail provider
+        // can still finish signup. When required is on, the URL is emailed and
+        // this is null.
+        verifyUrl: result.verifyUrl,
+      });
+  }
+})
   .post("/register", zValidator("json", registerSchema), async (c) => {
   const input = c.req.valid("json");
-
-  const existing = await db
-    .selectFrom("users")
-    .select("id")
-    .where("email", "=", input.email)
-    .where("is_ghost", "=", 0)
-    .executeTakeFirst();
-
-  if (existing) {
-    return c.json({ error: "An account with that email already exists" }, 409);
-  }
 
   const currency = await db
     .selectFrom("currencies")
@@ -127,38 +172,72 @@ export const authRoutes = new Hono<AppEnv>()
     return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
   }
 
-  const user = await transaction(async (trx) => {
-    return trx
-      .insertInto("users")
-      .values({
-        id: ulid(),
-        email: input.email,
-        password_hash: await hashPassword(input.password),
-        name: input.name,
-        nickname: input.nickname ?? null,
-        default_currency: input.defaultCurrency,
-        is_ghost: 0,
-      })
-      .returning([
-        "id",
-        "email",
-        "name",
-        "nickname",
-        "icon_letters",
-        "icon_emoji",
-        "icon_hue",
-        "default_currency",
-      ])
-      .executeTakeFirstOrThrow();
-  });
+  const passwordHash = await hashPassword(input.password);
+
+  let user;
+  try {
+    user = await transaction(async (trx) => {
+      const signup = await takeSignupForRegister(trx, input.token);
+      if (!signup) {
+        throw new SignupTokenError("invalid");
+      }
+
+      const existing = await trx
+        .selectFrom("users")
+        .select("id")
+        .where("email", "=", signup.email)
+        .where("is_ghost", "=", 0)
+        .executeTakeFirst();
+
+      if (existing) {
+        throw new SignupTokenError("exists");
+      }
+
+      const created = await trx
+        .insertInto("users")
+        .values({
+          id: ulid(),
+          email: signup.email,
+          password_hash: passwordHash,
+          name: input.name,
+          nickname: input.nickname ?? null,
+          default_currency: input.defaultCurrency,
+          is_ghost: 0,
+          email_verified_at: new Date().toISOString(),
+        })
+        .returning([
+          "id",
+          "email",
+          "name",
+          "nickname",
+          "icon_letters",
+          "icon_emoji",
+          "icon_hue",
+          "default_currency",
+          "email_verified_at",
+        ])
+        .executeTakeFirstOrThrow();
+
+      const attached = await attachSignupUser(trx, signup.id, created.id);
+      if (!attached) {
+        throw new SignupTokenError("invalid");
+      }
+
+      return created;
+    });
+  } catch (err) {
+    if (err instanceof SignupTokenError) {
+      if (err.code === "exists") {
+        return c.json({ error: "An account with that email already exists" }, 409);
+      }
+      return c.json({ error: "That link is not valid. Request a new one." }, 404);
+    }
+    throw err;
+  }
 
   // A confirmed Splitwise person imported as a placeholder at this address
   // is this account. Dummy / invite-only ghosts still need a guest link.
-  const adopted = await adoptConfirmedImportedGhostByEmail(user.id, input.email);
-
-  // Fire-and-forget: a mail outage must not turn a successful registration into
-  // an error. sendEmail never throws, and the user can request another link.
-  const verification = await issueVerificationToken(user.id);
+  const adopted = await adoptConfirmedImportedGhostByEmail(user.id, user.email!);
 
   const { token, expiresAt } = await createSession(user.id, c.req.header("User-Agent"));
   setCookie(c, SESSION_COOKIE, token, sessionCookieOptions(expiresAt));
@@ -166,10 +245,7 @@ export const authRoutes = new Hono<AppEnv>()
   return c.json(
     {
       user: toPublicUser(user),
-      emailVerified: false,
-      // Lets the UI say "check your inbox" vs "email isn't configured on this
-      // server" instead of claiming a message was sent when it wasn't.
-      verificationEmailSent: verification.status === "sent" && verification.delivered,
+      emailVerified: true,
       claimedImportedHistory: adopted !== null,
     },
     201,
@@ -218,8 +294,8 @@ export const authRoutes = new Hono<AppEnv>()
         .execute();
     }
 
-    // Optional hard gate. Off by default so a misconfigured Postmark cannot
-    // lock you out of a self-hosted server. See EMAIL_VERIFICATION_REQUIRED
+    // Optional hard gate. Off by default so a misconfigured mail provider
+    // cannot lock you out of a self-hosted server. See EMAIL_VERIFICATION_REQUIRED
     // in src/env.ts and the `yarn verify:user` escape hatch.
     if (env.EMAIL_VERIFICATION_REQUIRED && !user.email_verified_at) {
       return c.json(
@@ -275,16 +351,46 @@ export const authRoutes = new Hono<AppEnv>()
   }
 })
 /**
- * Confirms an address from an emailed link.
+ * Confirms an address from an emailed (or, when verification is not required,
+ * client-returned) link.
  *
- * Unauthenticated on purpose: the link often gets opened in a different browser
- * from the one that registered, and holding the token is the proof.
+ * Two kinds of token share this URL:
+ *   - a pending signup (`emails` table): returns the address so the complete-
+ *     account form can render. Holding the token is the proof; register
+ *     consumes it.
+ *   - an existing-account verification (`email_tokens`): marks the address
+ *     verified. Unauthenticated on purpose: the link often gets opened in a
+ *     different browser from the one that registered.
  */
   .post(
   "/verify/:token",
   zValidator("param", z.object({ token: z.string().min(16) })),
   async (c) => {
     const { token } = c.req.valid("param");
+    const signup = await lookupSignupToken(token);
+
+    if (signup.status !== "invalid") {
+      switch (signup.status) {
+        case "pending":
+          return c.json({
+            ok: true,
+            status: "pending_signup",
+            email: signup.email,
+            next: signup.nextPath,
+          });
+        case "expired":
+          return c.json(
+            { ok: false, status: "expired", error: "That link has expired. Request a new one." },
+            410,
+          );
+        default:
+          return c.json(
+            { ok: false, status: "already_used", error: "That link has already been used." },
+            410,
+          );
+      }
+    }
+
     const result = await consumeVerificationToken(token);
 
     switch (result.status) {

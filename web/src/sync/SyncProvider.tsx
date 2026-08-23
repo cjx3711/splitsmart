@@ -16,11 +16,15 @@
  *      app" rather than a spinner.
  *   3. Revalidate `/auth/me` in the background and start the sync loop.
  *
- * A FAILED `/auth/me` IS NOT A LOGOUT. Losing the network, or a 30-day session
- * cookie expiring while unsynced expenses are queued, must not throw the queue
- * away - that queue is the only copy of somebody's dinner. Both cases become
- * `reconnecting`, and the app keeps working from the mirror. Only an explicit
- * logout clears anything.
+ * A FAILED `/auth/me` IS NOT ALWAYS A LOGOUT. Losing the network must not throw
+ * the queue away - that queue is the only copy of somebody's dinner - so a
+ * network failure (or any non-401 error) becomes `reconnecting`, and the app
+ * keeps working from the mirror. A CONFIRMED 401, though, is the server itself
+ * saying this session is not valid - the account was deleted, the session was
+ * revoked, or the cookie expired - and that ends the session for real, via
+ * `forceLogout`. That is still not a wipe: `forceLogout` only detaches (same
+ * as the "Log out" button), so the mirror and outbox stay on disk and logging
+ * back in reattaches them untouched.
  *
  * A GUEST-LINK VISITOR NEVER REACHES THIS. Nothing under web/src/guest imports it,
  * `entry-app.tsx` clears any leftover link secret, and a link-scoped identity is
@@ -48,8 +52,9 @@ interface SyncContextValue {
   /** True only until the cached profile (or the network) has answered once. */
   loading: boolean;
   /**
-   * We are working from the mirror because the server did not answer, or answered
-   * 401 while we still have a cached profile. Not a logout.
+   * We are working from the mirror because the server did not answer - offline,
+   * timed out, 5xx. Not a logout: a confirmed 401 is handled separately, by
+   * `forceLogout`, and never surfaces as `reconnecting`.
    */
   reconnecting: boolean;
   db: LocalDb | null;
@@ -92,38 +97,72 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const stopRef = useRef<(() => void) | null>(null);
 
   /**
+   * Detaches the mirror and the loop from whatever account they were on, but
+   * does NOT delete the database: the person may well log back in, and a wipe
+   * here would take an unsynced queue with it. Clearing local data is a
+   * separate, deliberate action - see `resetMirror`.
+   */
+  const detach = useCallback(() => {
+    stopRef.current?.();
+    stopRef.current = null;
+    engineRef.current = null;
+    setDb(null);
+    setStatus(null);
+    localStorage.removeItem(LAST_USER_KEY);
+  }, []);
+
+  /**
+   * The server confirmed this session is invalid (401), so it is really over -
+   * unlike a dropped connection, there is nothing to reconnect to. Ends the
+   * session exactly like the "Log out" button: best-effort tells the server,
+   * clears who is signed in, and detaches. The mirror stays on disk, so
+   * logging back in (even to the same account, moments later) picks up right
+   * where it left off, queued writes included.
+   */
+  const forceLogout = useCallback(() => {
+    void api.logout().catch(() => {});
+    setUserState(null);
+    setReconnecting(false);
+    detach();
+  }, [detach]);
+
+  /**
    * Attaches the mirror and the loop to one account.
    *
    * Idempotent per user id, because it runs from the boot effect and again from
    * `setUser` after a login, and reopening the same Dexie would drop the running
    * engine's listeners on the floor.
    */
-  const attach = useCallback((userId: string): LocalDb => {
-    if (engineRef.current?.selfId === userId && engineRef.current.db) {
-      return engineRef.current.db;
-    }
+  const attach = useCallback(
+    (userId: string): LocalDb => {
+      if (engineRef.current?.selfId === userId && engineRef.current.db) {
+        return engineRef.current.db;
+      }
 
-    stopRef.current?.();
-    stopRef.current = null;
+      stopRef.current?.();
+      stopRef.current = null;
 
-    const local = openLocalDb(userId);
-    const engine = new SyncEngine(local, userId);
-    engineRef.current = engine;
+      const local = openLocalDb(userId);
+      const engine = new SyncEngine(local, userId);
+      engine.onAuthInvalid = forceLogout;
+      engineRef.current = engine;
 
-    const refresh = () => void engine.status().then(setStatus);
-    const unsubscribe = engine.onChange(refresh);
-    const stopTriggers = engine.start();
-    refresh();
+      const refresh = () => void engine.status().then(setStatus);
+      const unsubscribe = engine.onChange(refresh);
+      const stopTriggers = engine.start();
+      refresh();
 
-    stopRef.current = () => {
-      unsubscribe();
-      stopTriggers();
-    };
+      stopRef.current = () => {
+        unsubscribe();
+        stopTriggers();
+      };
 
-    setDb(local);
-    localStorage.setItem(LAST_USER_KEY, userId);
-    return local;
-  }, []);
+      setDb(local);
+      localStorage.setItem(LAST_USER_KEY, userId);
+      return local;
+    },
+    [forceLogout],
+  );
 
   const setUser = useCallback(
     (next: ApiUser | null) => {
@@ -131,16 +170,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       setReconnecting(false);
 
       if (!next) {
-        // An explicit logout. Detach and forget which account this was, but do NOT
-        // delete the database: the person may well log back in, and a wipe here
-        // would take an unsynced queue with it. Clearing local data is a separate,
-        // deliberate action.
-        stopRef.current?.();
-        stopRef.current = null;
-        engineRef.current = null;
-        setDb(null);
-        setStatus(null);
-        localStorage.removeItem(LAST_USER_KEY);
+        // An explicit logout - the same detach that forceLogout uses.
+        detach();
         return;
       }
 
@@ -159,7 +190,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         deletedAt: null,
       });
     },
-    [attach],
+    [attach, detach],
   );
 
   useEffect(() => {
@@ -206,16 +237,22 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (!live) return;
 
-        // Never a wipe. With a cached profile we carry on from the mirror and say
-        // so; without one there is nothing to show and the login screen is right.
+        // A confirmed 401 is the server itself saying this session is over -
+        // the account may have been deleted, the session revoked, or the
+        // cookie expired. That is a real logout regardless of what is cached;
+        // forceLogout only detaches, so the mirror is untouched either way.
+        if (err instanceof ApiError && err.status === 401) {
+          forceLogout();
+          return;
+        }
+
+        // Anything else - offline, a timeout, a 5xx - is never a wipe. With a
+        // cached profile we carry on from the mirror and say so; without one
+        // there is nothing to show and the login screen is right.
         if (cached) {
           setReconnecting(true);
         } else {
           setUserState(null);
-          if (cachedId && err instanceof ApiError && err.status === 401) {
-            // Signed out for real, and we had nothing cached to fall back on.
-            localStorage.removeItem(LAST_USER_KEY);
-          }
         }
       } finally {
         if (live) setLoading(false);
@@ -225,7 +262,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     return () => {
       live = false;
     };
-  }, [attach]);
+  }, [attach, forceLogout]);
 
   // Detach on unmount, so a hot reload does not leave a second loop running.
   useEffect(() => () => stopRef.current?.(), []);

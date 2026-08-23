@@ -26,10 +26,6 @@
       - listitem: "-140.00USD in Ski Trip 2026"
       - listitem: 1200JPY in Weekend in Tokyo
   - heading "You are owed" [level=2]
-  - link "Ah Beng owes you 2400JPY":
-    - /url: /app/friends/<ULID>
-  - link "Hana owes you 2400JPY":
-    - /url: /app/friends/<ULID>
   - link "Test User owes you 1200JPY -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
     - /url: /app/friends/<ULID>
     - text: Test User owes you 1200JPY
@@ -37,6 +33,10 @@
       - listitem: "-3696.21USD in Apartment 4B"
       - listitem: "-140.00USD in Ski Trip 2026"
       - listitem: 1200JPY in Weekend in Tokyo
+  - link "Ah Beng owes you 2400JPY":
+    - /url: /app/friends/<ULID>
+  - link "Hana owes you 2400JPY":
+    - /url: /app/friends/<ULID>
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

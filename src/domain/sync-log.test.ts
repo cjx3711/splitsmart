@@ -34,7 +34,7 @@ process.env.SESSION_SECRET = "test-secret-that-is-long-enough-to-pass-validation
 
 const { migrate } = await import("../db/migrate.ts");
 const { seed } = await import("../db/seed.ts");
-const { db } = await import("../db/index.ts");
+const { db, transaction } = await import("../db/index.ts");
 const {
   createExpense,
   updateExpense,
@@ -49,6 +49,7 @@ const { addFriendship, removeFriendship } = await import("./friends.ts");
 const { mergeUsers } = await import("./merge.ts");
 const { getPairwiseBalances } = await import("./balances.ts");
 const { ulid } = await import("./ulid.ts");
+const { logChange } = await import("./sync-log.ts");
 
 let aliceId: string;
 let bobId: string;
@@ -877,5 +878,42 @@ describe("the log itself", () => {
     const rows = await logFor(id);
     assert.equal(rows.length, 1);
     assert.equal(rows[0]!.entity_id, id);
+  });
+
+  /*
+   * SQLite refuses a statement with more than 32766 bind variables. A sync_log
+   * row costs seven of them, so a single-statement insert dies at 4681 entries
+   * with "too many SQL variables".
+   *
+   * Ordinary writes log one or two rows and would never have found this. The
+   * caller that did was `wipeUserLedger`, which logs a `forget` per expense: on
+   * a real imported account (7501 bills) the wipe failed with a 500 every time,
+   * which is exactly the operation you reach for when an import went wrong.
+   */
+  test("a bulk log of more than 4680 entries is chunked, not refused", async () => {
+    const entries = Array.from({ length: 5_000 }, () => ({
+      entity: "expense" as const,
+      entityId: ulid(),
+      op: "forget" as const,
+      actorUserId: aliceId,
+      audienceUserId: aliceId,
+    }));
+
+    const before = await db
+      .selectFrom("sync_log")
+      .select(({ fn }) => fn.countAll<number>().as("n"))
+      .executeTakeFirstOrThrow();
+
+    await transaction((trx) => logChange(trx, ...entries));
+
+    const after = await db
+      .selectFrom("sync_log")
+      .select(({ fn }) => fn.countAll<number>().as("n"))
+      .executeTakeFirstOrThrow();
+    assert.equal(
+      after.n - before.n,
+      entries.length,
+      "every entry must land: a partial write is a change no device learns about",
+    );
   });
 });

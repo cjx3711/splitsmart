@@ -1,10 +1,8 @@
 /**
- * Email verification flow, end to end against the real Hono app.
+ * Existing-account email verification, end to end against the real Hono app.
  *
- * Postmark is intentionally NOT configured here, which exercises the degraded
- * path: sends become console logs and `delivered` is false, while token issuing
- * and consuming still work. That is the same path a self-hoster hits before
- * setting up a mail provider, so it deserves to be the tested default.
+ * New signups go through signup.test.ts. This file is the banner / resend
+ * path for accounts that are not yet confirmed.
  */
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -17,6 +15,8 @@ process.env.DATABASE_PATH = join(tempDir, "test.db");
 process.env.NODE_ENV = "test";
 process.env.SESSION_SECRET = "test-secret-that-is-long-enough-to-pass-validation";
 process.env.APP_ORIGIN = "http://localhost:5545";
+delete process.env.RESEND_API_KEY;
+delete process.env.RESEND_FROM_ADDRESS;
 delete process.env.POSTMARK_SERVER_TOKEN;
 delete process.env.POSTMARK_FROM_ADDRESS;
 
@@ -25,7 +25,8 @@ const { seed } = await import("../db/seed.ts");
 const { app } = await import("../server.ts");
 const { db } = await import("../db/index.ts");
 const { issueVerificationToken, consumeVerificationToken } = await import("./verification.ts");
-const { hashToken, generateToken } = await import("../auth/password.ts");
+const { hashPassword, hashToken, generateToken } = await import("../auth/password.ts");
+const { createSession, SESSION_COOKIE } = await import("../auth/session.ts");
 const { ulid } = await import("../domain/ulid.ts");
 
 before(() => {
@@ -36,18 +37,6 @@ before(() => {
 after(() => {
   rmSync(tempDir, { recursive: true, force: true });
 });
-
-/** Reaches into the DB for the token that was just emailed. */
-async function latestTokenHashFor(userId: string): Promise<string | undefined> {
-  const row = await db
-    .selectFrom("email_tokens")
-    .select(["token_hash"])
-    .where("user_id", "=", userId)
-    .where("purpose", "=", "verify_email")
-    .orderBy("created_at", "desc")
-    .executeTakeFirst();
-  return row?.token_hash;
-}
 
 /**
  * Issues a token and returns the plaintext.
@@ -70,65 +59,27 @@ async function issueAndCapture(userId: string): Promise<string> {
 }
 
 let counter = 0;
-async function registerUser(): Promise<{ id: string; email: string; cookie: string }> {
+/** Existing-account verification is for people who are not yet confirmed. */
+async function unverifiedUser(): Promise<{ id: string; email: string; cookie: string }> {
   const email = `user${++counter}@example.com`;
-  const res = await app.request("/api/v1/auth/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password: "hunter2hunter2", name: "Test" }),
-  });
-  assert.equal(res.status, 201);
-
-  const body = (await res.json()) as { user: { id: string } };
-  const cookie = res.headers.get("set-cookie")?.split(";")[0] ?? "";
-  return { id: body.user.id, email, cookie };
+  const id = ulid();
+  await db
+    .insertInto("users")
+    .values({
+      id,
+      email,
+      password_hash: await hashPassword("hunter2hunter2"),
+      name: "Test",
+      is_ghost: 0,
+    })
+    .execute();
+  const { token } = await createSession(id, "test");
+  return { id, email, cookie: `${SESSION_COOKIE}=${token}` };
 }
-
-describe("registration issues a verification token", () => {
-  test("a new account starts unverified", async () => {
-    const user = await registerUser();
-
-    const row = await db
-      .selectFrom("users")
-      .select("email_verified_at")
-      .where("id", "=", user.id)
-      .executeTakeFirstOrThrow();
-
-    assert.equal(row.email_verified_at, null);
-  });
-
-  test("a token is created and stored only as a hash", async () => {
-    const user = await registerUser();
-    const hash = await latestTokenHashFor(user.id);
-
-    assert.ok(hash, "a verification token should exist");
-    // A stored value that verifies against itself would mean plaintext storage.
-    assert.notEqual(hash, hashToken(hash!));
-  });
-
-  test("reports that no email went out when Postmark is unconfigured", async () => {
-    const email = `unconfigured${++counter}@example.com`;
-    const res = await app.request("/api/v1/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password: "hunter2hunter2", name: "Test" }),
-    });
-
-    const body = (await res.json()) as { verificationEmailSent: boolean };
-    // Must not claim a message was sent when it was only logged.
-    assert.equal(body.verificationEmailSent, false);
-  });
-
-  test("registration still succeeds with no mail provider", async () => {
-    const user = await registerUser();
-    assert.ok(user.id);
-    assert.ok(user.cookie.includes("splitsmart_session"));
-  });
-});
 
 describe("consuming a token", () => {
   test("marks the address verified", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const token = await issueAndCapture(user.id);
 
     const result = await consumeVerificationToken(token);
@@ -143,7 +94,7 @@ describe("consuming a token", () => {
   });
 
   test("works over HTTP without authentication", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const token = await issueAndCapture(user.id);
 
     // No cookie; the link is often opened in a different browser.
@@ -158,7 +109,7 @@ describe("consuming a token", () => {
   });
 
   test("a second click is idempotent, not an error", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const token = await issueAndCapture(user.id);
 
     await consumeVerificationToken(token);
@@ -168,7 +119,7 @@ describe("consuming a token", () => {
   });
 
   test("rejects an expired token", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const token = await issueAndCapture(user.id);
 
     await db
@@ -183,7 +134,7 @@ describe("consuming a token", () => {
   });
 
   test("issuing a new token invalidates the previous one", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const first = await issueAndCapture(user.id);
 
     // Step past the resend cooldown.
@@ -200,7 +151,7 @@ describe("consuming a token", () => {
   });
 
   test("refuses a token whose address changed after issue", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const token = await issueAndCapture(user.id);
 
     // The security case email_tokens exists for: an outstanding link must not
@@ -225,20 +176,22 @@ describe("consuming a token", () => {
 
 describe("resend", () => {
   test("is rate limited", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
+    await issueVerificationToken(user.id);
 
     const res = await app.request("/api/v1/auth/verify/resend", {
       method: "POST",
       headers: { Cookie: user.cookie },
     });
 
-    // Registration already sent one, so an immediate resend hits the cooldown.
+    // The issue above already sent one, so an immediate resend hits the cooldown.
     assert.equal(res.status, 429);
     assert.ok(res.headers.get("Retry-After"));
   });
 
   test("succeeds once the cooldown has passed", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
+    await issueVerificationToken(user.id);
     await db
       .updateTable("email_tokens")
       .set({ created_at: "2020-01-01 00:00:00" })
@@ -253,7 +206,7 @@ describe("resend", () => {
   });
 
   test("is a no-op for an already-verified account", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
     const token = await issueAndCapture(user.id);
     await consumeVerificationToken(token);
 
@@ -311,7 +264,7 @@ describe("ghosts", () => {
 
 describe("/me reports verification state", () => {
   test("needsEmailVerification flips after verifying", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
 
     const before = (await (
       await app.request("/api/v1/auth/me", { headers: { Cookie: user.cookie } })
@@ -332,7 +285,7 @@ describe("/me reports verification state", () => {
 
 describe("login gate", () => {
   test("unverified users can still log in by default", async () => {
-    const user = await registerUser();
+    const user = await unverifiedUser();
 
     const res = await app.request("/api/v1/auth/login", {
       method: "POST",

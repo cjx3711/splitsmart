@@ -167,7 +167,9 @@ truth. The server recomputes on replay and stays authoritative.
 Do not cache server-computed balances as local truth. Store `expense_users`
 locally, run `deriveRepayments()` per expense, then SUM. Pairwise nets taken
 from two people's `paid`/`owed` on a three-way bill are wrong. `simplifyDebts`
-is already pure.
+and `pairwiseWithSimplify` are already pure; friend totals run the latter with
+the same per-group `simplify_by_default` flags as the server. One-on-one
+expenses stay pairwise.
 
 Per-currency arrays stay arrays (rule 2). The Frankfurter ≈ estimate is
 display-only and simply omitted offline.
@@ -666,11 +668,20 @@ Two corrections learned from DumberTime's bug list:
 - **Only clear an entry after a successful, parsed, per-op `status`.** Not on
   HTTP 200 alone. `duplicate` still needs the returned `server` row.
 
-Never clear the outbox on a 401. The 30-day httpOnly session cookie can expire
-while unsynced expenses are queued; that is "reconnect to keep syncing", not
-a logout. `Protected` today navigates to `/login` on a failed `/auth/me`; that
-has to stop treating 401-while-offline (or 401-while-outbox-nonempty) as a
-wipe. Network failure on `/auth/me` is not "logged out".
+Never clear the outbox on a 401 - not even when it ends the session (see
+below). Only `resetMirror` (an explicit, separate action) may empty it.
+
+A CONFIRMED 401 is a real logout: the server itself said this session is
+invalid (deleted account, revoked session, expired cookie), so
+`SyncProvider.forceLogout` signs the account out immediately, regardless of
+whether a cached profile or a nonempty outbox exists. This is safe specifically
+because logout never deletes anything - it only detaches the mirror from the
+React tree, same as the "Log out" button - so the queue and the rest of the
+mirror stay on disk and reattach untouched the next time this account signs
+in. What must never happen on a 401 is a WIPE (an explicit `resetMirror`
+call); logging out is fine. A non-401 failure on `/auth/me` (offline, a
+timeout, a 5xx) is not "logged out" and stays `reconnecting`, working from the
+mirror.
 
 ### Sync loop
 
@@ -702,8 +713,10 @@ and a manual Sync now. Single-flight, no retry storm. A successful sync with
 Today `App.tsx` cannot render until `/auth/me` answers, and `money.tsx`
 renders a dash until `/currencies` does. Change to: read the cached profile
 and currencies from Dexie/`meta`, render immediately, revalidate in the
-background. Treat 401 as "offline / reconnect" when a cached profile exists,
-never as an automatic local wipe. Link-access visitors do not take this path.
+background. Treat a non-401 failure as "offline / reconnect", working from
+whatever is cached; treat a confirmed 401 as a real logout (`forceLogout`),
+never as an automatic local wipe - logout and wipe are different operations.
+Link-access visitors do not take this path.
 
 **Reference data must be cached or nothing renders at all.** Currencies and
 the category tree are static - cache them at bootstrap and refresh lazily.

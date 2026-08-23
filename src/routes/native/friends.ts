@@ -43,7 +43,7 @@ import { commentCountSql } from "../../domain/comments.ts";
 import { findFriendLink, mintAccessLink } from "../../domain/access-links.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
 import { expenseFilterWhere, expenseListQuerySchema, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
-import { sendEmail } from "../../email/postmark.ts";
+import { sendEmail } from "../../email/send.ts";
 import { friendInviteEmail } from "../../email/templates.ts";
 import { env } from "../../env.ts";
 import { displayName, knownEmail, MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
@@ -58,6 +58,8 @@ import {
 interface FriendBreakdown {
   groupId: string | null;
   groupName: string | null;
+  /** True when this bucket used simplify-debts rather than the raw edges. */
+  simplified: boolean;
   balances: CurrencyAmount[];
 }
 
@@ -75,9 +77,10 @@ async function breakdownByUser(
 
   const groupIds = [...new Set(rows.map((r) => r.groupId).filter((id): id is string => id !== null))];
   const groups = groupIds.length
-    ? await db.selectFrom("groups").select(["id", "name"]).where("id", "in", groupIds).execute()
+    ? await db.selectFrom("groups").select(["id", "name", "simplify_by_default"]).where("id", "in", groupIds).execute()
     : [];
   const nameById = new Map(groups.map((g) => [g.id, g.name]));
+  const simplifyById = new Map(groups.map((g) => [g.id, g.simplify_by_default === 1]));
 
   const byUser = new Map<string, FriendBreakdown[]>();
   for (const row of rows) {
@@ -85,6 +88,7 @@ async function breakdownByUser(
     list.push({
       groupId: row.groupId,
       groupName: row.groupId === null ? null : (nameById.get(row.groupId) ?? null),
+      simplified: row.groupId !== null && (simplifyById.get(row.groupId) ?? false),
       balances: row.balances,
     });
     byUser.set(row.otherUserId, list);

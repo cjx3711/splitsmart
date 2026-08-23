@@ -16,7 +16,7 @@
     - /url: /app/expenses
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (3)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -26,15 +26,15 @@
     - /url: /app/groups/<ULID>
   - link "Apartment 4B":
     - /url: /app/groups/<ULID>
-  - link "Friends":
+  - link "Friends (3)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "Hana":
+  - link "Test User":
     - /url: /app/friends/<ULID>
   - link "Ah Beng":
     - /url: /app/friends/<ULID>
-  - link "Test User":
+  - link "Hana":
     - /url: /app/friends/<ULID>
 - main:
   - heading "Dashboard About these totals" [level=1]:
@@ -57,10 +57,6 @@
       - listitem: "-140.00USD in Ski Trip 2026"
       - listitem: 1200JPY in Weekend in Tokyo
   - heading "You are owed" [level=2]
-  - link "Ah Beng owes you 2400JPY":
-    - /url: /app/friends/<ULID>
-  - link "Hana owes you 2400JPY":
-    - /url: /app/friends/<ULID>
   - link "Test User owes you 1200JPY -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
     - /url: /app/friends/<ULID>
     - text: Test User owes you 1200JPY
@@ -68,6 +64,10 @@
       - listitem: "-3696.21USD in Apartment 4B"
       - listitem: "-140.00USD in Ski Trip 2026"
       - listitem: 1200JPY in Weekend in Tokyo
+  - link "Ah Beng owes you 2400JPY":
+    - /url: /app/friends/<ULID>
+  - link "Hana owes you 2400JPY":
+    - /url: /app/friends/<ULID>
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

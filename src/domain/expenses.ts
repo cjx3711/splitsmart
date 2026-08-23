@@ -16,6 +16,7 @@ import { db, transaction } from "../db/index.ts";
 import {
   computeSplit,
   deriveRepayments,
+  type Repayment,
   type SplitItem,
   type SplitParticipant,
   type SplitType,
@@ -93,6 +94,22 @@ export interface CreateExpenseInput {
    * Absent: SQLite's `datetime('now')`.
    */
   createdAt?: string;
+  /**
+   * A preferred who-pays-whom pairing, as a HINT to `deriveRepayments`.
+   *
+   * Net positions do not pin down the pairing (see the long comment on
+   * `deriveRepayments`), and greedy matching picks a valid but arbitrary one.
+   * That is fine for an expense this app authored, and wrong for one imported
+   * from a system that already published its own answer: on a non-group bill
+   * the arbitrary pairing surfaces as a one-on-one debt the other side has no
+   * record of.
+   *
+   * The Splitwise importer passes `repayments` straight from the API. It stays
+   * a hint - each entry is clamped to what the shares support and greedy fills
+   * the rest - so this cannot make `expense_repayments` disagree with
+   * `expense_users`, and rule 4 still holds.
+   */
+  repayments?: readonly Repayment[];
 }
 
 export class ExpenseError extends Error {}
@@ -178,7 +195,7 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
     const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
       items: input.items,
     });
-    const repayments = deriveRepayments(shares);
+    const repayments = deriveRepayments(shares, input.repayments);
     const date = normaliseDate(input.date);
     const splitMeta = serialiseSplitMeta(input);
     const repeatInterval = input.repeatInterval ?? null;
@@ -311,7 +328,7 @@ export async function updateExpense(
   const shares = computeSplit(input.costMinor, input.splitType, input.participants, {
     items: input.items,
   });
-  const repayments = deriveRepayments(shares);
+  const repayments = deriveRepayments(shares, input.repayments);
   const date = normaliseDate(input.date);
   // Always written, never left alone: editing an itemized expense into a
   // percent one has to clear the old line items, or the editor would reopen a

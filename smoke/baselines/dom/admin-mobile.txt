@@ -1,0 +1,64 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - heading "Usage About the usage panel" [level=1]:
+    - text: Usage
+    - button "About the usage panel": "?"
+  - searchbox "Search users"
+  - text: As of
+  - textbox "As of date": <DATE>
+  - strong: Melvin Tan Wei Ming
+  - text: mel@example.com 5 created · 2 groups · 5 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Nur Aisyah
+  - text: aisyah@example.com 0 created · 2 groups · 5 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Lee Jin Jie
+  - text: jj@example.com 1 created · 3 groups · 3 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Tan Ah Beng
+  - text: ahbeng@example.com 0 created · 3 groups · 4 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Tanaka Taro
+  - text: taro@example.com 0 created · 2 groups · 5 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Jasmine Lim Jia Hui
+  - text: jas@example.com 1 created · 2 groups · 4 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Muhammad Danial
+  - text: danial@example.com 0 created · 2 groups · 4 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Test User
+  - text: test@example.com 10 created · 10 groups · 15 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "Changelog":
+    - /url: /changelog
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart

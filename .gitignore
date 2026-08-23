@@ -7,7 +7,18 @@ data/
 
 .env
 .env.local
+.env.prod
+.env.deploy
 *.swp
+
+# Local-only telemetry script. See scripts/deploy/README.md - deploy.sh
+# swaps this into web/public/telemetry.js for the build, then restores the
+# committed no-op stub. Never commit real telemetry code here; this is
+# open source and ships with no tracking by default.
+.telemetry.js
+
+# Docker image tars built by scripts/deploy/deploy.sh
+*.tar
 
 # Raw Splitwise export snapshots (may contain personal financial data).
 # Keep these OUT of git; back them up somewhere private instead.

@@ -2,8 +2,9 @@
  * One friend: what stands between the two of you and everything you've split.
  *
  * Expenses here span every group plus the one-on-one ones; the question "what
- * is between us" does not stop at a group boundary. New expenses added from
- * this screen are one-on-one (no group).
+ * is between us" does not stop at a group boundary. Shared groups are listed
+ * from current membership, including settled ones the balance breakdown omits.
+ * New expenses added from this screen are one-on-one (no group).
  *
  * Adding and settling live in dialogs off the header rather than inline, so the
  * page stays a view of the balance instead of a stack of forms.
@@ -13,7 +14,7 @@
  */
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { displayName, api, type ExpenseQuery } from "../api.ts";
+import { displayName, api, type ExpenseQuery, type GroupMember } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
@@ -25,14 +26,23 @@ import {
 } from "../SettleUpDialog.tsx";
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
-import { useFriend, useFriendExpenses, useFriends } from "../localData.ts";
+import {
+  useFriend,
+  useFriendExpenses,
+  useFriends,
+  useGroupMembers,
+  useSharedGroups,
+} from "../localData.ts";
+import { GroupTypeIcon, groupTypeLabel } from "../groupTypes.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
+import { patchPerson, revertPerson } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { LinkPanel } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
+import { HelpTip } from "../HelpTip.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
@@ -41,11 +51,15 @@ export function FriendDetail() {
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
-  const { engine, syncNow } = useSync();
+  const { engine, syncNow, db } = useSync();
 
   const loaded = useFriend(id);
   const expenses = useFriendExpenses(id, filters)?.expenses ?? [];
   const allFriends = useFriends()?.friends ?? [];
+  const sharedGroups = useSharedGroups(id)?.groups ?? [];
+  const breakdownGroupIds = loaded?.friend.breakdown.map((entry) => entry.groupId) ?? [];
+  const membersByGroup =
+    useGroupMembers(breakdownGroupIds) ?? new Map<string, GroupMember[]>();
 
   if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
   if (loaded === null) return <p className="empty">This person is not on this device.</p>;
@@ -121,8 +135,19 @@ export function FriendDetail() {
         person={friend}
         onClose={() => setOpenDialog(null)}
         onSave={async (id, payload) => {
-          await api.updateFriend(id, payload);
-          syncNow();
+          if (!db) {
+            await api.updateFriend(id, payload);
+            syncNow();
+            return;
+          }
+          const previous = await patchPerson(db, id, payload);
+          try {
+            await api.updateFriend(id, payload);
+            syncNow();
+          } catch (err) {
+            if (previous) await revertPerson(db, previous);
+            throw err;
+          }
         }}
       />
 
@@ -149,7 +174,15 @@ export function FriendDetail() {
       />
 
       <div className="card">
-        <span className="eyebrow">Between you</span>
+        <span className="eyebrow">
+          <span className="with-help">
+            Between you
+            <HelpTip label="About this balance">
+              In a group with simplify debts on, cycles through other people are collapsed, the same
+              way Splitwise does. Each bill still shows who paid.
+            </HelpTip>
+          </span>
+        </span>
         {friend.balances.length === 0 ? (
           <p className="muted" style={{ margin: "0.4rem 0 0" }}>
             You're settled up.
@@ -171,21 +204,89 @@ export function FriendDetail() {
         )}
 
         {friend.breakdown.length > 1 && (
-          <ul className="breakdown" style={{ marginTop: "0.6rem" }}>
-            {friend.breakdown.map((entry) => (
-              <li key={entry.groupId ?? "none"}>
-                <Amounts balances={entry.balances} signed /> in{" "}
-                {entry.groupId ? (
-                  <Link to={`/groups/${entry.groupId}`}>{entry.groupName}</Link>
-                ) : (
-                  "one-on-one expenses"
-                )}
-              </li>
-            ))}
-          </ul>
+          <div className="list breakdown-list" style={{ marginTop: "0.6rem" }}>
+            {friend.breakdown.map((entry) => {
+              const groupType = entry.groupId
+                ? sharedGroups.find((g) => g.id === entry.groupId)?.group_type
+                : undefined;
+              // Everyone else on the bill: the two people this page is already
+              // about would just repeat the header, so they're left off.
+              const others = (entry.groupId ? membersByGroup.get(entry.groupId) ?? [] : []).filter(
+                (m) => m.id !== user.id && m.id !== friend.id,
+              );
+
+              const row = (
+                <>
+                  {entry.groupId ? (
+                    <GroupTypeIcon type={groupType ?? "other"} className="nav-item-icon" />
+                  ) : (
+                    <span className="avatar-placeholder" aria-hidden="true" />
+                  )}
+                  <div className="list-item-body">
+                    <div className="list-item-title">
+                      {entry.groupId ? entry.groupName?.trim() || "Unnamed group" : "One-on-one"}
+                    </div>
+                    {(others.length > 0 || entry.simplified) && (
+                      <div className="breakdown-sub">
+                        {others.length > 0 && (
+                          <span className="avatar-stack">
+                            {others.slice(0, 4).map((m) => (
+                              <Avatar key={m.id} {...avatarFromRow(m)} size={20} />
+                            ))}
+                            {others.length > 4 && (
+                              <span className="avatar-overflow">+{others.length - 4}</span>
+                            )}
+                          </span>
+                        )}
+                        {entry.simplified && <span className="muted">simplified</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="list-item-figures">
+                    <Amounts balances={entry.balances} signed />
+                  </div>
+                </>
+              );
+
+              return entry.groupId ? (
+                <Link key={entry.groupId} to={`/groups/${entry.groupId}`} className="list-item">
+                  {row}
+                </Link>
+              ) : (
+                <div key="none" className="list-item">
+                  {row}
+                </div>
+              );
+            })}
+          </div>
         )}
         <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
       </div>
+
+      {sharedGroups.length > 0 && (
+        <>
+          <h2>Shared groups</h2>
+          <div className="list">
+            {sharedGroups.map((g) => {
+              const bucket = friend.breakdown.find((entry) => entry.groupId === g.id);
+              return (
+                <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
+                  <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
+                  <div className="list-item-body">
+                    <div className="list-item-title">{g.name}</div>
+                    <div className="muted">{groupTypeLabel(g.group_type)}</div>
+                  </div>
+                  {bucket && bucket.balances.length > 0 ? (
+                    <div className="list-item-figures">
+                      <Amounts balances={bucket.balances} signed />
+                    </div>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/*
         Only a placeholder gets a link. Someone with their own account logs in;

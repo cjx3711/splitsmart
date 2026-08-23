@@ -18,6 +18,10 @@
   - paragraph: Trip · default JPY · 4 members
   - button "Settle up"
   - button "Add Expense"
+  - checkbox "Simplify debts About simplify debts Friend balances show the raw who-owes-whom from each bill."
+  - text: Simplify debts
+  - button "About simplify debts": "?"
+  - text: Friend balances show the raw who-owes-whom from each bill.
   - heading "Balances" [level=2]
   - link "Test User gets back 1200JPY":
     - /url: /app/friends/<ULID>
@@ -89,11 +93,11 @@
     - option "Settle-ups only"
   - button "Download CSV"
   - link "TeamLab tickets <DATE> · Life · You paid 9600JPY you lent 7200JPY"
-  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid 4800JPY 2 comments you borrowed 1200JPY":
+  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments 4800JPY you borrowed 1200JPY":
     - text: Ramen at Ichiran <DATE> · Dining out ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid 4800JPY 2 comments you borrowed 1200JPY
+    - text: paid · 2 comments 4800JPY you borrowed 1200JPY
   - heading "Members" [level=2]
   - link "Test User owner · has an account":
     - /url: /app/friends/<ULID>

@@ -32,13 +32,16 @@
  *    past the currency's scale (Splitwise sending `"197529.02"` for JPY) are
  *    dropped, a system comment is left on the bill, and the row is listed in
  *    `warnings[]` rather than `skipped[]`. Unknown currency, a group that has
- *    not been imported yet, shares that do not add up: those still skip.
+ *    not been imported yet, shares that do not add up: those still skip. A
+ *    later rounding step then compares Splitwise friend totals and records a
+ *    one-on-one settle-up for leftover cents so the books match.
  *
  * The API key never reaches this module as anything but a live client object,
  * and is never persisted. See src/splitwise/client.ts.
  */
 import { db, transaction } from "../db/index.ts";
-import { parseAmountTruncating } from "./money.ts";
+import { formatAmount, parseAmountRounded } from "./money.ts";
+import type { Repayment } from "./split.ts";
 import {
   createExpense,
   ExpenseError,
@@ -47,8 +50,10 @@ import {
   resumeRepeat,
   updateExpense,
 } from "./expenses.ts";
+import { getPairwiseBalances, getPairwiseBalancesByGroup } from "./balances.ts";
 import { isRepeatInterval, type RepeatInterval } from "./recurring.ts";
 import { createComment } from "./comments.ts";
+import { logChange } from "./sync-log.ts";
 import {
   addFriendship,
   findExplicitGhostByInviteEmail,
@@ -58,8 +63,10 @@ import { isUlid, ulid } from "./ulid.ts";
 import {
   metadataFromSplitwise,
   parseMetadata,
+  serializeMetadata,
   splitwiseIdOf,
   splitwiseIdSql,
+  type EntityMetadata,
 } from "./metadata.ts";
 import {
   adoptImportedGhostBySplitwiseId,
@@ -124,6 +131,11 @@ export class PersonResolver {
     this.ownerId = ownerId;
     this.ownerSplitwiseId = ownerSplitwiseId;
     this.defaultCurrency = defaultCurrency;
+  }
+
+  /** The local account doing this import. Fallback author for platform notes. */
+  importerId(): string {
+    return this.ownerId;
   }
 
   /** Everyone touched so far, in first-seen order. */
@@ -503,23 +515,24 @@ export async function previewImport(
     );
   }
 
-  let truncatedOnFirstPage = 0;
+  let roundedOnFirstPage = 0;
   for (const expense of firstPage) {
     if (expense.deleted_at) continue;
     const decimals = decimalsByCurrency.get((expense.currency_code ?? "").toUpperCase());
     if (decimals === undefined) continue;
     try {
-      if (parseAmountTruncating(String(expense.cost ?? "0"), decimals).dropped) {
-        truncatedOnFirstPage++;
+      if (parseAmountRounded(String(expense.cost ?? "0"), decimals).adjustment) {
+        roundedOnFirstPage++;
       }
     } catch {
       // Invalid amount; the expenses step will skip it.
     }
   }
-  if (truncatedOnFirstPage > 0) {
+  if (roundedOnFirstPage > 0) {
     warnings.push(
-      `At least ${truncatedOnFirstPage} expense(s) use more decimal places than their currency allows. ` +
-        `Extra digits will be dropped and a note added to each bill.`,
+      `At least ${roundedOnFirstPage} expense(s) use more decimal places than their currency allows. ` +
+        `Extra digits will be dropped and a note added to each bill. After import, ` +
+        `leftover cents between these books and Splitwise friend totals are offset with a settle-up.`,
     );
   }
 
@@ -648,7 +661,7 @@ export async function importGroups(
       (
         await transaction(async (trx) => {
           const { id, createdAt } = originalInstant(swGroup.created_at);
-          return trx
+          const created = await trx
             .insertInto("groups")
             .values({
               id,
@@ -664,6 +677,19 @@ export async function importGroups(
             })
             .returning("id")
             .executeTakeFirstOrThrow();
+
+          // Without this, an already-synced device never learns the group's
+          // name or that it exists: expenses reach it through their own
+          // sync-log rows, but the group document does not, and friend/group
+          // screens render a bare id instead of a name.
+          await logChange(trx, {
+            entity: "group",
+            entityId: created.id,
+            groupId: created.id,
+            actorUserId: userId,
+          });
+
+          return created;
         })
       ).id;
 
@@ -742,6 +768,12 @@ async function ensureMember(
       .where("group_id", "=", groupId)
       .where("user_id", "=", userId)
       .execute();
+    await logChange(db, {
+      entity: "group_member",
+      entityId: userId,
+      groupId,
+      actorUserId: userId,
+    });
     return true;
   }
 
@@ -754,6 +786,14 @@ async function ensureMember(
       joined_via: joinedVia,
     })
     .execute();
+  // Same reason as the group's own logChange above: membership has to reach
+  // an already-synced device on its own, not only at fresh bootstrap.
+  await logChange(db, {
+    entity: "group_member",
+    entityId: userId,
+    groupId,
+    actorUserId: userId,
+  });
   return true;
 }
 
@@ -768,6 +808,8 @@ export interface PausedImportedSeries {
   interval: RepeatInterval;
   currencyCode: string;
   costMinor: number;
+  /** Display names of everyone on the bill. The importer is labelled "You". */
+  participants: string[];
 }
 
 export interface ExpensePageResult {
@@ -951,35 +993,44 @@ async function importOneExpense(
   const swUsers = swExpense.users ?? [];
   if (swUsers.length === 0) throw new Error("Expense has no participants");
 
-  const cost = parseAmountTruncating(String(swExpense.cost ?? "0"), decimals);
-  let dropped = cost.dropped;
+  const cost = parseAmountRounded(String(swExpense.cost ?? "0"), decimals);
+  let adjustment = cost.adjustment;
 
   const participants: Array<{
     userId: string;
     paidMinor: number;
     input: number;
   }> = [];
+  const participantNames: string[] = [];
+  // Splitwise ids are what `repayments[]` refers to; the local ids are ULIDs.
+  const localIdBySplitwiseId = new Map<number, string>();
   for (const share of swUsers) {
     const person = share.user ?? (share.user_id ? { id: share.user_id } : null);
     if (!person?.id) throw new Error("Participant with no user id");
 
     const resolved = await ctx.resolver.resolve(person as SplitwiseUser);
-    const paid = parseAmountTruncating(String(share.paid_share ?? "0"), decimals);
-    const owed = parseAmountTruncating(String(share.owed_share ?? "0"), decimals);
-    dropped ??= paid.dropped ?? owed.dropped;
+    const paid = parseAmountRounded(String(share.paid_share ?? "0"), decimals);
+    const owed = parseAmountRounded(String(share.owed_share ?? "0"), decimals);
+    adjustment ??= paid.adjustment ?? owed.adjustment;
+    const userId = localId(resolved);
+    localIdBySplitwiseId.set(person.id, userId);
     participants.push({
-      userId: localId(resolved),
+      userId,
       paidMinor: paid.minor,
       // Splitwise's own owed_share, imported as an `exact` split. Re-deriving
       // it from a split type would move cents, and cents are balances.
       input: owed.minor,
     });
+    participantNames.push(userId === ctx.userId ? "You" : resolved.name);
   }
 
-  // Truncating independently can leave paid/owed a yen short of the cost.
-  // Nudge the largest share so the invariant still holds; without a drop we
-  // leave a mismatch for createExpense to reject, which is the skip path.
-  if (dropped) applyTruncationRemainder(cost.minor, participants);
+  // Rounding each share independently can leave paid/owed a yen either side of
+  // the cost. Nudge the largest share so the invariant still holds; without a
+  // rounding we leave a mismatch for createExpense to reject, which is the skip
+  // path.
+  if (adjustment) applyRoundingRemainder(cost.minor, participants);
+
+  const repayments = mapRepayments(swExpense, localIdBySplitwiseId, decimals);
 
   const costMinor = cost.minor;
 
@@ -1009,6 +1060,10 @@ async function importOneExpense(
     splitType: "exact" as const,
     isPayment: swExpense.payment === true,
     participants,
+    // Splitwise's own pairing, as a hint. Only the pairing: the amounts still
+    // come from `participants`, and `deriveRepayments` clamps each hint to what
+    // those shares support, so a refresh cannot import a contradiction.
+    repayments,
   };
 
   if (existing) {
@@ -1045,13 +1100,13 @@ async function importOneExpense(
 
   const comments = await importNestedComments(localId_, swExpense, ctx);
   const warnings: SkippedRow[] = [];
-  if (dropped) {
-    const warning = await noteTruncation({
+  if (adjustment) {
+    const warning = await noteRounding({
       expenseId: localId_,
       importerId: ctx.userId,
       splitwiseId: swExpense.id,
       description: fields.description,
-      dropped,
+      adjustment,
       currency,
     });
     warnings.push(warning);
@@ -1069,6 +1124,7 @@ async function importOneExpense(
             interval: pausedInterval,
             currencyCode: fields.currencyCode,
             costMinor: fields.costMinor,
+            participants: participantNames,
           },
         }
       : {}),
@@ -1088,7 +1144,38 @@ function splitwiseRepeatInterval(sw: SplitwiseExpense): RepeatInterval | null {
  * invariant still holds. Does nothing if a bump would go negative: createExpense
  * then rejects, and the row stays a skip.
  */
-function applyTruncationRemainder(
+/**
+ * Splitwise's `repayments[]`, translated to local user ids.
+ *
+ * Anything unrecognisable is dropped rather than guessed at: this is a hint to
+ * `deriveRepayments`, which fills whatever the hint does not cover, so a partial
+ * or empty result is merely the old behaviour for that expense. A participant
+ * Splitwise names in `repayments` but not in `users` cannot be resolved to a
+ * share, so it has no local id and is skipped here.
+ */
+function mapRepayments(
+  swExpense: SplitwiseExpense,
+  localIdBySplitwiseId: Map<number, string>,
+  decimals: number,
+): Repayment[] {
+  const out: Repayment[] = [];
+  for (const r of swExpense.repayments ?? []) {
+    const fromUserId = localIdBySplitwiseId.get(r.from);
+    const toUserId = localIdBySplitwiseId.get(r.to);
+    if (!fromUserId || !toUserId || fromUserId === toUserId) continue;
+    let amountMinor: number;
+    try {
+      amountMinor = parseAmountRounded(String(r.amount ?? "0"), decimals).minor;
+    } catch {
+      continue;
+    }
+    if (amountMinor <= 0) continue;
+    out.push({ fromUserId, toUserId, amountMinor });
+  }
+  return out;
+}
+
+function applyRoundingRemainder(
   costMinor: number,
   participants: Array<{ userId: string; paidMinor: number; input: number }>,
 ): void {
@@ -1116,15 +1203,16 @@ function bumpLargest(
  * comment: the expense has already landed, and failing the footnote must not
  * report a skip for a row that was written.
  */
-async function noteTruncation(input: {
+async function noteRounding(input: {
   expenseId: string;
   importerId: string;
   splitwiseId: number;
   description: string;
-  dropped: string;
+  adjustment: string;
   currency: string;
 }): Promise<SkippedRow> {
-  const reason = `Fractional amount ${input.dropped} ${input.currency} dropped on import`;
+  const reason =
+    `Fractional amount rounded by ${input.adjustment} ${input.currency} on import`;
   try {
     await createComment({
       expenseId: input.expenseId,
@@ -1136,7 +1224,7 @@ async function noteTruncation(input: {
     });
   } catch (err) {
     console.error(
-      `Could not record a truncation comment on expense ${input.expenseId}:`,
+      `Could not record a rounding comment on expense ${input.expenseId}:`,
       err instanceof Error ? err.message : err,
     );
   }
@@ -1345,6 +1433,17 @@ export async function continueImportedRepeats(
 // Both paths converge on `importComment` below, so identity, authorship and
 // skip-don't-fudge behave identically whichever one runs.
 
+/** Bumped when previously skipped comments become importable. Missing is rev 1. */
+const COMMENTS_IMPORT_REV = 2;
+
+function commentsSyncedPatch(count: number): EntityMetadata {
+  return {
+    splitwise_comments_synced_at: new Date().toISOString(),
+    splitwise_comments_count: count,
+    splitwise_comments_import_rev: COMMENTS_IMPORT_REV,
+  };
+}
+
 export interface CommentsPageResult {
   offset: number;
   /** Local expenses examined in this page. */
@@ -1355,6 +1454,12 @@ export interface CommentsPageResult {
   /** Expenses whose comments were already here, or that have none. */
   alreadyPresent: number;
   skipped: SkippedRow[];
+  /**
+   * How many live imported expenses this step will walk. The wizard uses it as
+   * the comments-phase total so the bar is "3250 of 3250", not the preview's
+   * capped "~5000".
+   */
+  total: number;
   nextOffset: number | null;
   done: boolean;
 }
@@ -1389,15 +1494,23 @@ export async function importCommentsPage(
 
   const resolver = new PersonResolver(userId, swMe.id, owner.default_currency);
 
-  const candidates = await db
-    .selectFrom("expenses")
-    .select(["id", "metadata", "description"])
-    .where(splitwiseIdSql(), "is not", null)
-    .where("deleted_at", "is", null)
-    .orderBy("id")
-    .limit(limit)
-    .offset(offset)
-    .execute();
+  const [candidates, totalRow] = await Promise.all([
+    db
+      .selectFrom("expenses")
+      .select(["id", "metadata", "description"])
+      .where(splitwiseIdSql(), "is not", null)
+      .where("deleted_at", "is", null)
+      .orderBy("id")
+      .limit(limit)
+      .offset(offset)
+      .execute(),
+    db
+      .selectFrom("expenses")
+      .select((eb) => eb.fn.countAll<number>().as("n"))
+      .where(splitwiseIdSql(), "is not", null)
+      .where("deleted_at", "is", null)
+      .executeTakeFirstOrThrow(),
+  ]);
 
   const result: CommentsPageResult = {
     offset,
@@ -1406,6 +1519,7 @@ export async function importCommentsPage(
     imported: 0,
     alreadyPresent: 0,
     skipped: [],
+    total: Number(totalRow.n),
     nextOffset: candidates.length === 0 ? null : offset + candidates.length,
     done: candidates.length < limit,
   };
@@ -1415,10 +1529,13 @@ export async function importCommentsPage(
     const swId = splitwiseIdOf(expense.metadata);
     if (swId === null) continue;
 
-    // Already fetched once. Splitwise comments are append-only in practice, and
-    // re-reading every expense on every run would be one HTTP request per bill
-    // for no new data.
-    if (typeof meta.splitwise_comments_synced_at === "string") {
+    // Already fetched at the current rule revision. An older stamp (no rev, or
+    // a lower one) is re-fetched once so comments an earlier pass dropped —
+    // platform notes with `user: null` — can land. Then it stays cheap.
+    if (
+      typeof meta.splitwise_comments_synced_at === "string" &&
+      meta.splitwise_comments_import_rev === COMMENTS_IMPORT_REV
+    ) {
       result.alreadyPresent++;
       continue;
     }
@@ -1438,10 +1555,7 @@ export async function importCommentsPage(
         if (outcome.skipped) result.skipped.push(outcome.skipped);
       }
 
-      await markImportSynced(expense.id, {
-        splitwise_comments_synced_at: new Date().toISOString(),
-        splitwise_comments_count: swComments.length,
-      });
+      await markImportSynced(expense.id, commentsSyncedPatch(swComments.length));
     } catch (err) {
       // One unreachable expense must not abort the page; the next run retries it
       // because nothing was stamped.
@@ -1456,6 +1570,239 @@ export async function importCommentsPage(
   }
 
   return result;
+}
+
+/**
+ * Compare Splitwise friend totals with ours and record settle-ups for
+ * leftover cents.
+ *
+ * Truncation (and the remainder bump that keeps paid/owed summing to the cost)
+ * can leave friend totals a few minor units away from Splitwise. This step
+ * reads `get_friends`, diffs per currency, and writes a payment for any gap
+ * of at most `MAX_ROUNDING_MINOR`. Larger gaps are skipped: those are skipped
+ * expenses or real drift, not dropped fractions, and must not be papered over.
+ *
+ * `get_friends` only gives the total across every shared group plus one-on-one
+ * expenses, never a per-group figure, so there is no Splitwise truth to check a
+ * single group against. When exactly one shared group carries a nonzero
+ * balance in the currency being corrected, the drift can only be there, and
+ * the payment is recorded inside that group; otherwise (several candidate
+ * groups, or none) it falls back to one-on-one as before. Recording it
+ * one-on-one when the answer was actually a single group would leave that
+ * group looking unsettled while a same-sized one-on-one balance quietly
+ * cancels it out in the total - correct in aggregate, confusing per group.
+ *
+ * Re-running is a no-op once the totals match. The payments carry no
+ * `splitwise_id`, so a later expense refresh cannot treat them as upstream rows.
+ */
+const MAX_ROUNDING_MINOR = 100;
+
+export interface RoundingTransfer {
+  expenseId: string;
+  friendId: string;
+  friendName: string;
+  currencyCode: string;
+  amountMinor: number;
+  fromUserId: string;
+  toUserId: string;
+  /** Which group's residue this settles, or null for the one-on-one bucket. */
+  groupId: string | null;
+}
+
+export interface RoundingSkip {
+  splitwiseId: number;
+  name: string;
+  currencyCode: string | null;
+  reason: string;
+}
+
+export interface RoundingResult {
+  created: RoundingTransfer[];
+  skipped: RoundingSkip[];
+}
+
+export async function reconcileImportedBalances(
+  client: SplitwiseClient,
+  userId: string,
+): Promise<RoundingResult> {
+  const swFriends = await client.getFriends();
+  const [decimals, ours, byGroup, localBySw] = await Promise.all([
+    loadCurrencyDecimals(),
+    getPairwiseBalances(db, userId),
+    getPairwiseBalancesByGroup(db, userId),
+    loadUsersBySplitwiseId(),
+  ]);
+
+  const oursByUser = new Map(ours.map((row) => [row.otherUserId, row.balances]));
+
+  // Splitwise's `get_friends` total is not broken down by group, so a
+  // currency with only one shared group carrying a nonzero balance in it is
+  // the one place the drift can be: attribute the correction there instead of
+  // one-on-one, or the group looks unsettled while a phantom one-on-one
+  // balance quietly cancels it out. Two-plus candidate groups (or none) keep
+  // the old one-on-one fallback, since there is no way to tell which is real.
+  const groupCandidatesByUser = new Map<string, Map<string, string[]>>();
+  for (const row of byGroup) {
+    if (row.groupId === null) continue;
+    const byCurrency = groupCandidatesByUser.get(row.otherUserId) ?? new Map<string, string[]>();
+    for (const b of row.balances) {
+      if (b.amountMinor === 0) continue;
+      const list = byCurrency.get(b.currencyCode) ?? [];
+      list.push(row.groupId);
+      byCurrency.set(b.currencyCode, list);
+    }
+    groupCandidatesByUser.set(row.otherUserId, byCurrency);
+  }
+
+  const created: RoundingTransfer[] = [];
+  const skipped: RoundingSkip[] = [];
+
+  for (const friend of swFriends) {
+    const local = localBySw.get(friend.id);
+    if (!local) {
+      skipped.push({
+        splitwiseId: friend.id,
+        name: splitwiseDisplayName(friend),
+        currencyCode: null,
+        reason: "Not imported yet; run the friends step first",
+      });
+      continue;
+    }
+
+    const ourByCurrency = new Map(
+      (oursByUser.get(local.id) ?? []).map((b) => [b.currencyCode, b.amountMinor]),
+    );
+    const swByCurrency = new Map<string, number>();
+
+    for (const entry of friend.balance ?? []) {
+      const code = (entry.currency_code ?? "").toUpperCase();
+      if (!code) continue;
+      const places = decimals.get(code);
+      if (places === undefined) {
+        skipped.push({
+          splitwiseId: friend.id,
+          name: local.name,
+          currencyCode: code,
+          reason: `Unknown currency ${code}`,
+        });
+        continue;
+      }
+      try {
+        swByCurrency.set(code, parseAmountRounded(String(entry.amount ?? "0"), places).minor);
+      } catch {
+        skipped.push({
+          splitwiseId: friend.id,
+          name: local.name,
+          currencyCode: code,
+          reason: `Could not parse ${entry.amount} ${code}`,
+        });
+      }
+    }
+
+    const currencies = [...new Set([...ourByCurrency.keys(), ...swByCurrency.keys()])].sort();
+    for (const currency of currencies) {
+      const ourMinor = ourByCurrency.get(currency) ?? 0;
+      const swMinor = swByCurrency.get(currency) ?? 0;
+      const delta = ourMinor - swMinor;
+      if (delta === 0) continue;
+
+      const places = decimals.get(currency);
+      if (places === undefined) {
+        skipped.push({
+          splitwiseId: friend.id,
+          name: local.name,
+          currencyCode: currency,
+          reason: `Unknown currency ${currency}`,
+        });
+        continue;
+      }
+
+      if (Math.abs(delta) > MAX_ROUNDING_MINOR) {
+        skipped.push({
+          splitwiseId: friend.id,
+          name: local.name,
+          currencyCode: currency,
+          reason:
+            `Difference of ${formatAmount(delta, places)} ${currency} is larger than import rounding`,
+        });
+        continue;
+      }
+
+      // Positive delta: they owe us more here than on Splitwise, so they "pay"
+      // us the residue. Negative: we owe them more here, so we pay them.
+      const amount = Math.abs(delta);
+      const fromUserId = delta > 0 ? local.id : userId;
+      const toUserId = delta > 0 ? userId : local.id;
+
+      const groupCandidates = groupCandidatesByUser.get(local.id)?.get(currency) ?? [];
+      const groupId = groupCandidates.length === 1 ? groupCandidates[0]! : null;
+
+      const expenseId = await createExpense({
+        description: "Payment",
+        details: "Offsets fractional amounts rounded off when importing from Splitwise.",
+        costMinor: amount,
+        currencyCode: currency,
+        date: new Date().toISOString(),
+        splitType: "exact",
+        isPayment: true,
+        groupId,
+        metadata: { import_rounding: true },
+        createdBy: userId,
+        recordActivity: false,
+        participants: [
+          { userId: fromUserId, paidMinor: amount, input: 0 },
+          { userId: toUserId, paidMinor: 0, input: amount },
+        ],
+      });
+
+      try {
+        await createComment({
+          expenseId,
+          userId,
+          kind: "system",
+          recordActivity: false,
+          enforceVisibility: false,
+          content:
+            `Splitwise stored extra digits past what ${currency} allows. Those were rounded on ` +
+            `import, which left this balance ${formatAmount(amount, places)} ${currency} away from ` +
+            `Splitwise. This payment restores the Splitwise friend total.`,
+        });
+      } catch (err) {
+        console.error(
+          `Could not record a rounding comment on expense ${expenseId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
+      created.push({
+        expenseId,
+        friendId: local.id,
+        friendName: local.name,
+        currencyCode: currency,
+        amountMinor: amount,
+        fromUserId,
+        toUserId,
+        groupId,
+      });
+    }
+  }
+
+  return { created, skipped };
+}
+
+async function loadUsersBySplitwiseId(): Promise<Map<number, { id: string; name: string }>> {
+  const rows = await db
+    .selectFrom("users")
+    .select(["id", "name", "metadata"])
+    .where(splitwiseIdSql(), "is not", null)
+    .where("deleted_at", "is", null)
+    .execute();
+  const map = new Map<number, { id: string; name: string }>();
+  for (const row of rows) {
+    const swId = splitwiseIdOf(row.metadata);
+    if (swId != null) map.set(swId, { id: row.id, name: row.name });
+  }
+  return map;
 }
 
 /**
@@ -1496,10 +1843,7 @@ async function importNestedComments(
     if (outcome.skipped) skippedComments.push(outcome.skipped);
   }
 
-  await markImportSynced(localExpenseId, {
-    splitwise_comments_synced_at: new Date().toISOString(),
-    splitwise_comments_count: nested.length,
-  });
+  await markImportSynced(localExpenseId, commentsSyncedPatch(nested.length));
 
   return { commentsImported, skippedComments };
 }
@@ -1516,6 +1860,10 @@ async function importNestedComments(
  *     imported bill silent about why its amount changed
  *   - an author nobody has seen becomes a ghost, via the shared PersonResolver,
  *     rather than costing us the comment
+ *   - no author at all (Splitwise's own "record a cash payment" notes, a
+ *     deleted account) is kept as a system row attributed to the importer.
+ *     The thread does not show a name on system comments, so this does not
+ *     pretend the importer typed it. Dropping the row would throw the note away.
  *   - deleted at the source is skipped, exactly like a deleted expense
  *   - visibility is not enforced: this is replaying history, and Splitwise lets
  *     somebody comment and then leave the group
@@ -1544,12 +1892,18 @@ async function importComment(
     .executeTakeFirst();
   if (existing) return { imported: false };
 
+  const isSystem = (swComment.comment_type ?? "").toLowerCase() === "system";
   const author = swComment.user;
-  if (!author?.id) {
-    return { imported: false, skipped: describe("Comment has no author") };
-  }
+  const authorId = author?.id;
+  const hasAuthor =
+    typeof authorId === "number" && Number.isInteger(authorId) && authorId > 0;
 
-  const resolved = await resolver.resolve(author);
+  // Platform notes arrive with `user: null` (sometimes `id: 0`). The column is
+  // NOT NULL, so the importer is the FK; kind is system so the UI does not
+  // put anyone's name on a sentence Splitwise generated.
+  const userId = hasAuthor
+    ? localId(await resolver.resolve(author!))
+    : resolver.importerId();
 
   const { id, createdAt } = originalInstant(swComment.created_at);
 
@@ -1557,15 +1911,13 @@ async function importComment(
     id,
     createdAt,
     expenseId: localExpenseId,
-    userId: localId(resolved),
+    userId,
     content,
     // Splitwise capitalises these: "User" / "System". Anything unrecognised is
     // treated as somebody having typed it, which is the safer default: it stays
-    // deletable by its author rather than becoming permanent history.
-    kind:
-      (swComment.comment_type ?? "").toLowerCase() === "system"
-        ? "system"
-        : "user",
+    // deletable by its author rather than becoming permanent history. No author
+    // is the exception: there is nobody who could delete it.
+    kind: hasAuthor && !isSystem ? "user" : "system",
     metadata: { splitwise_id: swComment.id },
     // One summary feed entry per import run, not one per comment.
     recordActivity: false,

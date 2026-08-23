@@ -370,6 +370,15 @@ export const guestRoutes = new Hono<GuestEnv>()
         .executeTakeFirst()
     : null;
 
+  // Who minted this link. For a friend link that's the same person as
+  // `counterpart`, but a group link has no counterpart at all, so this is the
+  // only way the guest shell can say whose link they are holding.
+  const issuedBy = await db
+    .selectFrom("users")
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+    .where("id", "=", link.createdBy)
+    .executeTakeFirst();
+
   const groups = scope && scope.groupIds.length
     ? await db
         .selectFrom("groups")
@@ -400,6 +409,7 @@ export const guestRoutes = new Hono<GuestEnv>()
     counterpart: counterpart
       ? { id: counterpart.id, ...personCamel(counterpart) }
       : null,
+    issuedBy: issuedBy ? { id: issuedBy.id, ...personCamel(issuedBy) } : null,
   });
 })
 /**

@@ -29,6 +29,7 @@
  * See docs/OFFLINE.md and the table comment in migrations/001_initial_schema.sql.
  */
 import type { DB } from "../db/index.ts";
+import { chunkForParams } from "../db/chunk.ts";
 
 export const SYNC_ENTITIES = [
   "expense",
@@ -84,20 +85,28 @@ export interface SyncLogEntry {
 export async function logChange(trx: DB, ...entries: SyncLogEntry[]): Promise<void> {
   if (entries.length === 0) return;
 
-  await trx
-    .insertInto("sync_log")
-    .values(
-      entries.map((e) => ({
-        entity: e.entity,
-        entity_id: e.entityId,
-        op: e.op ?? "upsert",
-        group_id: e.groupId ?? null,
-        actor_user_id: e.actorUserId ?? null,
-        other_user_id: e.otherUserId ?? null,
-        audience_user_id: e.audienceUserId ?? null,
-      })),
-    )
-    .execute();
+  // Seven columns per row, so one INSERT tops out at 4680 rows before SQLite
+  // refuses the statement outright ("too many SQL variables"). Ordinary writes
+  // log one or two entries and never come near it; `wipeUserLedger` logs a
+  // `forget` per expense, so an account with a few thousand bills made the
+  // whole wipe fail with a 500 and no way to reimport. Chunked here rather than
+  // at that call site so no future bulk caller has to remember.
+  for (const batch of chunkForParams(entries, 7)) {
+    await trx
+      .insertInto("sync_log")
+      .values(
+        batch.map((e) => ({
+          entity: e.entity,
+          entity_id: e.entityId,
+          op: e.op ?? "upsert",
+          group_id: e.groupId ?? null,
+          actor_user_id: e.actorUserId ?? null,
+          other_user_id: e.otherUserId ?? null,
+          audience_user_id: e.audienceUserId ?? null,
+        })),
+      )
+      .execute();
+  }
 }
 
 /**

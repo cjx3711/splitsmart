@@ -75,6 +75,10 @@ a {
   color: inherit;
 }
 
+a:visited {
+  color: inherit;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -162,6 +166,16 @@ a {
   min-width: 0;
   padding: 1.5rem 1.5rem 5rem;
   max-width: 940px;
+}
+
+/*
+ * The guest shell has no sidebar, so unlike the logged-in .shell grid, .main
+ * here is not already boxed into a left-hand column - center it explicitly
+ * or it hugs the left edge on a wide screen.
+ */
+.guest-main {
+  margin: 0 auto;
+  width: 100%;
 }
 
 .menu-toggle {
@@ -342,6 +356,13 @@ h1 {
   font-weight: 800;
   letter-spacing: -0.02em;
   margin: 0;
+}
+
+.expense-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.55rem;
 }
 
 h2 {
@@ -734,7 +755,8 @@ h3 {
 .import-phase-head {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
   min-width: 0;
 }
 
@@ -766,6 +788,14 @@ h3 {
 .import-phase-label {
   font-size: 0.9rem;
   min-width: 0;
+}
+
+.import-phase-eta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+  flex-shrink: 0;
 }
 
 .import-phase-active .import-phase-label {
@@ -809,6 +839,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  flex: 1;
   min-width: 0;
 }
 
@@ -889,6 +920,47 @@ a.list-item:hover,
   text-overflow: ellipsis;
 }
 
+/* Settle-ups are a transfer, not a bill. The circular mark is the same cue
+   Splitwise uses (a $ badge); teal keeps it in this palette rather than
+   introducing a second accent. Sized to sit with the title, not as an avatar. */
+.payment-mark {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.expense-title .payment-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.list-item-payment .list-item-title {
+  font-weight: 550;
+}
+
+.list-item-figures {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.list-item-caption {
+  font-size: 0.8rem;
+}
+
+.list-item-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  white-space: nowrap;
+  vertical-align: -0.1em;
+}
+
 .person-link {
   text-decoration: none;
   color: inherit;
@@ -920,17 +992,43 @@ a.list-item:hover,
   margin-top: 0.25rem;
 }
 
-/* Per-group breakdown under a person, mirroring Splitwise's sub-lines. */
-.breakdown {
-  margin: 0.35rem 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.15rem;
+/* Per-group breakdown under a person: which of the shared groups this
+   currency figure came from, and who else is on it besides the two people
+   the page is already about. */
+.breakdown-list .list-item-title {
+  font-size: 0.9rem;
 }
 
-.breakdown li {
-  font-size: 0.813rem;
+.breakdown-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+}
+
+.avatar-placeholder {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.avatar-stack {
+  display: inline-flex;
+  align-items: center;
+}
+
+.avatar-stack .avatar {
+  margin-left: -0.4rem;
+  border: 2px solid var(--surface);
+}
+
+.avatar-stack .avatar:first-child {
+  margin-left: 0;
+}
+
+.avatar-overflow {
+  margin-left: 0.35rem;
   color: var(--muted);
 }
 
@@ -1183,6 +1281,18 @@ button {
   width: 100%;
 }
 
+/* Checkboxes and radios are controls, not text fields. `width: 100%` above
+   makes them eat a flex row (import repeating bills, group simplify-debts). */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+
 input,
 select,
 textarea {
@@ -1376,6 +1486,24 @@ button.icon:hover:not(:disabled) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
+}
+
+.setting-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.setting-toggle input {
+  width: auto;
+  margin-top: 0.28rem;
+  accent-color: var(--accent);
+}
+
+.setting-toggle input:disabled {
+  cursor: not-allowed;
 }
 
 @media (max-width: 560px) {

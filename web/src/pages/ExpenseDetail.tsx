@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Amount } from "../money.tsx";
-import { makeLookup } from "../ExpenseList.tsx";
+import { makeLookup, PaymentMark, paymentTitle } from "../ExpenseList.tsx";
 import { EditExpenseDialog } from "../EditExpenseDialog.tsx";
 import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
@@ -127,7 +127,8 @@ export function ExpenseDetail() {
     const friend = friends.find((f) => f.id === userId);
     return friend ? avatarFromRow(friend) : { id: userId, name: nameOf(userId) };
   };
-  const title = expense.is_payment === 1 ? "Settle up" : expense.description;
+  const isPayment = expense.is_payment === 1;
+  const title = isPayment ? paymentTitle(expense.shares, nameOf) : expense.description;
   const deleteSeriesNote = seriesDeleteNote(expense);
 
   // The group used to be repeated in the meta line below; the trail carries it
@@ -146,12 +147,13 @@ export function ExpenseDetail() {
 
       <div className="page-head">
         <div>
-          <h1>
+          <h1 className="expense-title">
+            {isPayment && <PaymentMark size={16} />}
             {title} <SyncBadge state={local?.syncState} />
           </h1>
           <p className="muted" style={{ margin: 0 }}>
             {expense.date.slice(0, 10)}
-            {expense.category_name && ` · ${expense.category_name}`}
+            {!isPayment && expense.category_name && ` · ${expense.category_name}`}
           </p>
         </div>
         <div className="page-actions">

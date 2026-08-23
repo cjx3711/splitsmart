@@ -81,8 +81,8 @@ Ordered by how much they matter for day-to-day use.
       from shared groups and expenses. `listRelatedUserIds` is the single
       definition, shared with the compat layer's `get_friends`.
 - ✅ **Add a friend by email**: creates a placeholder carrying that address and
-      emails a guest link (`/guest/l/<secret>`). Works with Postmark
-      unconfigured: the URL comes back in the response instead, once.
+      emails a guest link (`/guest/l/<secret>`). Works with mail unconfigured:
+      the URL comes back in the response instead, once.
 - ✅ Activity feed: `GET /api/v1/activity`, scoped to groups you're in plus
       expenses you're on
 - ✅ **Comments**: `src/domain/comments.ts` is the only writer; native and guest
@@ -144,30 +144,36 @@ a response shape.
 
 ## Phase 4: Email 🚧
 
-Wired to Postmark via `POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`.
+Wired to Resend (`RESEND_API_KEY` / `RESEND_FROM_ADDRESS`) or Postmark
+(`POSTMARK_SERVER_TOKEN` / `POSTMARK_FROM_ADDRESS`). Configure one complete
+pair, not both.
 
 **Absence of those vars silently disables sending, never crashes at boot.**
 `sendEmail()` logs the message (including the link) to the console instead, so
 the verification flow is completable locally with no mail provider.
 
-- ✅ **Email verification for new accounts**: `src/email/`, `email_tokens` table
+- ✅ **Email-first signup**: `emails` table holds the pending proof (address,
+      hashed token, requester IP). `POST /auth/signup` then `POST /auth/register`
+      with the token. When `EMAIL_VERIFICATION_REQUIRED` is off the verify URL
+      is returned to the client so a box with no mail still works; when on, it
+      is emailed and omitted from the response.
   - ✅ Single-use, 24h, hash-only storage, supersedes previous tokens
-  - ✅ Address snapshot on the token so a changed email can't be verified by an
-        outstanding link
-  - ✅ 60s resend cooldown
-  - ✅ Advisory by default; `EMAIL_VERIFICATION_REQUIRED=true` blocks login
+  - ✅ Address snapshot on existing-account tokens so a changed email can't be
+        verified by an outstanding link
+  - ✅ 60s per-address cooldown and 20 starts/hour per IP
+  - ✅ Advisory by default; `EMAIL_VERIFICATION_REQUIRED=true` withholds the
+        signup URL and blocks login for unverified existing accounts
   - ✅ `yarn verify:user` lockout escape hatch
-  - ✅ 20 tests
 - ⬜ **Password reset**: `email_tokens.purpose` already permits
       `'reset_password'`, so this needs routes and a template, not a migration
 - ⬜ Change-email flow (re-verify the new address before it takes effect)
 - ✅ **Invite by email**: friend invites (`POST /api/v1/friends` with an
       `email`). Deliberately does NOT use `email_tokens`: the link is a guest
-      access link, so the same flow works when Postmark is unconfigured and no
+      access link, so the same flow works when mail is unconfigured and no
       migration was needed to add a purpose.
 - ⬜ Group invite by email (today the owner copies the link and sends it)
 - ⬜ Optional expense notifications
-- ⬜ Postmark webhook for bounces and spam complaints
+- ⬜ Bounce / spam-complaint webhook
 
 ## Phase 5: Import from Splitwise ✅ (in-app)
 

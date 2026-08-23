@@ -14,9 +14,11 @@
     - /url: /app/activity
   - link "All expenses":
     - /url: /app/expenses
+  - link "Usage":
+    - /url: /app/admin
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
-  - link "Groups":
+  - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
@@ -30,72 +32,72 @@
     - /url: /app/groups/<ULID>
   - link "Yosemite Camping":
     - /url: /app/groups/<ULID>
-  - link "Show more (5)":
+  - link "Show all":
     - /url: /app/groups
-  - link "Friends":
+  - link "Friends (15)":
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "Ah Lian":
-    - /url: /app/friends/<ULID>
-  - link "Yuki":
-    - /url: /app/friends/<ULID>
-  - link "Priya":
-    - /url: /app/friends/<ULID>
-  - link "Gerry":
-    - /url: /app/friends/<ULID>
-  - link "Hana":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
     - /url: /app/friends/<ULID>
-  - link "Show more (5)":
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Taro":
+    - /url: /app/friends/<ULID>
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - link "Show all":
     - /url: /app/friends
 - main:
   - heading "Friends" [level=1]
   - button "+ Add friend"
-  - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Ah Beng": ✕
-  - link "Ah Lian No email · hasn't joined yet settled up shared":
+  - link "JJ jj@example.com -1200JPY 3836.21USD shared":
     - /url: /app/friends/<ULID>
   - link "Aisyah aisyah@example.com settled up":
     - /url: /app/friends/<ULID>
   - button "Remove Aisyah": ✕
+  - link "Mel mel@example.com -71.10USD":
+    - /url: /app/friends/<ULID>
+  - button "Remove Mel": ✕
+  - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
+    - /url: /app/friends/<ULID>
+  - button "Remove Ah Beng": ✕
+  - link "John No email · hasn't joined yet 60.00USD":
+    - /url: /app/friends/<ULID>
+  - button "Remove John": ✕
+  - link "Taro taro@example.com settled up shared":
+    - /url: /app/friends/<ULID>
   - link "Danial danial@example.com settled up":
     - /url: /app/friends/<ULID>
   - button "Remove Danial": ✕
-  - link "Gerry No email · hasn't joined yet settled up shared":
+  - link "Jas jas@example.com -65.00USD":
     - /url: /app/friends/<ULID>
+  - button "Remove Jas": ✕
   - link "Hana No email · hasn't joined yet 1200JPY shared":
+    - /url: /app/friends/<ULID>
+  - link "Ah Lian No email · hasn't joined yet settled up shared":
+    - /url: /app/friends/<ULID>
+  - link "Gerry No email · hasn't joined yet settled up shared":
     - /url: /app/friends/<ULID>
   - link "James No email · hasn't joined yet settled up":
     - /url: /app/friends/<ULID>
   - button "Remove James": ✕
-  - link "Jas jas@example.com -65.00USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Jas": ✕
   - link "Jen No email · hasn't joined yet settled up":
     - /url: /app/friends/<ULID>
   - button "Remove Jen": ✕
-  - link "JJ jj@example.com -1200JPY 3836.21USD shared":
-    - /url: /app/friends/<ULID>
-  - link "John No email · hasn't joined yet 60.00USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove John": ✕
-  - link "Mel mel@example.com -71.10USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Mel": ✕
   - link "Priya No email · hasn't joined yet settled up shared":
-    - /url: /app/friends/<ULID>
-  - link "Taro taro@example.com settled up shared":
     - /url: /app/friends/<ULID>
   - link "Yuki No email · hasn't joined yet settled up shared":
     - /url: /app/friends/<ULID>

@@ -68,7 +68,7 @@ export const groupRoutes = new Hono<AppEnv>()
       name: z.string().min(1).max(200),
       groupType: z.enum(GROUP_TYPES).default("other"),
       defaultCurrency: z.string().length(3).toUpperCase().default("USD"),
-      simplifyByDefault: z.boolean().default(false),
+      simplifyByDefault: z.boolean().default(true),
     }),
   ),
   async (c) => {
@@ -89,7 +89,7 @@ export const groupRoutes = new Hono<AppEnv>()
           simplify_by_default: input.simplifyByDefault ? 1 : 0,
           created_by: auth.id,
         })
-        .returning(["id", "name", "group_type", "default_currency"])
+          .returning(["id", "name", "group_type", "default_currency", "simplify_by_default"])
         .executeTakeFirstOrThrow();
 
       await trx
@@ -158,6 +158,43 @@ export const groupRoutes = new Hono<AppEnv>()
   const balances = await getGroupBalances(db, groupId);
 
   return c.json({ group, members, balances, role: membership.role });
+})
+  .patch("/:id", zValidator("json", z.object({ simplifyByDefault: z.boolean() })), async (c) => {
+  const auth = c.get("user");
+  const groupId = c.req.param("id");
+  if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
+
+  if (!(await assertMember(groupId, auth.id))) {
+    return c.json({ error: "Not a member of this group" }, 403);
+  }
+
+  const { simplifyByDefault } = c.req.valid("json");
+
+  const group = await transaction(async (trx) => {
+    const updated = await trx
+      .updateTable("groups")
+      .set({
+        simplify_by_default: simplifyByDefault ? 1 : 0,
+        updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+      })
+      .where("id", "=", groupId)
+      .where("deleted_at", "is", null)
+      .returning(["id", "name", "group_type", "default_currency", "simplify_by_default"])
+      .executeTakeFirst();
+
+    if (!updated) return null;
+
+    await logChange(trx, {
+      entity: "group",
+      entityId: groupId,
+      groupId,
+      actorUserId: auth.id,
+    });
+    return updated;
+  });
+
+  if (!group) return c.json({ error: "Group not found" }, 404);
+  return c.json({ group });
 })
 /** Suggested settle-up transfers, per currency. Presentational only. */
   .get("/:id/settle", async (c) => {

@@ -12,12 +12,11 @@
  *
  * Four steps: key -> review -> run -> done. The run step drives the paged
  * expense and comment endpoints in a loop so progress is real rather than a
- * spinner.
+ * spinner, then matches Splitwise friend totals and records leftover-cent
+ * settle-ups.
  *
- * Comments are the last phase of the run, because `comments.expense_id` is a
- * foreign key: they cannot land before the bills they hang off. Calling that step
- * is unconditional and cheap - when Splitwise nested the comments on the expense
- * payload they are already in, and the step walks straight past them.
+ * Comments run after expenses, because `comments.expense_id` is a foreign key.
+ * Rounding runs last: it needs the imported balances to exist.
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -29,6 +28,7 @@ import {
   type ImportPerson,
   type ImportSkip,
   type ImportPausedSeries,
+  type ImportRounding,
 } from "../api.ts";
 import { useSidebarRefresh } from "../App.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
@@ -51,25 +51,24 @@ interface PhaseProgress {
   current?: number;
   total?: number;
   totalCapped?: boolean;
+  /** When this phase became active. Used to estimate remaining time. */
+  startedAt?: number;
 }
 
 interface Progress {
   friendsCount: number;
   groupsCount: number;
-  expensesTotal: number;
-  expensesCapped: boolean;
   friends: PhaseProgress;
   groups: PhaseProgress;
   expenses: PhaseProgress;
   comments: PhaseProgress;
+  rounding: PhaseProgress;
 }
 
 function initialProgress(preview: ImportPreview): Progress {
   return {
     friendsCount: preview.counts.friends,
     groupsCount: preview.counts.groups,
-    expensesTotal: preview.counts.expenses,
-    expensesCapped: preview.counts.expensesCapped,
     friends: { status: "active" },
     groups: { status: "pending" },
     expenses: {
@@ -82,10 +81,16 @@ function initialProgress(preview: ImportPreview): Progress {
       status: "pending",
       current: 0,
       total: preview.counts.expenses,
-      totalCapped: true,
+      // Until expenses finish we only have the preview floor, same as the
+      // expense count itself when Splitwise's walk hit the cap.
+      totalCapped: preview.counts.expensesCapped,
     },
+    rounding: { status: "pending" },
   };
 }
+
+/** The expense endpoint's default page size. A short page means we have the real total. */
+const EXPENSE_PAGE_SIZE = 100;
 
 interface Outcome {
   peopleCreated: number;
@@ -103,6 +108,7 @@ interface Outcome {
   newPeople: ImportPerson[];
   /** Splitwise repeating bills landed as stopped series this run. */
   pausedSeries: ImportPausedSeries[];
+  rounding: ImportRounding;
 }
 
 export function Import() {
@@ -172,6 +178,7 @@ export function Import() {
                 current: 0,
                 total,
                 totalCapped: preview.counts.expensesCapped,
+                startedAt: Date.now(),
               },
             }
           : prev,
@@ -189,6 +196,7 @@ export function Import() {
         warnings: [],
         newPeople: [...friends.people, ...groups.people].filter((p) => p.matchedBy === "created"),
         pausedSeries: [],
+        rounding: { created: [], skipped: [] },
       };
 
       // Paged rather than one long request: progress is real, and a failure
@@ -207,19 +215,22 @@ export function Import() {
         result.warnings.push(...page.warnings);
         result.pausedSeries.push(...page.pausedSeries);
 
-        setProgress((prev) =>
-          prev
-            ? {
-                ...prev,
-                expenses: {
-                  status: "active",
-                  current: seen,
-                  total,
-                  totalCapped: preview.counts.expensesCapped,
-                },
-              }
-            : prev,
-        );
+        setProgress((prev) => {
+          if (!prev) return prev;
+          // A short or empty page is the real end: the preview may have stopped
+          // at 5000, but `seen` is how many Splitwise actually handed over.
+          const exact = page.done || page.fetched < EXPENSE_PAGE_SIZE;
+          return {
+            ...prev,
+            expenses: {
+              status: "active",
+              current: seen,
+              total: exact ? seen : Math.max(total, seen),
+              totalCapped: !exact && preview.counts.expensesCapped,
+              startedAt: prev.expenses.startedAt,
+            },
+          };
+        });
 
         offset = page.done ? null : page.nextOffset;
       }
@@ -234,14 +245,18 @@ export function Import() {
               expenses: {
                 status: "done",
                 current: seen,
-                total,
-                totalCapped: preview.counts.expensesCapped,
+                total: seen,
+                totalCapped: false,
               },
               comments: {
                 status: "active",
                 current: 0,
-                total,
-                totalCapped: true,
+                // Exact once expenses are in. The first comments page confirms
+                // it with `total` (local imported expenses, which may be a
+                // handful fewer if some Splitwise rows were skipped).
+                total: seen,
+                totalCapped: false,
+                startedAt: Date.now(),
               },
             }
           : prev,
@@ -261,8 +276,9 @@ export function Import() {
                 comments: {
                   status: "active",
                   current: commentsScanned,
-                  total,
-                  totalCapped: true,
+                  total: page.total,
+                  totalCapped: false,
+                  startedAt: prev.comments.startedAt,
                 },
               }
             : prev,
@@ -278,9 +294,21 @@ export function Import() {
               comments: {
                 status: "done",
                 current: commentsScanned,
-                total,
-                totalCapped: true,
+                total: commentsScanned,
+                totalCapped: false,
               },
+              rounding: { status: "active", startedAt: Date.now() },
+            }
+          : prev,
+      );
+
+      result.rounding = await api.importRounding(key);
+
+      setProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              rounding: { status: "done" },
             }
           : prev,
       );
@@ -528,6 +556,9 @@ function PeopleList({
 // ---------------------------------------------------------------------------
 
 function RunningStep({ progress }: { progress: Progress }) {
+  const expensesEta = useImportEta(progress.expenses);
+  const commentsEta = useImportEta(progress.comments);
+
   return (
     <div className="card stack">
       <div className="import-progress">
@@ -537,8 +568,19 @@ function RunningStep({ progress }: { progress: Progress }) {
           phase={progress.friends}
         />
         <ImportPhaseRow label="Groups" count={progress.groupsCount} phase={progress.groups} />
-        <ImportPhaseRow label="Expenses" phase={progress.expenses} />
-        <ImportPhaseRow label="Comments" phase={progress.comments} />
+        <ImportPhaseRow
+          label="Expenses"
+          count={progress.expenses.totalCapped ? undefined : progress.expenses.total}
+          phase={progress.expenses}
+          eta={expensesEta}
+        />
+        <ImportPhaseRow
+          label="Comments"
+          count={progress.comments.totalCapped ? undefined : progress.comments.total}
+          phase={progress.comments}
+          eta={commentsEta}
+        />
+        <ImportPhaseRow label="Friend totals" phase={progress.rounding} />
       </div>
       <span className="muted">
         Leave this page open. Anything already imported is matched on its Splitwise id, so if this
@@ -552,10 +594,12 @@ function ImportPhaseRow({
   label,
   count,
   phase,
+  eta,
 }: {
   label: string;
   count?: number;
   phase: PhaseProgress;
+  eta?: string | null;
 }) {
   const done = phase.status === "done";
   const active = phase.status === "active";
@@ -579,6 +623,7 @@ function ImportPhaseRow({
           {done ? "✓" : ""}
         </span>
         <span className="import-phase-label">{rowLabel}</span>
+        {active && eta && <span className="import-phase-eta">{eta}</span>}
       </div>
       {done ? (
         <progress value={1} max={1} />
@@ -594,6 +639,53 @@ function ImportPhaseRow({
       )}
     </div>
   );
+}
+
+/**
+ * Remaining-time caption from elapsed work. Null until a page has landed, so
+ * we have a real rate rather than a guess from a 0/N bar.
+ */
+function useImportEta(phase: PhaseProgress): string | null {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (phase.status !== "active") return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [phase.status]);
+
+  if (
+    phase.status !== "active" ||
+    phase.startedAt === undefined ||
+    phase.current === undefined ||
+    phase.total === undefined ||
+    phase.current <= 0 ||
+    phase.totalCapped
+  ) {
+    return null;
+  }
+
+  const remaining = phase.total - phase.current;
+  if (remaining <= 0) return "a few seconds left";
+
+  const elapsed = now - phase.startedAt;
+  if (elapsed < 400) return null;
+
+  const ms = (elapsed / phase.current) * remaining;
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  return formatEta(ms);
+}
+
+function formatEta(ms: number): string {
+  if (ms <= 8_000) return "a few seconds left";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 50) return "less than a minute left";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return minutes === 1 ? "about 1 minute left" : `about ${minutes} minutes left`;
+  }
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? "about 1 hour left" : `about ${hours} hours left`;
 }
 
 // ---------------------------------------------------------------------------
@@ -712,6 +804,9 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
                         {" · "}
                         next {nextOn}
                       </span>
+                      {series.participants.length > 0 && (
+                        <span className="muted">{series.participants.join(", ")}</span>
+                      )}
                     </span>
                   </label>
                 </li>
@@ -797,6 +892,50 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
             {outcome.warnings.map((warning) => (
               <li key={warning.splitwiseId}>
                 {warning.description} <span className="muted">: {warning.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {outcome.rounding.created.length > 0 && (
+        <div className="card stack">
+          <strong className="with-help">
+            Rounding settle-ups ({outcome.rounding.created.length})
+            <HelpTip label="About rounding settle-ups">
+              Splitwise sometimes stores more decimal places than a currency allows. Those extra
+              digits are dropped on each bill, which can leave friend totals a few cents apart.
+              Each of these payments restores the Splitwise total. The bills themselves are
+              unchanged.
+            </HelpTip>
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {outcome.rounding.created.map((row) => (
+              <li key={row.expenseId}>
+                <Link to={`/expenses/${row.expenseId}`}>{row.friendName}</Link>
+                {" · "}
+                <Amount minor={row.amountMinor} currency={row.currencyCode} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {outcome.rounding.skipped.length > 0 && (
+        <div className="card stack">
+          <strong className="with-help">
+            Friend totals not auto-settled ({outcome.rounding.skipped.length})
+            <HelpTip label="About friend totals that were not auto-settled">
+              A gap larger than leftover cents is left alone rather than covered up. Check whether
+              an expense was skipped, then settle by hand if you still want to.
+            </HelpTip>
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {outcome.rounding.skipped.map((row) => (
+              <li key={`${row.splitwiseId}:${row.currencyCode ?? ""}`}>
+                {row.name}
+                {row.currencyCode ? ` · ${row.currencyCode}` : ""}
+                <span className="muted">: {row.reason}</span>
               </li>
             ))}
           </ul>

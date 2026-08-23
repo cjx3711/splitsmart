@@ -159,6 +159,21 @@ every page load. It is rebuilt from scratch on every expense write by
 `deriveRepayments()`. If it ever disagrees with `expense_users`, `expense_users`
 wins. `yarn db:check` verifies the two agree.
 
+**Net positions do not determine the pairing**, which is the subtlety here. With
+two payers and four people, "A owes C 13000, A owes D 3000" and "A owes D 16000,
+B owes C 3000" settle the *same* nets; greedy picks one arbitrarily. That never
+shows inside a group, because `simplifyDebts` re-nets at read time, but a
+non-group expense is displayed pairwise, so an arbitrary choice becomes a
+one-on-one balance the other party does not have.
+
+So `deriveRepayments(shares, preferred?)` takes an optional preferred pairing,
+and the Splitwise importer passes the `repayments[]` the API already published.
+It stays a **hint, not a second source of truth**: each entry is clamped to what
+the shares support and greedy fills the remainder, so a hint that is stale,
+partial, or nonsense cannot make the cache disagree with `expense_users` - the
+worst it can do is choose a different valid pairing. Do not add a path that
+writes `expense_repayments` from anything but this function.
+
 ### 5. The compat layer's wire format is frozen
 
 `src/routes/compat/` must reproduce Splitwise's shapes exactly, including the
@@ -196,7 +211,12 @@ src/
                      the frontend. See "Split types" below.
     ulid.ts          Crockford ULID. Pure. Also imported by the frontend.
     metadata.ts      JSON bag on users/groups/expenses/comments
-    balances.ts      Balance queries + simplifyDebts
+    balances.ts      Balance queries. Friend totals apply simplifyDebts per
+                     group when simplify_by_default is on. One-on-one expenses
+                     stay pairwise. expense_repayments stays the per-bill
+                     cache; simplify is compute-time only.
+    settle.ts        simplifyDebts + pairwiseWithSimplify. Pure. Also imported
+                     by the frontend so offline friend totals cannot drift.
     expenses.ts      The ONLY writer of expense tables, except wipe.ts
     comments.ts      The ONLY writer of `comments`. User + system rows
     recurring.ts     Interval arithmetic. Pure. Also imported by the frontend
@@ -213,6 +233,11 @@ src/
     password.ts      scrypt hashing + token generation
     session.ts       Cookie sessions AND bearer API tokens
     middleware.ts    requireAuth / optionalAuth / requireAdmin
+  email/
+    send.ts          Resend or Postmark; never throws
+    signup.ts        Email-first signup (`emails` table)
+    verification.ts  Existing-account verify tokens (`email_tokens`)
+    templates.ts     Mail bodies
   routes/
     native/          Clean API at /api/v1, used by web/
       expense-filters.ts  ONE definition of q / dates / category / friend / group
@@ -545,19 +570,39 @@ than looking broken.
 access link (`/guest/l/<secret>`), minted in the same transaction as the
 placeholder so the address we invite them at always has somewhere to go. That
 avoids adding a `friend_invite` purpose to a CHECK constraint SQLite cannot
-ALTER, and it keeps working when Postmark is unconfigured: `POST /friends`
+ALTER, and it keeps working when mail is unconfigured: `POST /friends`
 returns `inviteUrl` once so the inviter can pass it on by hand.
 
 ## Email
 
-`src/email/`: Postmark transport, templates, and the verification flow.
-Verification links point at `/app/verify/:token`, inside the logged-in shell.
+`src/email/`: Resend or Postmark transport (one provider), templates, and two
+verification paths. Links point at `/app/verify/:token`, inside the logged-in
+shell.
 
-**`sendEmail()` never throws and never blocks boot.** With Postmark
-unconfigured it logs the message (link included) to the console. That is the
-documented unconfigured path, not a failure: it is how you complete verification
-locally, and it means a mail outage cannot turn a successful registration into a
-500. Callers check `result.delivered` rather than catching.
+**Signup is email-first.** `POST /api/v1/auth/signup` writes a row to `emails`
+(address, hashed token, requester IP) and does not create a user.
+`POST /api/v1/auth/register` consumes that token and then inserts the account.
+
+- When `EMAIL_VERIFICATION_REQUIRED` is false (the default), signup returns
+  `verifyUrl` so the frontend can open the complete-account form without a mail
+  provider. That is the documented unconfigured path.
+- When it is true, the URL is emailed and omitted from the response. Holding
+  the token is the proof.
+
+Signup is rate-limited: 60s between starts for one address, 20 starts per IP
+per hour. `requester_ip` is stored on the row so the IP limit has something to
+count. `next_path` is stored too: the claim flow sends people through signup
+and they have to come back still holding the guest-link secret.
+
+**Existing-account verification** (the banner / resend path, and the future
+change-email path) still uses `email_tokens`. `issueVerificationToken()` is
+not called from register.
+
+**`sendEmail()` never throws and never blocks boot.** Configure either
+`RESEND_API_KEY` + `RESEND_FROM_ADDRESS` or `POSTMARK_SERVER_TOKEN` +
+`POSTMARK_FROM_ADDRESS`, not both. With neither set it logs the message
+(link included) to the console. Callers check `result.delivered` rather than
+catching.
 
 Verification tokens are single-use, expire in 24h, stored hash-only, and issuing
 a new one supersedes any outstanding ones.
@@ -571,10 +616,11 @@ Two details that look optional and are not:
   in order; reverse them and "resend" is captured as a token and the endpoint
   becomes unreachable. There is a regression test for this.
 
-Enforcement is advisory by default: unverified users log in fine and see a
-banner. `EMAIL_VERIFICATION_REQUIRED=true` blocks login instead, and if you
-enable it on a box where Postmark is broken, nobody can get in. The way out is
-`yarn verify:user -- you@example.com`, which needs only filesystem access.
+Enforcement is advisory by default: unverified existing users log in fine and
+see a banner. `EMAIL_VERIFICATION_REQUIRED=true` withholds the signup URL and
+blocks login instead, and if you enable it on a box where mail is broken,
+nobody can get in. The way out is `yarn verify:user -- you@example.com`, which
+needs only filesystem access.
 
 Ghosts have no address. `needsEmailVerification` is always false for them, and
 `issueVerificationToken` returns `no_email`; never nag a guest to confirm an
@@ -604,8 +650,9 @@ POST /api/v1/import/friends    step 1
 POST /api/v1/import/groups     step 2
 POST /api/v1/import/expenses   step 3, one page per call, resumable
 POST /api/v1/import/comments   step 4, one page of expenses per call
+POST /api/v1/import/rounding   step 5, settle leftover cents vs Splitwise friend totals
 POST /api/v1/import/continue-recurring  resume stopped imported series (no key)
-POST /api/v1/import/run        all four server-side, for small accounts
+POST /api/v1/import/run        all five server-side, for small accounts
 POST /api/v1/import/wipe       hard-delete this ledger so a reimport starts empty
                                (`{ "confirm": "DELETE ALL DATA" }`; refuses if
                                another live account shares a group or expense)
@@ -638,10 +685,25 @@ Four things this must keep doing:
   maps to `group_id = NULL`.
 - **A row that cannot be imported exactly is skipped with a reason**, never
   fudged, with one exception: extra digits past the currency's scale (Splitwise
-  sending `197529.02` JPY) are dropped, a system comment is left on the bill,
-  and the expense is listed in `warnings[]` rather than `skipped[]`. Unknown
+  sending `197529.02` JPY) are **rounded**, a system comment is left on the bill,
+  and the expense is listed in `warnings[]` rather than `skipped[]`. Rounded,
+  not truncated, and the difference is the whole point: truncation is biased -
+  every correction is negative - so across a few hundred JPY bills with cents
+  the error compounds into a friend total tens of yen adrift, which is more than
+  `POST /import/rounding` is allowed to settle. Rounding half away from zero
+  centres the error at zero so the corrections cancel. Unknown
   currency, missing group, shares that do not add up; those still come back in
-  `skipped[]` and write nothing.
+  `skipped[]` and write nothing. After comments, `POST /import/rounding`
+  compares Splitwise friend totals and records a one-on-one settle-up for any
+  leftover of at most 100 minor units, with a note on the payment.
+- **Splitwise's `repayments[]` are imported, not re-derived.** Per-person nets
+  do not determine who pays whom: a two-payer bill has several valid pairings
+  and our greedy matcher picks a different one from Splitwise. Inside a group
+  that is invisible (`simplifyDebts` re-nets at read time), but a **non-group**
+  expense is shown pairwise, so the arbitrary pairing surfaces on a friend page
+  as a debt the other side has no record of. The importer passes Splitwise's
+  answer to `createExpense` as `repayments`, a *hint* to `deriveRepayments`;
+  see rule 4.
 
 Two smaller deliberate choices: imported expenses pass `recordActivity: false`
 to `createExpense` (one summary feed entry per run, not one per expense), and an
@@ -662,7 +724,11 @@ spend one request per bill to learn nothing.
 **System comments are imported too.** They are the only edit history Splitwise
 will ever hand over; dropping them would throw it away. An author nobody has seen
 becomes a ghost via the shared `PersonResolver` rather than costing us the
-comment, and a comment deleted at the source is skipped like a deleted expense.
+comment. A comment with no author at all (Splitwise's own "record a cash
+payment" notes, `user: null`) is kept as a system row attributed to the
+importer — the thread does not show a name on system comments, so this does
+not pretend they typed it. A comment deleted at the source is skipped like a
+deleted expense.
 Comment import passes `enforceVisibility: false` - it is replaying history, and
 Splitwise lets somebody comment and then leave the group.
 

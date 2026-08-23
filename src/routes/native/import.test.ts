@@ -33,14 +33,39 @@ const ME_SW_ID = 1000;
 
 const swFriends = [
   // Matches an existing SplitSmart account by email; the heuristic under test.
-  { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com", registration_status: "confirmed" },
+  {
+    id: 2001,
+    first_name: "Bob",
+    last_name: "Brown",
+    email: "bob@example.com",
+    registration_status: "confirmed",
+    // 2 JPY below the imported ramen share: the rounding step should settle that.
+    // The SGD total is the one that only agrees if expense 4007 keeps
+    // Splitwise's own pairing; our greedy matcher would put it on Carol.
+    balance: [
+      { currency_code: "USD", amount: "283.33" },
+      { currency_code: "JPY", amount: "1698" },
+      { currency_code: "SGD", amount: "-160.00" },
+    ],
+  },
   // No local account: becomes a placeholder. Dummy: not a real Splitwise user.
-  { id: 2002, first_name: "Carol", last_name: "Clark", email: "carol@example.com", created_at: "2021-04-01T00:00:00Z", registration_status: "dummy" },
+  {
+    id: 2002,
+    first_name: "Carol",
+    last_name: "Clark",
+    email: "carol@example.com",
+    created_at: "2021-04-01T00:00:00Z",
+    registration_status: "dummy",
+    balance: [
+      { currency_code: "USD", amount: "333.33" },
+      { currency_code: "JPY", amount: "-197529" },
+    ],
+  },
 ];
 
 const swGroups = [
   // Splitwise always includes this pseudo-group. It is not a group.
-  { id: 0, name: "Non-group expenses", members: [] },
+  { id: 0, name: "Non-group expenses", members: [], simplify_by_default: true },
   {
     id: 3001,
     name: "Flat",
@@ -101,6 +126,26 @@ const swComments: Record<number, unknown[]> = {
       deleted_at: "2026-03-03T09:06:00Z",
       user: { id: 2001, first_name: "Bob", last_name: "Brown", email: "bob@example.com" },
     },
+    {
+      // Splitwise's own note on a payment. `user` is null; dropping it would
+      // throw away the only explanation the bill has.
+      id: 9006,
+      content:
+        "This payment was recorded using the Splitwise 'record a cash payment' feature. No money has been moved.",
+      comment_type: "System",
+      created_at: "2026-03-03T09:07:00Z",
+      user: null,
+    },
+  ],
+  4003: [
+    {
+      id: 9005,
+      content:
+        "This payment was recorded using the Splitwise 'record a cash payment' feature. No money has been moved.",
+      comment_type: "System",
+      created_at: "2026-03-03T00:01:00Z",
+      user: null,
+    },
   ],
 };
 
@@ -140,7 +185,7 @@ const swExpenses = [
     currency_code: "JPY",
     date: "2026-03-02T00:00:00Z",
     // A count with no nested array: this is the shape that needs step 4.
-    comments_count: 2,
+    comments_count: 3,
     users: [
       { user: swGroups[1]!.members[0], paid_share: "3400.0", owed_share: "1700.0" },
       { user: swFriends[0], paid_share: "0.0", owed_share: "1700.0" },
@@ -155,6 +200,8 @@ const swExpenses = [
     cost: "50.00",
     currency_code: "USD",
     date: "2026-03-03T00:00:00Z",
+    comments_count: 1,
+    comments: swComments[4003],
     users: [
       { user: swFriends[0], paid_share: "50.00", owed_share: "0.00" },
       { user: swGroups[1]!.members[0], paid_share: "0.00", owed_share: "50.00" },
@@ -184,7 +231,7 @@ const swExpenses = [
     users: [{ user: swFriends[0], paid_share: "5.00", owed_share: "5.00" }],
   },
   {
-    // Splitwise often sends JPY with cents. Extra digits are dropped, not skipped.
+    // Splitwise often sends JPY with cents. Extra digits are rounded, not skipped.
     id: 4006,
     group_id: 0,
     description: "Payment",
@@ -195,6 +242,45 @@ const swExpenses = [
     users: [
       { user: swFriends[1], paid_share: "197529.02", owed_share: "0.0" },
       { user: swGroups[1]!.members[0], paid_share: "0.0", owed_share: "197529.02" },
+    ],
+  },
+  {
+    /*
+     * Two payers, four people, no group. This is the shape where net positions
+     * do NOT determine the pairing, and the two answers are:
+     *
+     *   Splitwise    Alice->Bob 160, Erin->Bob 90,  Erin->Carol 170
+     *   our greedy   Erin->Bob 250,  Erin->Carol 10, Alice->Carol 160
+     *
+     * Both settle the same nets, so no aggregate check can tell them apart -
+     * but they disagree about whether Alice owes Bob or Carol, and a non-group
+     * expense is shown pairwise, so the wrong one is a phantom debt on a friend
+     * page. `repayments` is imported precisely so the first one wins.
+     *
+     * Erin is deliberately NOT in get_friends: an expense may name somebody the
+     * friends list does not, and the resolver has to turn her into a ghost for
+     * the pairing to be mappable at all.
+     */
+    id: 4007,
+    group_id: 0,
+    description: "Mountain hut",
+    cost: "640.00",
+    currency_code: "SGD",
+    date: "2026-03-08T00:00:00Z",
+    users: [
+      { user: swGroups[1]!.members[0], paid_share: "0.00", owed_share: "160.00" },
+      { user: swFriends[0], paid_share: "350.00", owed_share: "100.00" },
+      { user: swFriends[1], paid_share: "290.00", owed_share: "120.00" },
+      {
+        user: { id: 2004, first_name: "Erin", last_name: "Evans", email: "erin@example.com" },
+        paid_share: "0.00",
+        owed_share: "260.00",
+      },
+    ],
+    repayments: [
+      { from: ME_SW_ID, to: 2001, amount: "160.00" },
+      { from: 2004, to: 2001, amount: "90.00" },
+      { from: 2004, to: 2002, amount: "170.00" },
     ],
   },
 ];
@@ -521,6 +607,30 @@ describe("groups", () => {
       .execute();
     assert.equal(members.length, 3);
     assert.equal(members.find((m) => m.user_id === aliceId)?.role, "owner");
+
+    // Without these, an already-bootstrapped device's incremental pull never
+    // learns the group exists: it gets the imported expenses (which log
+    // themselves) but not the group name or membership, and friend/group
+    // screens render a bare id.
+    const groupLog = await db
+      .selectFrom("sync_log")
+      .select(["entity", "entity_id"])
+      .where("entity", "=", "group")
+      .where("entity_id", "=", group.id)
+      .execute();
+    assert.equal(groupLog.length, 1);
+
+    const memberLog = await db
+      .selectFrom("sync_log")
+      .select(["entity_id"])
+      .where("entity", "=", "group_member")
+      .where("group_id", "=", group.id)
+      .execute();
+    assert.equal(memberLog.length, 3);
+    assert.deepEqual(
+      new Set(memberLog.map((m) => m.entity_id)),
+      new Set(members.map((m) => m.user_id)),
+    );
   });
 
   test("re-running matches instead of creating a second Flat", async () => {
@@ -538,14 +648,19 @@ describe("expenses", () => {
     const { status, body } = await post("/import/expenses", { apiKey: API_KEY });
     assert.equal(status, 200);
     assert.equal(body.fetched, swExpenses.length);
-    assert.equal(body.imported, 4);
+    assert.equal(body.imported, 5);
     assert.equal(body.pausedSeries.length, 1);
     assert.equal(body.pausedSeries[0].description, "Rent");
     assert.equal(body.pausedSeries[0].interval, "monthly");
+    assert.deepEqual(body.pausedSeries[0].participants, [
+      "You",
+      "Bob Brown",
+      "Carol Clark",
+    ]);
     assert.equal(body.done, false, "a full page always offers a next offset");
     assert.equal(body.warnings.length, 1);
     assert.equal(body.warnings[0].splitwiseId, 4006);
-    assert.match(body.warnings[0].reason, /fractional amount 0\.02 JPY dropped/i);
+    assert.match(body.warnings[0].reason, /rounded by -0\.02 JPY/i);
 
     const rent = await db
       .selectFrom("expenses")
@@ -599,7 +714,7 @@ describe("expenses", () => {
     assert.equal(payment.is_payment, 1);
   });
 
-  test("extra JPY digits are dropped, noted on the bill, and not skipped", async () => {
+  test("extra JPY digits are rounded, noted on the bill, and not skipped", async () => {
     const payment = await db
       .selectFrom("expenses")
       .selectAll()
@@ -617,7 +732,7 @@ describe("expenses", () => {
       .execute();
     assert.equal(comments.length, 1);
     assert.equal(comments[0]!.kind, "system");
-    assert.match(comments[0]!.content, /fractional amount 0\.02 JPY dropped on import/i);
+    assert.match(comments[0]!.content, /rounded by -0\.02 JPY on import/i);
 
     const shares = await db
       .selectFrom("expense_users")
@@ -645,15 +760,57 @@ describe("expenses", () => {
     }
   });
 
+  test("keeps Splitwise's own pairing on a two-payer non-group expense", async () => {
+    const hut = await db
+      .selectFrom("expenses")
+      .select(["id", "group_id", "cost_minor"])
+      .where(splitwiseIdSql(), "=", 4007)
+      .executeTakeFirstOrThrow();
+    assert.equal(hut.group_id, null, "Splitwise group 0 is not a group");
+    assert.equal(hut.cost_minor, 64_000);
+
+    const named = async (userId: string) =>
+      (await db
+        .selectFrom("users")
+        .select("name")
+        .where("id", "=", userId)
+        .executeTakeFirstOrThrow()).name;
+
+    const repayments = await db
+      .selectFrom("expense_repayments")
+      .select(["from_user_id", "to_user_id", "amount_minor"])
+      .where("expense_id", "=", hut.id)
+      .execute();
+    const pairing = (
+      await Promise.all(
+        repayments.map(async (r) => ({
+          from: r.from_user_id === aliceId ? "You" : await named(r.from_user_id),
+          to: r.to_user_id === aliceId ? "You" : await named(r.to_user_id),
+          amountMinor: r.amount_minor,
+        })),
+      )
+    ).sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
+
+    // Splitwise's answer, not our greedy one. Greedy settles the same nets as
+    // Erin->Bob 250 / Erin->Carol 10 / You->Carol 160, which would show up on
+    // the friend page as owing Carol 160.00 SGD and Bob nothing - a debt
+    // Splitwise does not have. See deriveRepayments in src/domain/split.ts.
+    assert.deepEqual(pairing, [
+      { from: "Erin Evans", to: "Bob Brown", amountMinor: 9_000 },
+      { from: "Erin Evans", to: "Carol Clark", amountMinor: 17_000 },
+      { from: "You", to: "Bob Brown", amountMinor: 16_000 },
+    ]);
+  });
+
   test("re-running a page imports nothing and duplicates nothing", async () => {
     const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
     assert.equal(body.imported, 0);
-    assert.equal(body.alreadyPresent, 4);
+    assert.equal(body.alreadyPresent, 5);
     assert.equal(body.pausedSeries.length, 0, "already-present series are not offered again");
     assert.equal(body.warnings.length, 0, "truncation is not re-warned on a second run");
 
     const count = await db.selectFrom("expenses").select("id").execute();
-    assert.equal(count.length, 4);
+    assert.equal(count.length, 5);
   });
 
   test("paging walks to the end", async () => {
@@ -720,6 +877,27 @@ describe("comments", () => {
     assert.match(comments[1]!.content, /The cost changed from/);
   });
 
+  test("a platform comment with no author is kept as a system row", async () => {
+    const payment = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where(splitwiseIdSql(), "=", 4003)
+      .executeTakeFirstOrThrow();
+
+    const comments = await db
+      .selectFrom("comments")
+      .select(["kind", "content", "user_id", "metadata"])
+      .where("expense_id", "=", payment.id)
+      .where("deleted_at", "is", null)
+      .execute();
+
+    assert.equal(comments.length, 1);
+    assert.equal(comments[0]!.kind, "system");
+    assert.equal(comments[0]!.user_id, aliceId);
+    assert.equal(splitwiseIdOf(comments[0]!.metadata), 9005);
+    assert.match(comments[0]!.content, /No money has been moved/);
+  });
+
   test("an imported comment is not a feed event", async () => {
     const events = await db
       .selectFrom("activity")
@@ -732,7 +910,8 @@ describe("comments", () => {
   test("the paged step fetches the comments Splitwise did not nest", async () => {
     const { status, body } = await post("/import/comments", { apiKey: API_KEY });
     assert.equal(status, 200);
-    assert.equal(body.imported, 1, "one live comment on the Ramen expense");
+    assert.equal(body.imported, 2, "Dave's note plus the authorless platform comment");
+    assert.equal(body.total, 5, "the step walks every live imported expense, not the preview cap");
 
     const ramen = await db
       .selectFrom("expenses")
@@ -742,18 +921,24 @@ describe("comments", () => {
 
     const comments = await db
       .selectFrom("comments")
-      .select(["content", "user_id", "metadata"])
+      .select(["kind", "content", "user_id", "metadata"])
       .where("expense_id", "=", ramen.id)
       .execute();
 
-    assert.equal(comments.length, 1, "the source-deleted one was skipped, not imported");
-    assert.equal(splitwiseIdOf(comments[0]!.metadata), 9003);
+    assert.equal(comments.length, 2, "the source-deleted one was skipped, not imported");
+    const daveComment = comments.find((c) => splitwiseIdOf(c.metadata) === 9003);
+    assert.ok(daveComment);
+    const platform = comments.find((c) => splitwiseIdOf(c.metadata) === 9006);
+    assert.ok(platform, "a comment with no Splitwise user is kept, not dropped");
+    assert.equal(platform!.kind, "system");
+    assert.equal(platform!.user_id, aliceId, "the importer satisfies the NOT NULL author FK");
+    assert.match(platform!.content, /record a cash payment/i);
 
     // An author nobody had seen became a placeholder rather than being dropped.
     const dave = await db
       .selectFrom("users")
       .select(["id", "name", "is_ghost"])
-      .where("id", "=", comments[0]!.user_id)
+      .where("id", "=", daveComment!.user_id)
       .executeTakeFirstOrThrow();
     assert.equal(dave.name, "Dave Doe");
     assert.equal(dave.is_ghost, 1);
@@ -827,14 +1012,84 @@ describe("balances after import", () => {
   test("agree with the imported shares", async () => {
     const { body } = await get("/friends");
     const bob = body.friends.find((f: any) => f.id === bobId);
+    const carol = body.friends.find((f: any) => f.name === "Carol Clark");
 
-    // Rent: Alice paid 1000.00, owes 333.34 -> Bob owes her 333.33.
-    // Payment: Bob paid 50.00 to Alice -> Bob owes 283.33.
-    // Ramen: Alice paid 3400 JPY, Bob owes 1700 JPY.
+    // Rent (Flat, simplify on): Alice paid 1000.00, each owes ~333.33.
+    // Payment: Bob paid Alice 50.00. After simplify, Bob still owes her 283.33
+    // and Carol 333.33 — same edges as raw, because nobody needed rerouting.
     const usd = bob.balances.find((b: any) => b.currencyCode === "USD");
-    const jpy = bob.balances.find((b: any) => b.currencyCode === "JPY");
     assert.equal(usd.amountMinor, 28_333);
-    assert.equal(jpy.amountMinor, 1700, "currencies are never converted, so JPY stands alone");
+    assert.equal(
+      carol.balances.find((b: any) => b.currencyCode === "USD")?.amountMinor,
+      33_333,
+    );
+
+    // Ramen is Alice+Bob 1700 JPY, and group 0 also has Carol's 197529 JPY
+    // payment to Alice. One-on-one stays pairwise: Bob still owes 1700, Alice
+    // still owes Carol 197529. They are not a group, so nobody is asked to
+    // settle the other's 1-1 tab.
+    assert.equal(bob.balances.find((b: any) => b.currencyCode === "JPY")?.amountMinor, 1700);
+    assert.equal(
+      carol.balances.find((b: any) => b.currencyCode === "JPY")?.amountMinor,
+      -197_529,
+    );
+
+    assert.ok(
+      bob.breakdown.filter((b: any) => b.groupId !== null).every((b: any) => b.simplified),
+      "imported groups land with simplify on, like Splitwise",
+    );
+    assert.ok(
+      bob.breakdown.filter((b: any) => b.groupId === null).every((b: any) => !b.simplified),
+      "one-on-one expenses are never simplified",
+    );
+  });
+});
+
+describe("rounding", () => {
+  test("settles leftover cents against Splitwise friend totals", async () => {
+    const { status, body } = await post("/import/rounding", { apiKey: API_KEY });
+    assert.equal(status, 200);
+    assert.equal(body.created.length, 1);
+    const row = body.created[0];
+    assert.equal(row.friendId, bobId);
+    assert.equal(row.currencyCode, "JPY");
+    assert.equal(row.amountMinor, 2);
+    assert.equal(row.toUserId, aliceId);
+    assert.equal(row.fromUserId, bobId);
+    assert.equal(
+      row.groupId,
+      null,
+      "Bob and Alice's only JPY history here is Ramen, group 0 (non-group -> null), so there is no single group to attribute the residue to",
+    );
+    assert.equal(body.skipped.length, 0);
+
+    const friends = await get("/friends");
+    const bob = friends.body.friends.find((f: any) => f.id === bobId);
+    assert.equal(bob.balances.find((b: any) => b.currencyCode === "JPY")?.amountMinor, 1698);
+
+    const payment = await db
+      .selectFrom("expenses")
+      .select(["id", "is_payment", "details", "metadata"])
+      .where("id", "=", row.expenseId)
+      .executeTakeFirstOrThrow();
+    assert.equal(payment.is_payment, 1);
+    assert.match(payment.details ?? "", /fractional amounts rounded off/i);
+    assert.equal(parseMetadata(payment.metadata).import_rounding, true);
+
+    const comments = await db
+      .selectFrom("comments")
+      .select("content")
+      .where("expense_id", "=", row.expenseId)
+      .execute();
+    assert.equal(comments.length, 1);
+    assert.match(comments[0]!.content, /restores the Splitwise friend total/i);
+  });
+
+  test("a second run is a no-op once totals match", async () => {
+    const { status, body } = await post("/import/rounding", { apiKey: API_KEY });
+    assert.equal(status, 200);
+    assert.equal(body.created.length, 0);
+    assert.equal(body.skipped.length, 0);
   });
 });
 
@@ -846,8 +1101,10 @@ describe("run", () => {
     assert.equal(body.expenses.nextOffset, null);
     // Everything already landed in the step-by-step tests above.
     assert.equal(body.expenses.imported, 0);
-    assert.equal(body.expenses.alreadyPresent, 4);
+    assert.equal(body.expenses.alreadyPresent, 5);
     assert.equal(body.groups.groups[0].created, false);
+    assert.equal(body.rounding.created.length, 0);
+    assert.equal(body.rounding.skipped.length, 0);
   });
 
   test("never sends the key anywhere but Splitwise, and always sends it there", async () => {
@@ -928,7 +1185,7 @@ describe("re-import as update", () => {
   test("a second refresh of the same row is a no-op, not a rewrite", async () => {
     const { body } = await post("/import/expenses", { apiKey: API_KEY, offset: 0 });
     assert.equal(body.refreshed, 0, "nothing changed upstream this time");
-    assert.equal(body.alreadyPresent, 4);
+    assert.equal(body.alreadyPresent, 5);
   });
 
   test("a locally edited row is skipped with a reason, never overwritten", async () => {

@@ -151,3 +151,32 @@ describe("removing members", () => {
     assert.equal(still.left_at, null);
   });
 });
+
+describe("simplify debts setting", () => {
+  test("a member can turn simplify on and off", async () => {
+    const off = await as(ownerToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ simplifyByDefault: false }),
+    });
+    assert.equal(off.status, 200);
+    const offBody = (await off.json()) as { group: { simplify_by_default: number } };
+    assert.equal(offBody.group.simplify_by_default, 0);
+
+    const on = await as(memberToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ simplifyByDefault: true }),
+    });
+    assert.equal(on.status, 200);
+    const onBody = (await on.json()) as { group: { simplify_by_default: number } };
+    assert.equal(onBody.group.simplify_by_default, 1);
+  });
+
+  test("a stranger cannot change it", async () => {
+    const strangerToken = (await createApiToken(strangerId, "test")).token;
+    const res = await as(strangerToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ simplifyByDefault: false }),
+    });
+    assert.equal(res.status, 403);
+  });
+});

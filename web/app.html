@@ -21,6 +21,11 @@
       document from /guest: a guest must never get near either.
     -->
     <title>SplitSmart</title>
+    <!--
+      Deploy-only, opt-in telemetry hook. web/public/telemetry.js is a
+      committed no-op stub; see scripts/deploy/README.md.
+    -->
+    <script defer src="/telemetry.js"></script>
   </head>
   <body>
     <div id="root"></div>

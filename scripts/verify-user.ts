@@ -1,10 +1,10 @@
 /**
  * Manually mark a user's email as verified.
  *
- * THE LOCKOUT ESCAPE HATCH. If EMAIL_VERIFICATION_REQUIRED=true and Postmark is
- * misconfigured, down, or the mail is landing in spam, nobody can log in and
- * there is no in-app way out. This script is that way out; it needs only
- * filesystem access to the database, which you have on a self-hosted box.
+ * THE LOCKOUT ESCAPE HATCH. If EMAIL_VERIFICATION_REQUIRED=true and mail is
+ * misconfigured, down, or landing in spam, nobody can log in and there is no
+ * in-app way out. This script is that way out; it needs only filesystem
+ * access to the database, which you have on a self-hosted box.
  *
  * Usage:
  *   yarn verify:user -- alice@example.com

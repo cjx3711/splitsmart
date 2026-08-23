@@ -12,10 +12,12 @@ import { api, displayName, type Friend } from "../api.ts";
 import { Ledger } from "../money.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { FriendListItem } from "../FriendListItem.tsx";
-import { useSidebarRefresh } from "../App.tsx";
+import { useAuth, useSidebarRefresh } from "../App.tsx";
 import { useFriends, useMirrorReady } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
+import { useSync } from "../sync/SyncProvider.tsx";
+import { dropFriendPair, restoreFriendPair } from "../sync/localFirst.ts";
 
 export function Friends() {
   const [error, setError] = useState<string | null>(null);
@@ -25,10 +27,14 @@ export function Friends() {
   const navigate = useNavigate();
   const friends = useFriends()?.friends ?? null;
   const ready = useMirrorReady();
+  const { user } = useAuth();
+  const { db } = useSync();
 
   async function handleRemove(friend: Friend) {
     setError(null);
     setBusy(true);
+    const previous =
+      db && user ? await dropFriendPair(db, user.id, friend.id) : undefined;
     try {
       const result = await api.removeFriend(friend.id);
       refreshSidebar();
@@ -38,6 +44,7 @@ export function Friends() {
         );
       }
     } catch (err) {
+      if (db && previous) await restoreFriendPair(db, previous);
       setError(err instanceof Error ? err.message : "Could not remove friend");
     } finally {
       setBusy(false);

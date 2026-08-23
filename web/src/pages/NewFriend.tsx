@@ -6,15 +6,19 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api, displayName } from "../api.ts";
-import { useSidebarRefresh } from "../App.tsx";
+import { useAuth, useSidebarRefresh } from "../App.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { CopyLinkButton } from "../LinkPanel.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { HelpTip } from "../HelpTip.tsx";
+import { useSync } from "../sync/SyncProvider.tsx";
+import { ingestCreatedFriend } from "../sync/localFirst.ts";
 
 export function NewFriend() {
   const refreshSidebar = useSidebarRefresh();
   const online = useOnline();
+  const { user } = useAuth();
+  const { db } = useSync();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -35,6 +39,9 @@ export function NewFriend() {
         name: name.trim(),
         email: email.trim() || undefined,
       });
+      if (db && user) {
+        await ingestCreatedFriend(db, user.id, response.friend, user.defaultCurrency);
+      }
       setResult({
         id: response.friend.id,
         name: displayName(response.friend),

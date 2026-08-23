@@ -25,10 +25,11 @@ import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
-import { OnlineOnly } from "../OnlineOnly.tsx";
+import { OnlineOnly, useOnline } from "../OnlineOnly.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
+import { markMemberLeft, patchPerson, restoreMember, revertPerson, setGroupSimplify } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { HelpTip } from "../HelpTip.tsx";
@@ -43,9 +44,11 @@ export function GroupDetail() {
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
+  const [simplifyBusy, setSimplifyBusy] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
-  const { engine, syncNow } = useSync();
+  const { engine, syncNow, db } = useSync();
+  const online = useOnline();
 
   // Live queries: a sync landing, or a queued write, re-renders this screen
   // without anything having to invalidate anything.
@@ -125,6 +128,52 @@ export function GroupDetail() {
         </div>
       </div>
 
+      <div className="card">
+        <label className="setting-toggle">
+          <input
+            type="checkbox"
+            checked={group.simplify_by_default === 1}
+            disabled={simplifyBusy || !online}
+            onChange={(event) => {
+              const on = event.target.checked;
+              const was = group.simplify_by_default === 1;
+              if (!db) return;
+              setSimplifyBusy(true);
+              // The box is a liveQuery of the mirror. PATCH then syncNow can
+              // join a pull that started before this write, so the checked
+              // state would stay put until a later tick. Write the mirror
+              // first; revert if the server refuses.
+              void (async () => {
+                await setGroupSimplify(db, group.id, on);
+                try {
+                  await api.updateGroup(group.id, { simplifyByDefault: on });
+                  syncNow();
+                } catch {
+                  await setGroupSimplify(db, group.id, was);
+                } finally {
+                  setSimplifyBusy(false);
+                }
+              })();
+            }}
+          />
+            <span>
+              <span className="with-help">
+                Simplify debts
+                <HelpTip label="About simplify debts">
+                  When on, friend totals for this group match Splitwise: cycles through other people
+                  collapse. Your net in the group does not change, and each bill still shows who
+                  paid. Imported groups keep the Splitwise setting.
+                </HelpTip>
+              </span>
+              <span className="muted" style={{ display: "block", marginTop: "0.15rem" }}>
+                {group.simplify_by_default === 1
+                  ? "Friend balances in this group are simplified."
+                  : "Friend balances show the raw who-owes-whom from each bill."}
+              </span>
+            </span>
+          </label>
+      </div>
+
       <AddExpenseDialog
         open={openDialog === "expense"}
         title={`Add Expense to ${group.name}`}
@@ -140,8 +189,19 @@ export function GroupDetail() {
           setIdentityMember(null);
         }}
         onSave={async (id, payload) => {
-          await api.updateFriend(id, payload);
-          syncNow();
+          if (!db) {
+            await api.updateFriend(id, payload);
+            syncNow();
+            return;
+          }
+          const previous = await patchPerson(db, id, payload);
+          try {
+            await api.updateFriend(id, payload);
+            syncNow();
+          } catch (err) {
+            if (previous) await revertPerson(db, previous);
+            throw err;
+          }
         }}
       />
 
@@ -338,9 +398,21 @@ export function GroupDetail() {
           if (!removingMember) return;
           setRemovingBusy(true);
           try {
-            await api.removeGroupMember(group.id, removingMember.id);
-            syncNow();
-            setRemovingMember(null);
+            if (!db) {
+              await api.removeGroupMember(group.id, removingMember.id);
+              syncNow();
+              setRemovingMember(null);
+              return;
+            }
+            const previous = await markMemberLeft(db, group.id, removingMember.id);
+            try {
+              await api.removeGroupMember(group.id, removingMember.id);
+              syncNow();
+              setRemovingMember(null);
+            } catch (err) {
+              if (previous) await restoreMember(db, previous);
+              throw err;
+            }
           } finally {
             setRemovingBusy(false);
           }

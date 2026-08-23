@@ -13,6 +13,9 @@ import {
 } from "../PersonIdentityForm.tsx";
 import { HelpTip } from "../HelpTip.tsx";
 import { WipeLedgerButton } from "../WipeLedger.tsx";
+import { ClearLocalDataButton } from "../ClearLocalData.tsx";
+import { useSync } from "../sync/SyncProvider.tsx";
+import { patchPerson, revertPerson } from "../sync/localFirst.ts";
 
 /**
  * Account settings and API tokens.
@@ -23,6 +26,7 @@ import { WipeLedgerButton } from "../WipeLedger.tsx";
  */
 export function Settings() {
   const { user, setUser } = useAuth();
+  const { db, syncNow } = useSync();
   const online = useOnline();
   const navigate = useNavigate();
   const [tokens, setTokens] = useState<
@@ -94,16 +98,32 @@ export function Settings() {
             const payload = identityPayload(identity);
             if (!payload.name) return;
             setIdentityBusy(true);
-            void api
-              .updateMe(payload)
-              .then((result) => {
+            void (async () => {
+              const previous = db ? await patchPerson(db, user.id, payload) : undefined;
+              const previousUser = user;
+              if (db) {
+                setUser({
+                  ...user,
+                  name: payload.name,
+                  nickname: payload.nickname,
+                  iconLetters: payload.iconLetters,
+                  iconEmoji: payload.iconEmoji,
+                  iconHue: payload.iconHue,
+                });
+              }
+              try {
+                const result = await api.updateMe(payload);
                 setUser(result.user);
                 setIdentity(draftFromPerson(result.user));
-              })
-              .catch((err) =>
-                setError(err instanceof Error ? err.message : "Could not save name"),
-              )
-              .finally(() => setIdentityBusy(false));
+                syncNow();
+              } catch (err) {
+                if (db && previous) await revertPerson(db, previous);
+                setUser(previousUser);
+                setError(err instanceof Error ? err.message : "Could not save name");
+              } finally {
+                setIdentityBusy(false);
+              }
+            })();
           }}
         >
           <OnlineOnly what="Changing your name and icon">
@@ -133,12 +153,24 @@ export function Settings() {
               id="preferredCurrency"
               value={user.defaultCurrency}
               onChange={(code) => {
-                void api
-                  .updateMe({ defaultCurrency: code })
-                  .then((result) => setUser(result.user))
-                  .catch((err) =>
-                    setError(err instanceof Error ? err.message : "Could not save preferred currency"),
-                  );
+                void (async () => {
+                  const previous = db
+                    ? await patchPerson(db, user.id, { defaultCurrency: code })
+                    : undefined;
+                  const previousUser = user;
+                  setUser({ ...user, defaultCurrency: code });
+                  try {
+                    const result = await api.updateMe({ defaultCurrency: code });
+                    setUser(result.user);
+                    syncNow();
+                  } catch (err) {
+                    if (db && previous) await revertPerson(db, previous);
+                    setUser(previousUser);
+                    setError(
+                      err instanceof Error ? err.message : "Could not save preferred currency",
+                    );
+                  }
+                })();
               }}
             />
           </OnlineOnly>
@@ -245,6 +277,17 @@ export function Settings() {
           undo this.
         </p>
       </ConfirmDialog>
+
+      <h2 className="with-help">
+        This device
+        <HelpTip label="About local data">
+          The app keeps an offline copy of your data on this device so it still works without a
+          connection. This only affects that copy - nothing on the server changes.
+        </HelpTip>
+      </h2>
+      <OnlineOnly what="Clearing this device's local data">
+        <ClearLocalDataButton />
+      </OnlineOnly>
 
       <h2>Session</h2>
       <button

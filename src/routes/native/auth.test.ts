@@ -27,6 +27,7 @@ const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { ulid } = await import("../../domain/ulid.ts");
 const { serializeMetadata, splitwiseIdOf, parseMetadata } = await import("../../domain/metadata.ts");
+const { tokenFromVerifyUrl } = await import("../../email/signup.ts");
 
 let apiToken: string;
 let userId: string;
@@ -176,11 +177,20 @@ describe("POST /api/v1/auth/register Splitwise ghost claim", () => {
   }
 
   async function register(email: string, name: string) {
+    const start = await app.request("/api/v1/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": "203.0.113.50" },
+      body: JSON.stringify({ email }),
+    });
+    const started = (await start.json()) as { verifyUrl?: string; error?: string };
+    assert.equal(start.status, 200, started.error ?? JSON.stringify(started));
+    const token = tokenFromVerifyUrl(started.verifyUrl!);
+
     const res = await app.request("/api/v1/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email,
+        token,
         password: "password1",
         name,
         defaultCurrency: "USD",

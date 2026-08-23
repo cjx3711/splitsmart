@@ -131,6 +131,8 @@ export interface GuestSession {
   groups: GuestGroupSummary[];
   /** The owner, on a friend link. Null otherwise. */
   counterpart: GuestPerson | null;
+  /** Whoever minted this link. Set for every kind, including group links. */
+  issuedBy: GuestPerson | null;
 }
 
 export interface GuestMember {

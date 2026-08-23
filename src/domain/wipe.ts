@@ -16,6 +16,7 @@
  * delete. Removing Alice's import must not take Bob's balances with it.
  */
 import { transaction } from "../db/index.ts";
+import { collectIdChunks, forEachIdChunk } from "../db/chunk.ts";
 import { logChange, type SyncLogEntry } from "./sync-log.ts";
 
 /** Must be typed into the second confirmation dialog, and sent on the wire. */
@@ -62,27 +63,17 @@ export async function wipeUserLedger(userId: string): Promise<WipeResult> {
     const createdExpenseIds = await ids(
       trx.selectFrom("expenses").select("id").where("created_by", "=", userId),
     );
-    const groupExpenseIds =
-      groupIds.length > 0
-        ? await ids(trx.selectFrom("expenses").select("id").where("group_id", "in", groupIds))
-        : [];
+    const groupExpenseIds = await collectIdChunks(groupIds, (chunk) =>
+      ids(trx.selectFrom("expenses").select("id").where("group_id", "in", chunk)),
+    );
     const expenseIds = unique([...participatedExpenseIds, ...createdExpenseIds, ...groupExpenseIds]);
 
-    const groupMemberIds =
-      groupIds.length > 0
-        ? await ids(
-            trx.selectFrom("group_members").select("user_id as id").where("group_id", "in", groupIds),
-          )
-        : [];
-    const participantIds =
-      expenseIds.length > 0
-        ? await ids(
-            trx
-              .selectFrom("expense_users")
-              .select("user_id as id")
-              .where("expense_id", "in", expenseIds),
-          )
-        : [];
+    const groupMemberIds = await collectIdChunks(groupIds, (chunk) =>
+      ids(trx.selectFrom("group_members").select("user_id as id").where("group_id", "in", chunk)),
+    );
+    const participantIds = await collectIdChunks(expenseIds, (chunk) =>
+      ids(trx.selectFrom("expense_users").select("user_id as id").where("expense_id", "in", chunk)),
+    );
     const friendIds = unique([
       ...(await ids(
         trx.selectFrom("friendships").select("user_b_id as id").where("user_a_id", "=", userId),
@@ -102,28 +93,22 @@ export async function wipeUserLedger(userId: string): Promise<WipeResult> {
       ...mergedGhostIds,
     ]).filter((id) => id !== userId);
 
-    if (relatedUserIds.length > 0) {
-      const others = await trx
+    const others = await collectIdChunks(relatedUserIds, (chunk) =>
+      trx
         .selectFrom("users")
         .select(["id", "name", "email"])
-        .where("id", "in", relatedUserIds)
+        .where("id", "in", chunk)
         .where("is_ghost", "=", 0)
         .where("deleted_at", "is", null)
-        .execute();
-      if (others.length > 0) throw new WipeBlockedError(others);
-    }
+        .execute(),
+    );
+    if (others.length > 0) throw new WipeBlockedError(others);
 
-    const ghostIds =
-      relatedUserIds.length > 0
-        ? (
-            await trx
-              .selectFrom("users")
-              .select("id")
-              .where("id", "in", relatedUserIds)
-              .where("is_ghost", "=", 1)
-              .execute()
-          ).map((r) => r.id)
-        : [];
+    const ghostIds = (
+      await collectIdChunks(relatedUserIds, (chunk) =>
+        trx.selectFrom("users").select("id").where("id", "in", chunk).where("is_ghost", "=", 1).execute(),
+      )
+    ).map((r) => r.id);
 
     if (ghostIds.length > 0) {
       const extraReal = await trx
@@ -172,88 +157,66 @@ export async function wipeUserLedger(userId: string): Promise<WipeResult> {
     ];
     await logChange(trx, ...logEntries);
 
-    if (expenseIds.length > 0) {
-      await trx.deleteFrom("activity").where("expense_id", "in", expenseIds).execute();
-    }
-    if (groupIds.length > 0) {
-      await trx.deleteFrom("activity").where("group_id", "in", groupIds).execute();
-    }
+    await forEachIdChunk(expenseIds, (c) =>
+      trx.deleteFrom("activity").where("expense_id", "in", c).execute(),
+    );
+    await forEachIdChunk(groupIds, (c) =>
+      trx.deleteFrom("activity").where("group_id", "in", c).execute(),
+    );
     await trx.deleteFrom("activity").where("user_id", "=", userId).execute();
-    if (ghostIds.length > 0) {
-      await trx.deleteFrom("activity").where("user_id", "in", ghostIds).execute();
-    }
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.deleteFrom("activity").where("user_id", "in", c).execute(),
+    );
 
     await trx.deleteFrom("access_links").where("created_by", "=", userId).execute();
-    if (groupIds.length > 0) {
-      await trx.deleteFrom("access_links").where("group_id", "in", groupIds).execute();
-    }
-    if (ghostIds.length > 0) {
-      await trx.deleteFrom("access_links").where("user_id", "in", ghostIds).execute();
-    }
+    await forEachIdChunk(groupIds, (c) =>
+      trx.deleteFrom("access_links").where("group_id", "in", c).execute(),
+    );
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.deleteFrom("access_links").where("user_id", "in", c).execute(),
+    );
 
     // FKs on the log have no ON DELETE. Null them so groups and ghosts can go.
-    if (groupIds.length > 0) {
-      await trx.updateTable("sync_log").set({ group_id: null }).where("group_id", "in", groupIds).execute();
-    }
-    if (ghostIds.length > 0) {
-      await trx
-        .updateTable("sync_log")
-        .set({ other_user_id: null })
-        .where("other_user_id", "in", ghostIds)
-        .execute();
-      await trx
-        .updateTable("sync_log")
-        .set({ actor_user_id: null })
-        .where("actor_user_id", "in", ghostIds)
-        .execute();
-      await trx
-        .updateTable("sync_log")
-        .set({ audience_user_id: null })
-        .where("audience_user_id", "in", ghostIds)
-        .execute();
+    await forEachIdChunk(groupIds, (c) =>
+      trx.updateTable("sync_log").set({ group_id: null }).where("group_id", "in", c).execute(),
+    );
+    for (const column of ["other_user_id", "actor_user_id", "audience_user_id"] as const) {
+      await forEachIdChunk(ghostIds, (c) =>
+        trx.updateTable("sync_log").set({ [column]: null }).where(column, "in", c).execute(),
+      );
     }
 
-    if (expenseIds.length > 0) {
-      await trx
-        .updateTable("expenses")
-        .set({ repeat_of: null })
-        .where("repeat_of", "in", expenseIds)
-        .execute();
-      await trx.deleteFrom("expenses").where("id", "in", expenseIds).execute();
-    }
+    await forEachIdChunk(expenseIds, (c) =>
+      trx.updateTable("expenses").set({ repeat_of: null }).where("repeat_of", "in", c).execute(),
+    );
+    await forEachIdChunk(expenseIds, (c) =>
+      trx.deleteFrom("expenses").where("id", "in", c).execute(),
+    );
 
-    if (groupIds.length > 0) {
-      await trx.deleteFrom("groups").where("id", "in", groupIds).execute();
-    }
+    await forEachIdChunk(groupIds, (c) =>
+      trx.deleteFrom("groups").where("id", "in", c).execute(),
+    );
 
     await trx
       .deleteFrom("friendships")
       .where((eb) => eb.or([eb("user_a_id", "=", userId), eb("user_b_id", "=", userId)]))
       .execute();
 
-    if (ghostIds.length > 0) {
-      await trx
-        .updateTable("users")
-        .set({ merged_into_user_id: null })
-        .where("merged_into_user_id", "in", ghostIds)
-        .execute();
-      await trx
-        .updateTable("expenses")
-        .set({ created_by: null })
-        .where("created_by", "in", ghostIds)
-        .execute();
-      await trx
-        .updateTable("expenses")
-        .set({ updated_by: null })
-        .where("updated_by", "in", ghostIds)
-        .execute();
-      await trx
-        .updateTable("groups")
-        .set({ created_by: null })
-        .where("created_by", "in", ghostIds)
-        .execute();
-      await trx.deleteFrom("users").where("id", "in", ghostIds).execute();
-    }
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.updateTable("users").set({ merged_into_user_id: null }).where("merged_into_user_id", "in", c).execute(),
+    );
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.updateTable("expenses").set({ created_by: null }).where("created_by", "in", c).execute(),
+    );
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.updateTable("expenses").set({ updated_by: null }).where("updated_by", "in", c).execute(),
+    );
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.updateTable("groups").set({ created_by: null }).where("created_by", "in", c).execute(),
+    );
+    await forEachIdChunk(ghostIds, (c) =>
+      trx.deleteFrom("users").where("id", "in", c).execute(),
+    );
 
     return {
       ok: true as const,

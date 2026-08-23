@@ -1,7 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { computeSplit, deriveRepayments, simpleEqualSplit, SplitError } from "./split.ts";
-import { parseAmount, parseAmountTruncating, formatAmount, splitEvenly, splitByWeights, MoneyError } from "./money.ts";
+import { parseAmount, parseAmountRounded, formatAmount, splitEvenly, splitByWeights, MoneyError } from "./money.ts";
 
 describe("money", () => {
   test("parses decimal strings without float error", () => {
@@ -33,13 +33,28 @@ describe("money", () => {
     assert.throws(() => parseAmount("197529.02", 0), MoneyError);
   });
 
-  test("truncating import parser drops extra digits and reports them", () => {
-    assert.deepEqual(parseAmountTruncating("3400.0", 0), { minor: 3400, dropped: null });
-    assert.deepEqual(parseAmountTruncating("197529.02", 0), { minor: 197529, dropped: "0.02" });
-    assert.deepEqual(parseAmountTruncating("71845.33", 0), { minor: 71845, dropped: "0.33" });
-    assert.deepEqual(parseAmountTruncating("143690.66", 0), { minor: 143690, dropped: "0.66" });
-    assert.deepEqual(parseAmountTruncating("10.501", 2), { minor: 1050, dropped: "0.001" });
-    assert.deepEqual(parseAmountTruncating("-800.5", 0), { minor: -800, dropped: "0.5" });
+  test("import parser rounds extra digits and reports the correction", () => {
+    const p = parseAmountRounded;
+    assert.deepEqual(p("3400.0", 0), { minor: 3400, adjustment: null });
+    assert.deepEqual(p("197529.02", 0), { minor: 197529, adjustment: "-0.02" });
+    assert.deepEqual(p("71845.33", 0), { minor: 71845, adjustment: "-0.33" });
+    assert.deepEqual(p("143690.66", 0), { minor: 143691, adjustment: "+0.34" });
+    assert.deepEqual(p("10.501", 2), { minor: 1050, adjustment: "-0.001" });
+    assert.deepEqual(p("10.505", 2), { minor: 1051, adjustment: "+0.005" });
+    // Half rounds away from zero, and the carry crosses the whole unit.
+    assert.deepEqual(p("-800.5", 0), { minor: -801, adjustment: "-0.5" });
+    assert.deepEqual(p("9.99", 1), { minor: 100, adjustment: "+0.01" });
+  });
+
+  test("rounding is unbiased, so a long import does not drift one way", () => {
+    // The bug this replaced: truncation is always negative, so 100 JPY bills
+    // with cents lost ~50 JPY off a friend total. Rounding cancels instead.
+    let drift = 0;
+    for (let cents = 0; cents < 100; cents++) {
+      const raw = `1000.${String(cents).padStart(2, "0")}`;
+      drift += parseAmountRounded(raw, 0).minor - 1000 - cents / 100;
+    }
+    assert.ok(Math.abs(drift) < 1, `expected near-zero drift, got ${drift}`);
   });
 
   test("rejects junk input", () => {
@@ -402,6 +417,80 @@ describe("deriveRepayments", () => {
       { userId: "3", paidMinor: 0 },
     ]);
     assert.deepEqual(deriveRepayments(shares), deriveRepayments(shares));
+  });
+
+  // The real bill this is modelled on: "Hut Part 3", 64000 JPY, two payers,
+  // four people. Greedy and Splitwise settle the same nets through different
+  // pairs, and on a non-group expense that difference is a visible one-on-one
+  // balance the other side does not have.
+  const hutPart3 = () =>
+    computeSplit(64000, "exact", [
+      { userId: "a", paidMinor: 0, input: 16000 },
+      { userId: "b", paidMinor: 35000, input: 16000 },
+      { userId: "c", paidMinor: 29000, input: 16000 },
+      { userId: "d", paidMinor: 0, input: 16000 },
+    ]);
+
+  test("greedy alone picks a valid pairing that is not the source's", () => {
+    // This is verbatim what the live database held for that bill.
+    assert.deepEqual(deriveRepayments(hutPart3()), [
+      { fromUserId: "a", toUserId: "b", amountMinor: 16000 },
+      { fromUserId: "d", toUserId: "b", amountMinor: 3000 },
+      { fromUserId: "d", toUserId: "c", amountMinor: 13000 },
+    ]);
+  });
+
+  test("a preferred pairing is reproduced exactly when the shares support it", () => {
+    const preferred = [
+      { fromUserId: "a", toUserId: "c", amountMinor: 13000 },
+      { fromUserId: "a", toUserId: "b", amountMinor: 3000 },
+      { fromUserId: "d", toUserId: "b", amountMinor: 16000 },
+    ];
+    assert.deepEqual(deriveRepayments(hutPart3(), preferred), preferred);
+  });
+
+  test("a preferred pairing never overrides the shares", () => {
+    const nonsense = [
+      // Wrong direction, absurd amount, a stranger, and a self-transfer.
+      { fromUserId: "b", toUserId: "a", amountMinor: 999_999 },
+      { fromUserId: "a", toUserId: "z", amountMinor: 5000 },
+      { fromUserId: "a", toUserId: "a", amountMinor: 5000 },
+      { fromUserId: "d", toUserId: "c", amountMinor: 999_999 },
+    ];
+    const shares = hutPart3();
+    const repayments = deriveRepayments(shares, nonsense);
+
+    const net = new Map<string, number>();
+    for (const r of repayments) {
+      assert.notEqual(r.fromUserId, r.toUserId);
+      net.set(r.fromUserId, (net.get(r.fromUserId) ?? 0) - r.amountMinor);
+      net.set(r.toUserId, (net.get(r.toUserId) ?? 0) + r.amountMinor);
+    }
+    for (const s of shares) {
+      assert.equal(net.get(s.userId) ?? 0, s.paidMinor - s.owedMinor);
+    }
+  });
+
+  test("a stale preferred pairing degrades to the nearest valid one", () => {
+    // Rounding moved a share by a minor unit, so the hint is a yen too big.
+    const shares = computeSplit(64001, "exact", [
+      { userId: "a", paidMinor: 0, input: 16001 },
+      { userId: "b", paidMinor: 35000, input: 16000 },
+      { userId: "c", paidMinor: 29001, input: 16000 },
+      { userId: "d", paidMinor: 0, input: 16000 },
+    ]);
+    const preferred = [
+      { fromUserId: "a", toUserId: "c", amountMinor: 13000 },
+      { fromUserId: "a", toUserId: "b", amountMinor: 3000 },
+      { fromUserId: "d", toUserId: "b", amountMinor: 16000 },
+    ];
+    assert.deepEqual(deriveRepayments(shares, preferred), [
+      { fromUserId: "a", toUserId: "c", amountMinor: 13000 },
+      { fromUserId: "a", toUserId: "b", amountMinor: 3000 },
+      { fromUserId: "d", toUserId: "b", amountMinor: 16000 },
+      // The stray unit lands on the only pair still open, not on a reshuffle.
+      { fromUserId: "a", toUserId: "c", amountMinor: 1 },
+    ]);
   });
 });
 

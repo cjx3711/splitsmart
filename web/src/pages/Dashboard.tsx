@@ -47,6 +47,8 @@ export function Dashboard() {
           Dashboard
           <HelpTip label="About these totals">
             Every currency is a separate ledger. A combined figure, when shown, is an estimate.
+            Friend totals use simplify-debts inside groups that have it on, matching Splitwise.
+            One-on-one expenses stay between the two of you.
           </HelpTip>
         </h1>
         <div className="page-actions">
@@ -175,7 +177,9 @@ function PeopleList({
                   {person.breakdown.map((entry) => (
                     <li key={entry.groupId ?? "none"}>
                       <Amounts balances={entry.balances} signed /> in{" "}
-                      {entry.groupName ?? "one-on-one expenses"}
+                      {entry.groupId
+                        ? (entry.groupName?.trim() || "this group")
+                        : "one-on-one expenses"}
                     </li>
                   ))}
                 </ul>

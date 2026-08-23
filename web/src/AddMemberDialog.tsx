@@ -9,6 +9,9 @@ import { api, displayName, type Friend } from "./api.ts";
 import { Avatar, avatarFromRow } from "./Avatar.tsx";
 import { HelpTip } from "./HelpTip.tsx";
 import { Modal } from "./Modal.tsx";
+import { useFriends } from "./localData.ts";
+import { useSync } from "./sync/SyncProvider.tsx";
+import { ingestAddedMember } from "./sync/localFirst.ts";
 
 function matchesFriend(friend: Friend, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -33,7 +36,8 @@ export function AddMemberDialog({
   existingIds: string[];
   onAdded: () => void | Promise<void>;
 }) {
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const { db } = useSync();
+  const friends = useFriends()?.friends ?? [];
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [nickname, setNickname] = useState("");
@@ -46,10 +50,6 @@ export function AddMemberDialog({
     setName("");
     setNickname("");
     setError(null);
-    void api
-      .listFriends()
-      .then((r) => setFriends(r.friends))
-      .catch(() => setFriends([]));
   }, [open]);
 
   const already = useMemo(() => new Set(existingIds), [existingIds]);
@@ -62,11 +62,12 @@ export function AddMemberDialog({
     [addable, query],
   );
 
-  async function add(action: () => Promise<unknown>) {
+  async function add(action: () => Promise<{ member?: Parameters<typeof ingestAddedMember>[2] }>) {
     setBusy(true);
     setError(null);
     try {
-      await action();
+      const result = await action();
+      if (db && result.member) await ingestAddedMember(db, groupId, result.member);
       await onAdded();
       onClose();
     } catch (err) {

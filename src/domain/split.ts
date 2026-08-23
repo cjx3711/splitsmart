@@ -327,8 +327,29 @@ function requireInput(p: SplitParticipant, type: SplitType): number {
  * This is computed once at write time and stored in expense_repayments so that
  * balance queries stay a plain SUM. It is a cache derived from expense_users -
  * if the two ever disagree, expense_users wins. `yarn db:check` verifies it.
+ *
+ * ## Why there is a `preferred` argument
+ *
+ * Net positions do not determine the pairing. With two payers and four people,
+ * "A owes C 13000, A owes D 3000" and "A owes D 16000, B owes C 3000" settle
+ * the *same* nets, and greedy picks one of them arbitrarily. That choice is
+ * invisible in group totals - `simplifyDebts` re-nets them at read time - but a
+ * NON-group expense is shown pairwise, so an arbitrary pairing shows up on a
+ * friend page as a debt that the other side's records do not have.
+ *
+ * The importer therefore passes Splitwise's own `repayments` as `preferred`.
+ * They are a hint, never a substitute: each one is honoured only up to what the
+ * net positions actually support, and greedy fills whatever is left. So a hint
+ * that is stale, partial, or outright wrong cannot produce a cache that
+ * disagrees with `expense_users` - the worst it can do is pick a different,
+ * still-valid pairing. That is what keeps this a derivation rather than a
+ * second source of truth, and it is why rounding a share (which moves a net by
+ * a minor unit) degrades the hint gracefully instead of invalidating it.
  */
-export function deriveRepayments(shares: SplitResult[]): Repayment[] {
+export function deriveRepayments(
+  shares: SplitResult[],
+  preferred: readonly Repayment[] = [],
+): Repayment[] {
   const creditors: Array<{ userId: string; amount: number }> = [];
   const debtors: Array<{ userId: string; amount: number }> = [];
 
@@ -344,10 +365,44 @@ export function deriveRepayments(shares: SplitResult[]): Repayment[] {
   debtors.sort((a, b) => b.amount - a.amount || compareIds(a.userId, b.userId));
 
   const repayments: Repayment[] = [];
+
+  // Honour the hints first, clamped to what each side can still support.
+  if (preferred.length > 0) {
+    const byId = (list: typeof creditors) => new Map(list.map((e) => [e.userId, e]));
+    const creditorById = byId(creditors);
+    const debtorById = byId(debtors);
+
+    for (const hint of preferred) {
+      if (!(hint.amountMinor > 0)) continue;
+      const creditor = creditorById.get(hint.toUserId);
+      const debtor = debtorById.get(hint.fromUserId);
+      if (!creditor || !debtor) continue;
+      const amount = Math.min(creditor.amount, debtor.amount, hint.amountMinor);
+      if (amount <= 0) continue;
+      repayments.push({
+        fromUserId: debtor.userId,
+        toUserId: creditor.userId,
+        amountMinor: amount,
+      });
+      creditor.amount -= amount;
+      debtor.amount -= amount;
+    }
+  }
+
   let ci = 0;
   let di = 0;
 
+  // Greedy settles the residue. Entries the hints exhausted are skipped here
+  // rather than removed above, so the sorted order stays untouched.
   while (ci < creditors.length && di < debtors.length) {
+    if (creditors[ci]!.amount === 0) {
+      ci++;
+      continue;
+    }
+    if (debtors[di]!.amount === 0) {
+      di++;
+      continue;
+    }
     const creditor = creditors[ci]!;
     const debtor = debtors[di]!;
     const amount = Math.min(creditor.amount, debtor.amount);

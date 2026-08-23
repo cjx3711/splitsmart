@@ -29,6 +29,7 @@ const { seed } = await import("../../db/seed.ts");
 const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
+const { tokenFromVerifyUrl } = await import("../../email/signup.ts");
 const { createExpense } = await import("../../domain/expenses.ts");
 const { listRelatedUserIds, addFriendship, friendPair } = await import(
   "../../domain/friends.ts"
@@ -345,11 +346,18 @@ describe("adding a friend", () => {
     assert.equal(stored.email, null);
     assert.equal(stored.invite_email, "squat@example.com");
 
+    const start = await app.request("/api/v1/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "squat@example.com" }),
+    });
+    assert.equal(start.status, 200);
+    const started = (await start.json()) as { verifyUrl: string };
     const registered = await app.request("/api/v1/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: "squat@example.com",
+        token: tokenFromVerifyUrl(started.verifyUrl),
         password: "hunter2hunter2",
         name: "The Real Squat",
       }),

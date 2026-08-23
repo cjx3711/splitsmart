@@ -32,6 +32,16 @@ export interface EntityMetadata {
   notes?: string;
   /** Set while a series is stopped; the live interval lives in repeat_interval. */
   repeat_paused?: string;
+  /**
+   * A one-on-one settle-up that restores a Splitwise friend total after import
+   * dropped extra digits past the currency's scale. Not a Splitwise row.
+   */
+  import_rounding?: boolean;
+  /**
+   * Comment-import rule revision. Bumped when previously skipped comments
+   * become importable so a later comments step re-fetches those expenses once.
+   */
+  splitwise_comments_import_rev?: number;
   [key: string]: unknown;
 }
 
