@@ -389,9 +389,13 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { ulid, isUlid, ulidTime } = await import("../../domain/ulid.ts");
-const { splitwiseIdOf, splitwiseIdSql, parseMetadata, serializeMetadata } = await import(
-  "../../domain/metadata.ts"
-);
+const {
+  splitwiseIdOf,
+  splitwiseIdSql,
+  parseMetadata,
+  serializeMetadata,
+  IMPORT_ROUNDING_DETAILS,
+} = await import("../../domain/metadata.ts");
 const { runDueRecurrences } = await import("../../domain/scheduler.ts");
 const { createExpense } = await import("../../domain/expenses.ts");
 
@@ -1104,12 +1108,16 @@ describe("rounding", () => {
 
     const payment = await db
       .selectFrom("expenses")
-      .select(["id", "is_payment", "details", "metadata"])
+      .select(["id", "is_payment", "details", "metadata", "date"])
       .where("id", "=", row.expenseId)
       .executeTakeFirstOrThrow();
     assert.equal(payment.is_payment, 1);
     assert.match(payment.details ?? "", /fractional amounts rounded off/i);
     assert.equal(parseMetadata(payment.metadata).import_rounding, true);
+    // Last real bill Alice and Bob share is Mountain hut (2026-03-08), not
+    // Ramen. Dating the leftover-yen payment to that bill keeps Bob from
+    // looking newly active.
+    assert.match(payment.date, /^2026-03-08/);
 
     const comments = await db
       .selectFrom("comments")
@@ -1120,11 +1128,29 @@ describe("rounding", () => {
     assert.match(comments[0]!.content, /restores the Splitwise friend total/i);
   });
 
-  test("a second run is a no-op once totals match", async () => {
+  test("a second run is a no-op once totals match, and retargets a misdated rounding payment", async () => {
+    const existing = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where("details", "=", IMPORT_ROUNDING_DETAILS)
+      .executeTakeFirstOrThrow();
+    await db
+      .updateTable("expenses")
+      .set({ date: "2026-08-23T00:00:00.000Z" })
+      .where("id", "=", existing.id)
+      .execute();
+
     const { status, body } = await post("/import/rounding", { apiKey: API_KEY });
     assert.equal(status, 200);
     assert.equal(body.created.length, 0);
     assert.equal(body.skipped.length, 0);
+
+    const payment = await db
+      .selectFrom("expenses")
+      .select("date")
+      .where("id", "=", existing.id)
+      .executeTakeFirstOrThrow();
+    assert.match(payment.date, /^2026-03-08/);
   });
 
   test("settles leftover yen inside a group, including between two other people", async () => {

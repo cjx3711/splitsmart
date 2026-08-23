@@ -89,8 +89,8 @@ function initialProgress(preview: ImportPreview): Progress {
   };
 }
 
-/** The expense endpoint's default page size. A short page means we have the real total. */
-const EXPENSE_PAGE_SIZE = 100;
+/** The expense endpoint's default page size. Used to estimate progress. */
+const EXPENSE_PAGE_SIZE = 500;
 
 interface Outcome {
   peopleCreated: number;

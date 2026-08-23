@@ -90,9 +90,9 @@ async function withUpstream<T>(
 
 const expensePageSchema = keySchema.extend({
   offset: z.number().int().min(0).default(0),
-  // Splitwise caps this server-side anyway; the ceiling here just stops a
-  // client asking for a page that takes minutes to come back.
-  limit: z.number().int().min(1).max(100).default(100),
+  // Splitwise currently honours at least 500. Trust the returned length, not
+  // this number, so a later cap cannot truncate an import.
+  limit: z.number().int().min(1).max(500).default(500),
 });
 
 /**
@@ -106,9 +106,10 @@ const expensePageSchema = keySchema.extend({
  */
 const commentPageSchema = keySchema.extend({
   offset: z.number().int().min(0).default(0),
-  // Lower than the expense page size on purpose: this may be one upstream request
-  // PER EXPENSE, with a courtesy delay between them.
-  limit: z.number().int().min(1).max(50).default(25),
+  // May be one Splitwise request per expense (when comments were not nested
+  // on the expenses page), with a courtesy delay between them. 200 keeps the
+  // wizard round-trips few; already-stamped rows skip the upstream call.
+  limit: z.number().int().min(1).max(200).default(200),
 });
 
 /**

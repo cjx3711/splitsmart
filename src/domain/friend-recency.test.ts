@@ -1,6 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { compareByLastExpense, lastSharedExpenseIdByUser } from "./friend-recency.ts";
+import { IMPORT_ROUNDING_DETAILS } from "./metadata.ts";
 
 const older = "01ARZ3NDEKTSV4RRFFQ69G5FAA";
 const newer = "01ARZ3NDEKTSV4RRFFQ69G5FAB";
@@ -50,6 +51,24 @@ describe("lastSharedExpenseIdByUser", () => {
       "me",
     );
     assert.equal(last.size, 0);
+  });
+
+  test("an import rounding settle-up does not count as a shared expense", () => {
+    const last = lastSharedExpenseIdByUser(
+      [
+        {
+          id: older,
+          shares: [{ userId: "me" }, { userId: "a" }],
+        },
+        {
+          id: newest,
+          details: IMPORT_ROUNDING_DETAILS,
+          shares: [{ userId: "me" }, { userId: "a" }],
+        },
+      ],
+      "me",
+    );
+    assert.equal(last.get("a"), older);
   });
 });
 

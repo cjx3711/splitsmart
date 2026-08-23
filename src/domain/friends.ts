@@ -40,6 +40,7 @@ export async function lastSharedExpenseIds(
     JOIN expense_users eu1 ON eu1.expense_id = e.id AND eu1.user_id = ${userId}
     JOIN expense_users eu2 ON eu2.expense_id = e.id AND eu2.user_id <> ${userId}
     WHERE e.deleted_at IS NULL
+      AND COALESCE(json_extract(e.metadata, '$.import_rounding'), 0) = 0
     GROUP BY eu2.user_id
   `.execute(db);
 

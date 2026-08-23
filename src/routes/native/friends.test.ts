@@ -200,6 +200,70 @@ describe("who counts as a friend", () => {
     assert.ok(ids.indexOf(newerId) < ids.indexOf(olderId));
   });
 
+  test("an import rounding settle-up does not bump a friend to the top", async () => {
+    const settledId = ulid();
+    const recentId = ulid();
+    await db
+      .insertInto("users")
+      .values([
+        { id: settledId, name: "Settled Long Ago", default_currency: "USD", is_ghost: 1 },
+        { id: recentId, name: "Recent Friend", default_currency: "USD", is_ghost: 1 },
+      ])
+      .execute();
+    await addFriendship(aliceId, settledId);
+    await addFriendship(aliceId, recentId);
+
+    const t = Date.now();
+    await createExpense({
+      id: ulid(t),
+      description: "Old dinner",
+      costMinor: 400,
+      currencyCode: "USD",
+      date: "2022-12-13",
+      splitType: "equal",
+      createdBy: aliceId,
+      participants: [
+        { userId: aliceId, paidMinor: 400 },
+        { userId: settledId, paidMinor: 0 },
+      ],
+    });
+    await createExpense({
+      id: ulid(t + 60_000),
+      description: "Recent coffee",
+      costMinor: 500,
+      currencyCode: "USD",
+      date: "2026-08-01",
+      splitType: "equal",
+      createdBy: aliceId,
+      participants: [
+        { userId: aliceId, paidMinor: 500 },
+        { userId: recentId, paidMinor: 0 },
+      ],
+    });
+    const { IMPORT_ROUNDING_DETAILS } = await import("../../domain/metadata.ts");
+    await createExpense({
+      id: ulid(t + 120_000),
+      description: "Payment",
+      details: IMPORT_ROUNDING_DETAILS,
+      costMinor: 1,
+      currencyCode: "JPY",
+      date: "2026-08-23",
+      splitType: "exact",
+      isPayment: true,
+      createdBy: aliceId,
+      metadata: { import_rounding: true },
+      participants: [
+        { userId: aliceId, paidMinor: 0, input: 1 },
+        { userId: settledId, paidMinor: 1, input: 0 },
+      ],
+    });
+
+    const res = await authed("/api/v1/friends");
+    const body = (await res.json()) as { friends: Array<{ id: string }> };
+    const ids = body.friends.map((f) => f.id);
+    assert.ok(ids.indexOf(recentId) < ids.indexOf(settledId));
+  });
+
   test("sharing a group is enough (no friendships row needed)", async () => {
     const ids = await listRelatedUserIds(db, aliceId);
     assert.ok(ids.includes(bobId));

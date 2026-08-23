@@ -45,6 +45,20 @@ export interface EntityMetadata {
   [key: string]: unknown;
 }
 
+/**
+ * `expenses.details` on an `import_rounding` settle-up. Friend recency skips
+ * these so a leftover-yen payment does not bump a settled friend to the top
+ * of the list; the expense itself is dated to the last real bill with them.
+ */
+export const IMPORT_ROUNDING_DETAILS =
+  "Offsets fractional amounts rounded off when importing from Splitwise.";
+
+export function isImportRoundingExpense(expense: {
+  details?: string | null;
+}): boolean {
+  return expense.details === IMPORT_ROUNDING_DETAILS;
+}
+
 export const EMPTY_METADATA = "{}";
 
 export function parseMetadata(raw: string | null | undefined): EntityMetadata {

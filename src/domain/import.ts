@@ -49,6 +49,7 @@ import {
   importStamp,
   markImportSynced,
   resumeRepeat,
+  retargetExpenseDate,
   updateExpense,
 } from "./expenses.ts";
 import {
@@ -65,8 +66,9 @@ import {
   findExplicitGhostByInviteEmail,
   listRelatedUserIds,
 } from "./friends.ts";
-import { isUlid, ulid } from "./ulid.ts";
+import { isUlid, ulid, ulidTime } from "./ulid.ts";
 import {
+  IMPORT_ROUNDING_DETAILS,
   metadataFromSplitwise,
   parseMetadata,
   serializeMetadata,
@@ -420,7 +422,7 @@ export async function previewImport(
       // One page, purely to see what Splitwise says about comments, recurrence and
       // receipts. The warnings below are the whole reason: a wizard that mentions
       // these only afterwards is a wizard that surprised you.
-      client.getExpenses({ limit: 100, offset: 0 }),
+      client.getExpenses({ limit: 500, offset: 0 }),
       loadCurrencyDecimals(),
     ]);
 
@@ -871,7 +873,7 @@ export async function importExpensePage(
   );
 
   const offset = params.offset ?? 0;
-  const limit = params.limit ?? 100;
+  const limit = params.limit ?? 500;
 
   const page = await client.getExpenses({ limit, offset });
   const resolver = new PersonResolver(userId, swMe.id, owner.default_currency);
@@ -1496,7 +1498,7 @@ export async function importCommentsPage(
   );
 
   const offset = params.offset ?? 0;
-  const limit = params.limit ?? 25;
+  const limit = params.limit ?? 200;
 
   const resolver = new PersonResolver(userId, swMe.id, owner.default_currency);
 
@@ -1628,6 +1630,11 @@ export async function reconcileImportedBalances(
   client: SplitwiseClient,
   userId: string,
 ): Promise<RoundingResult> {
+  // Existing leftover-cent payments were dated "today" and bumped settled
+  // friends to the top of the list. Slide them onto the last real bill first,
+  // including on a no-op re-run that creates nothing new.
+  await retargetRoundingDates(userId);
+
   const [swFriends, swGroups] = await Promise.all([client.getFriends(), client.getGroups()]);
   const [decimals, localBySw, groupBySw] = await Promise.all([
     loadCurrencyDecimals(),
@@ -1953,6 +1960,103 @@ function nameOf(
   return userId;
 }
 
+/**
+ * The most recent non-rounding bill these two people share (in `groupId`,
+ * or anywhere if the settle-up is one-on-one). Rounding payments take that
+ * bill's date and sit just after it in ULID order, so they do not bump a
+ * settled friend to the top of the list.
+ */
+async function lastRealExpense(input: {
+  fromUserId: string;
+  toUserId: string;
+  groupId: string | null;
+}): Promise<{ id: string; date: string } | null> {
+  const both = await lastExpenseMatching({
+    fromUserId: input.fromUserId,
+    toUserId: input.toUserId,
+    groupId: input.groupId,
+  });
+  if (both || input.groupId === null) return both;
+  // Third-party group residue: the two people may never have been on the
+  // same bill. Date it to the group's last real expense rather than today.
+  return lastExpenseMatching({ groupId: input.groupId });
+}
+
+async function lastExpenseMatching(input: {
+  fromUserId?: string;
+  toUserId?: string;
+  groupId?: string | null;
+}): Promise<{ id: string; date: string } | null> {
+  if (input.fromUserId && input.toUserId) {
+    let query = db
+      .selectFrom("expenses as e")
+      .innerJoin("expense_users as a", (j) =>
+        j.onRef("a.expense_id", "=", "e.id").on("a.user_id", "=", input.fromUserId!),
+      )
+      .innerJoin("expense_users as b", (j) =>
+        j.onRef("b.expense_id", "=", "e.id").on("b.user_id", "=", input.toUserId!),
+      )
+      .select(["e.id", "e.date"])
+      .where("e.deleted_at", "is", null)
+      .where((eb) =>
+        eb.or([
+          eb("e.metadata", "is", null),
+          eb("e.metadata", "not like", '%"import_rounding":true%'),
+        ]),
+      );
+    if (input.groupId) {
+      query = query.where("e.group_id", "=", input.groupId);
+    }
+    return (await query.orderBy("e.id", "desc").limit(1).executeTakeFirst()) ?? null;
+  }
+
+  let query = db
+    .selectFrom("expenses as e")
+    .select(["e.id", "e.date"])
+    .where("e.deleted_at", "is", null)
+    .where((eb) =>
+      eb.or([
+        eb("e.metadata", "is", null),
+        eb("e.metadata", "not like", '%"import_rounding":true%'),
+      ]),
+    );
+  if (input.groupId) {
+    query = query.where("e.group_id", "=", input.groupId);
+  }
+  return (await query.orderBy("e.id", "desc").limit(1).executeTakeFirst()) ?? null;
+}
+
+/**
+ * Move already-written rounding payments onto the last real bill's date.
+ * Friend recency still skips them; this is so the shared-expense list does
+ * not open on "received 1 JPY" dated today for someone last seen years ago.
+ */
+export async function retargetRoundingDates(userId: string): Promise<void> {
+  const rows = await db
+    .selectFrom("expenses")
+    .select(["id", "group_id", "date", "metadata"])
+    .where("deleted_at", "is", null)
+    .where("created_by", "=", userId)
+    .execute();
+
+  for (const row of rows) {
+    if (parseMetadata(row.metadata).import_rounding !== true) continue;
+    const people = await db
+      .selectFrom("expense_users")
+      .select("user_id")
+      .where("expense_id", "=", row.id)
+      .execute();
+    if (people.length < 2) continue;
+    const anchor = await lastRealExpense({
+      fromUserId: people[0]!.user_id,
+      toUserId: people[1]!.user_id,
+      groupId: row.group_id,
+    });
+    if (!anchor) continue;
+    await retargetExpenseDate(row.id, anchor.date, userId);
+  }
+}
+
 async function writeRoundingPayment(input: {
   actorUserId: string;
   fromUserId: string;
@@ -1971,18 +2075,35 @@ async function writeRoundingPayment(input: {
     await ensureMember(input.groupId, input.toUserId, "import");
   }
 
+  const anchor = await lastRealExpense({
+    fromUserId: input.fromUserId,
+    toUserId: input.toUserId,
+    groupId: input.groupId,
+  });
+  const ms = anchor ? ulidTime(anchor.id) : NaN;
+  const when =
+    anchor && Number.isFinite(ms)
+      ? {
+          date: anchor.date,
+          id: ulid(ms + 1),
+          createdAt: new Date(ms + 1).toISOString(),
+        }
+      : { date: new Date().toISOString(), id: ulid(), createdAt: undefined };
+
   const expenseId = await createExpense({
+    id: when.id,
     description: "Payment",
-    details: "Offsets fractional amounts rounded off when importing from Splitwise.",
+    details: IMPORT_ROUNDING_DETAILS,
     costMinor: input.amount,
     currencyCode: input.currency,
-    date: new Date().toISOString(),
+    date: when.date,
     splitType: "exact",
     isPayment: true,
     groupId: input.groupId,
     metadata: { import_rounding: true },
     createdBy: input.actorUserId,
     recordActivity: false,
+    ...(when.createdAt ? { createdAt: when.createdAt } : {}),
     participants: [
       { userId: input.fromUserId, paidMinor: input.amount, input: 0 },
       { userId: input.toUserId, paidMinor: 0, input: input.amount },

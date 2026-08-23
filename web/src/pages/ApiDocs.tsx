@@ -594,7 +594,7 @@ export function ApiDocs() {
         <p>Step 2.</p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/expenses">
-        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 100 }`}</Code>
+        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 500 }`}</Code>
         <p>
           One page. Returns <code>imported</code>, <code>alreadyPresent</code>,{" "}
           <code>refreshed</code>, <code>commentsImported</code>,{" "}
@@ -608,7 +608,7 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/comments">
-        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 25 }`}</Code>
+        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 200 }`}</Code>
         <p>
           Step 4, after expenses, because a comment references one. Cheap and safe
           to call either way: when Splitwise nests comments on the expenses page

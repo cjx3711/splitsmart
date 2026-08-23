@@ -909,6 +909,46 @@ export async function advanceRepeatSchedule(
 }
 
 /**
+ * Moves an expense onto a different calendar date without bumping `version`.
+ *
+ * Import rounding uses this to sit leftover-cent settle-ups on the last real
+ * bill's day so they do not look like new activity. Same versioning rule as
+ * `advanceRepeatSchedule`: this is bookkeeping, not a person editing a bill.
+ * Other devices still learn the new date via `sync_log`.
+ */
+export async function retargetExpenseDate(
+  expenseId: string,
+  date: string,
+  actorUserId: string,
+): Promise<boolean> {
+  const normalised = normaliseDate(date);
+  return transaction(async (trx) => {
+    const existing = await trx
+      .selectFrom("expenses")
+      .select(["date", "group_id"])
+      .where("id", "=", expenseId)
+      .executeTakeFirst();
+    if (!existing || existing.date === normalised) return false;
+
+    await trx
+      .updateTable("expenses")
+      .set({ date: normalised })
+      .where("id", "=", expenseId)
+      .execute();
+
+    await logChange(trx, {
+      entity: "expense",
+      entityId: expenseId,
+      op: "upsert",
+      groupId: existing.group_id,
+      actorUserId,
+    });
+
+    return true;
+  });
+}
+
+/**
  * Records a settle-up payment.
  *
  * Modelled as an ordinary expense with is_payment = 1, where the payer covers

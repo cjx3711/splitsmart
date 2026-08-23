@@ -154,8 +154,14 @@ export interface SplitwiseClientOptions {
   requestDelayMs?: number;
 }
 
-/** Splitwise caps page size server-side; trust the returned length, not this. */
-export const EXPENSE_PAGE_SIZE = 100;
+/**
+ * Default `get_expenses` page size.
+ *
+ * Splitwise's docs do not publish a max. They used to silently cap at 100;
+ * they currently honour at least 500. Trust the returned length, not this,
+ * so a later cap cannot truncate an import.
+ */
+export const EXPENSE_PAGE_SIZE = 500;
 
 export class SplitwiseClient {
   private readonly apiKey: string;

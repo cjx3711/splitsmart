@@ -440,15 +440,21 @@ export const api = {
     call(client.import.groups.$post, client.import.groups.$post({ json: { apiKey } })),
 
   /** One page. Feed `nextOffset` back in until `done`. */
-  importExpenses: (apiKey: string, offset = 0) =>
-    call(client.import.expenses.$post, client.import.expenses.$post({ json: { apiKey, offset } })),
+  importExpenses: (apiKey: string, offset = 0, limit = 500) =>
+    call(
+      client.import.expenses.$post,
+      client.import.expenses.$post({ json: { apiKey, offset, limit } }),
+    ),
 
   /**
    * Step 4. Safe to call even when Splitwise nested the comments on the expense
    * payload: those are already in and stamped, so this walks past them.
    */
-  importComments: (apiKey: string, offset = 0) =>
-    call(client.import.comments.$post, client.import.comments.$post({ json: { apiKey, offset } })),
+  importComments: (apiKey: string, offset = 0, limit = 200) =>
+    call(
+      client.import.comments.$post,
+      client.import.comments.$post({ json: { apiKey, offset, limit } }),
+    ),
 
   /**
    * Step 5. Compares Splitwise friend totals with ours and records settle-ups
