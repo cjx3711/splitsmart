@@ -12,8 +12,8 @@
  *
  * Four steps: key -> review -> run -> done. The run step drives the paged
  * expense and comment endpoints in a loop so progress is real rather than a
- * spinner, then matches Splitwise friend totals and records leftover-cent
- * settle-ups.
+ * spinner, then matches Splitwise group nets and friend totals and records
+ * leftover-cent settle-ups.
  *
  * Comments run after expenses, because `comments.expense_id` is a foreign key.
  * Rounding runs last: it needs the imported balances to exist.
@@ -580,7 +580,7 @@ function RunningStep({ progress }: { progress: Progress }) {
           phase={progress.comments}
           eta={commentsEta}
         />
-        <ImportPhaseRow label="Friend totals" phase={progress.rounding} />
+        <ImportPhaseRow label="Balances" phase={progress.rounding} />
       </div>
       <span className="muted">
         Leave this page open. Anything already imported is matched on its Splitwise id, so if this
@@ -904,15 +904,17 @@ function DoneStep({ outcome }: { outcome: Outcome }) {
             Rounding settle-ups ({outcome.rounding.created.length})
             <HelpTip label="About rounding settle-ups">
               Splitwise sometimes stores more decimal places than a currency allows. Those extra
-              digits are dropped on each bill, which can leave friend totals a few cents apart.
-              Each of these payments restores the Splitwise total. The bills themselves are
-              unchanged.
+              digits are dropped on each bill, which can leave a group or a friend total a few
+              cents apart. Groups are settled first, including leftover yen between two other
+              people. Each of these payments restores the Splitwise total. The bills themselves
+              are unchanged.
             </HelpTip>
           </strong>
           <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
             {outcome.rounding.created.map((row) => (
               <li key={row.expenseId}>
                 <Link to={`/expenses/${row.expenseId}`}>{row.friendName}</Link>
+                {row.groupName ? ` · ${row.groupName}` : ""}
                 {" · "}
                 <Amount minor={row.amountMinor} currency={row.currencyCode} />
               </li>

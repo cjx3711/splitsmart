@@ -65,9 +65,9 @@ export const CAPTURE_PARAMS = {
  * them in CSS beats masking: the box keeps its size, so layout still compares.
  *
  *   .avatar     hue is hashed from the user's ULID; every smoke:reset mints new ones.
- *   .estimate   the ≈ overall figure, converted at live Frankfurter rates.
+ *   .estimate   the ≈ overall figure, converted at live Exchange Rate API rates.
  *   .comment-time  system comments are stamped at seed time, not SEED_TODAY.
- *   .sync-badge / .syncbar  pending vs synced is a race against the outbox.
+ *   .sync-badge / .sync-icon / .syncbar  pending vs synced is a race against the outbox.
  */
 export const STABILISE_CSS = `
   *, *::before, *::after {
@@ -80,10 +80,10 @@ export const STABILISE_CSS = `
     box-shadow: none !important;
   }
   .avatar { background: #55606e !important; }
-  /* Live FX estimate: presence is a race against Frankfurter. Drop the node
+  /* Live FX estimate: presence is a race against the rates fetch. Drop the node
      from layout rather than hiding it in place, or a late fetch shifts pixels. */
   .estimate { display: none !important; }
-  .comment-time, .sync-badge, .syncbar { visibility: hidden !important; }
+  .comment-time, .sync-badge, .sync-icon, .syncbar { visibility: hidden !important; }
 `;
 
 const DEFS: ScreenDef[] = [

@@ -3,12 +3,14 @@
  *
  * Shows each expense from the signed-in user's point of view: their own net
  * position on it (paid minus owed), which is the number people actually look
- * for. The cost sits next to it for context.
+ * for. That net is the headline — green "lent" / coral "borrowed" — and the
+ * bill total sits underneath as context.
  *
  * Payments (`is_payment`) are a transfer, not a bill, so they get a different
  * row: a small payment mark and "{payer} paid {recipient}" instead of the
- * stored "Payment"/"Settle up" label. The amount is signed (received vs paid)
- * rather than repeating "you lent" / "you borrowed" next to a duplicate total.
+ * stored "Payment"/"Settle up" label. The headline is "sent" / "received"
+ * rather than lent / borrowed, and there is no second total — the transfer
+ * and the bill are the same number.
  *
  * The row itself opens the expense's own page, where editing and deleting
  * live on the expense's own page, not here, and not behind a bare "✕" with no confirmation. The group
@@ -209,21 +211,25 @@ export function ExpenseList({
                     deleted
                   </span>
                 )}
-                {isPayment ? (
-                  <Amount
-                    minor={net !== 0 ? net : expense.cost_minor}
-                    currency={expense.currency_code}
-                    absolute
-                    signed={net !== 0}
-                  />
+                {net !== 0 ? (
+                  <span className="list-item-net">
+                    <span className="list-item-verb">
+                      {isPayment ? (net > 0 ? "sent" : "received") : net > 0 ? "lent" : "borrowed"}
+                    </span>
+                    <Amount
+                      minor={net}
+                      currency={expense.currency_code}
+                      absolute
+                      signed
+                    />
+                  </span>
                 ) : (
                   <Amount minor={expense.cost_minor} currency={expense.currency_code} />
                 )}
               </div>
               {!isPayment && net !== 0 && (
                 <div className="muted list-item-caption">
-                  {net > 0 ? "you lent " : "you borrowed "}
-                  <Amount minor={net} currency={expense.currency_code} absolute />
+                  <Amount minor={expense.cost_minor} currency={expense.currency_code} />
                 </div>
               )}
             </div>

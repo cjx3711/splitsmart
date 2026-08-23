@@ -645,6 +645,8 @@ export const guestRoutes = new Hono<GuestEnv>()
       amountMinor: z.number().int().positive(),
       currencyCode: z.string().length(3).toUpperCase(),
       date: z.string().optional(),
+      description: z.string().min(1).max(500).optional(),
+      details: z.string().max(5000).optional(),
     }),
   ),
   async (c) => {
@@ -663,6 +665,8 @@ export const guestRoutes = new Hono<GuestEnv>()
         currencyCode: input.currencyCode,
         groupId,
         date: input.date,
+        description: input.description,
+        details: input.details,
         createdBy: scope.actingAs,
       });
       return c.json({ id }, 201);

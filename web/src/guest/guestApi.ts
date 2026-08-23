@@ -214,6 +214,8 @@ export const guestApi = {
     amountMinor: number;
     currencyCode: string;
     date?: string;
+    description?: string;
+    details?: string;
   }) => request<{ id: string }>("/payments", { method: "POST", body: JSON.stringify(input) }),
 
   // --- comments -------------------------------------------------------------

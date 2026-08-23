@@ -22,8 +22,8 @@
   - heading "Balances" [level=2]
   - text: Test User gets back 1200JPY JJ gets back 6000JPY Ah Beng owes 3600JPY You owes 3600JPY
   - heading "Expenses" [level=2]
-  - link "TeamLab tickets <DATE> · Life · JJ paid 9600JPY you borrowed 2400JPY"
-  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments 4800JPY you borrowed 1200JPY"
+  - link "TeamLab tickets <DATE> · Life · JJ paid borrowed 2400JPY 9600JPY"
+  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments borrowed 1200JPY 4800JPY"
   - heading "Members About members" [level=2]:
     - text: Members
     - button "About members": "?"

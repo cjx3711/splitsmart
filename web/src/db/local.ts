@@ -21,9 +21,9 @@
  * 3. **Balances are never stored, only derived.** There is no balances table and
  *    there must not be one. `web/src/db/queries.ts` runs the real
  *    `deriveRepayments` over the shares held here, because a pairwise net taken
- *    from two people's paid/owed on a three-way bill is simply wrong, and
- *    because `expense_repayments` is a write-time cache on the server (rule 4)
- *    rather than something to replicate.
+ *    from two people's paid/owed on a three-way bill is simply wrong. The
+ *    stored pairing arrives on the expense as `repayments` and is a hint, the
+ *    same way the server passes Splitwise's `repayments[]` into `createExpense`.
  *
  * Dexie rather than raw IndexedDB for `liveQuery` (every screen re-renders when
  * a sync lands, with no cache-invalidation code of our own), versioned schema
@@ -167,6 +167,12 @@ export interface MetaValues {
    * 1 = `simplifyByDefault` has been stamped from the server.
    */
   groupShape: number;
+  /**
+   * Shape of expense documents in this mirror. Bumped when a field is added
+   * that pull will not rewrite on an unchanged bill.
+   * 1 = `repayments` (the stored pairing) has been stamped from bootstrap.
+   */
+  expenseShape: number;
   /** The cached profile, so a reload with no network renders the app. */
   profile: SyncUser;
 }
@@ -207,8 +213,12 @@ export type LocalDb = Dexie & {
  * null: Dexie simply omits null-valued rows from that index, which is why the
  * live-expense queries filter in JavaScript rather than trusting `equals(null)`.
  */
+export function localDbName(userId: string): string {
+  return `splitsmart-${userId}`;
+}
+
 export function openLocalDb(userId: string): LocalDb {
-  const db = new Dexie(`splitsmart-${userId}`) as LocalDb;
+  const db = new Dexie(localDbName(userId)) as LocalDb;
 
   db.version(1).stores({
     expenses: "id, groupId, date, syncState, repeatOf",
@@ -224,6 +234,11 @@ export function openLocalDb(userId: string): LocalDb {
   });
 
   return db;
+}
+
+/** Drops the mirror for one account. Close the live Dexie first. */
+export async function deleteLocalDb(userId: string): Promise<void> {
+  await Dexie.delete(localDbName(userId));
 }
 
 // ---------------------------------------------------------------------------

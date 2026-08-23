@@ -39,6 +39,8 @@ export function Dialog({
   closeOnBackdrop?: boolean;
 } & Omit<DialogHTMLAttributes<HTMLDialogElement>, "open" | "className">) {
   const ref = useRef<HTMLDialogElement>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
 
   useEffect(() => {
     const dialog = ref.current;
@@ -48,13 +50,17 @@ export function Dialog({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  // Escape (and dialog.close()) fire without going through React, so mirror
-  // the browser's own `close` event back into state or the two drift apart.
+  // Escape fires `close` without going through React, so bounce that back into
+  // state or the two drift apart. dialog.close() fires the same event, including
+  // when React already set open=false to move to another step — only notify the
+  // parent when it still thinks this dialog is open.
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
 
-    const handleClose = () => onClose();
+    const handleClose = () => {
+      if (openRef.current) onClose();
+    };
     dialog.addEventListener("close", handleClose);
     return () => dialog.removeEventListener("close", handleClose);
   }, [onClose]);

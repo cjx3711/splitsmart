@@ -12,13 +12,14 @@
  * real `deriveRepayments` over the shares in the mirror, per expense, and then
  * summing per currency. That is the third decision in docs/OFFLINE.md and it is
  * not an optimisation to skip: a pairwise net taken from two people's paid/owed
- * on a three-way bill is wrong, and `expense_repayments` on the server is a
- * write-time cache (rule 4) rather than something to replicate.
+ * on a three-way bill is wrong. The stored pairing rides along on the expense
+ * as `repayments` and is passed as `preferred` so an imported two-payer bill
+ * does not flip who owes whom when the client re-derives (rule 4).
  *
  * CURRENCIES ARE NEVER MIXED, exactly as on the server. Everything returns an
  * array per currency. The ≈ estimate the dashboard can show comes from live
- * Frankfurter rates and is display-only; with no network there is no estimate,
- * which is the honest outcome rather than a stale one.
+ * Exchange Rate API rates and is display-only; with no network and no day-old
+ * browser cache there is no estimate, which is the honest outcome.
  */
 import { deriveRepayments } from "../../../src/domain/split.ts";
 import { displayName } from "../../../src/domain/person.ts";
@@ -138,9 +139,8 @@ interface Movement {
  * Every who-owes-whom in the mirror, one entry per repayment per expense.
  *
  * This is the server's `expense_repayments` table, recomputed on read instead of
- * replicated. It is cheap - a handful of participants per bill, arithmetic only -
- * and it means the mirror cannot hold a stale derivation, which is the failure
- * mode a replicated cache would have.
+ * copied as a cache. The stored pairing is a hint, not a second ledger: nets
+ * still come from the shares, and a stale hint cannot disagree with them.
  */
 function movements(expenses: LocalExpense[]): Movement[] {
   const result: Movement[] = [];
@@ -153,6 +153,7 @@ function movements(expenses: LocalExpense[]): Movement[] {
         owedMinor: s.owedShareMinor,
         input: s.splitInput,
       })),
+      expense.repayments,
     );
 
     for (const r of repayments) {

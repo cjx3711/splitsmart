@@ -922,6 +922,8 @@ export async function createPayment(params: {
   currencyCode: string;
   groupId?: string | null;
   date?: string;
+  description?: string;
+  details?: string | null;
   paymentMethod?: string | null;
   createdBy: string;
 }): Promise<string> {
@@ -934,7 +936,8 @@ export async function createPayment(params: {
 
   return createExpense({
     groupId: params.groupId ?? null,
-    description: "Payment",
+    description: params.description ?? "Payment",
+    details: params.details ?? null,
     costMinor: params.amountMinor,
     currencyCode: params.currencyCode,
     date: params.date ?? new Date().toISOString(),

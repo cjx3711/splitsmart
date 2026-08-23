@@ -52,6 +52,20 @@ export interface SyncShare {
 }
 
 /**
+ * One who-owes-whom edge, as stored in `expense_repayments`.
+ *
+ * A hint to `deriveRepayments`, not a second ledger. Net positions do not
+ * determine the pairing (two payers, four people: several valid matchings).
+ * Imported bills carry Splitwise's own pairing so a non-group expense does not
+ * show up as a phantom friend balance when the client re-derives on read.
+ */
+export interface SyncRepayment {
+  fromUserId: string;
+  toUserId: string;
+  amountMinor: number;
+}
+
+/**
  * An expense, its shares, and the people on it.
  *
  * `people` is here rather than left to a separate `users` sync because an
@@ -94,6 +108,12 @@ export interface SyncExpense {
   deletedAt: string | null;
   shares: SyncShare[];
   people: SyncUser[];
+  /**
+   * Stored pairing, passed back into `deriveRepayments` as `preferred`.
+   * Absent on a locally-created bill that has not been echoed yet; greedy
+   * then matches what the server will store. Always present on bootstrap/pull.
+   */
+  repayments?: SyncRepayment[];
 }
 
 export interface SyncComment {

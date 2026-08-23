@@ -630,10 +630,35 @@ h3 {
   color: var(--muted);
 }
 
+.ledger-actions {
+  margin-top: 0.65rem;
+}
+
+.convert-preview {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.convert-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+}
+
+.convert-preview-arrow {
+  color: var(--muted);
+}
+
 .conversion-note {
   margin: 0.4rem 0 0;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.conversion-note a {
+  color: inherit;
+  text-decoration: underline;
 }
 
 .settle-currency-picker {
@@ -947,6 +972,23 @@ a.list-item:hover,
 .list-item-figures {
   text-align: right;
   flex-shrink: 0;
+}
+
+.list-item-net {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+.list-item-verb {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.list-item-figures .amount.positive .code,
+.list-item-figures .amount.negative .code {
+  color: inherit;
 }
 
 .list-item-caption {
@@ -3074,6 +3116,18 @@ button.guest-pick.selected {
   color: var(--accent);
 }
 
+.sync-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.35rem;
+  color: var(--muted);
+  vertical-align: -0.15em;
+}
+
+.sync-icon svg {
+  display: block;
+}
+
 .sync-badge {
   display: inline-block;
   margin-left: 0.4rem;
@@ -3084,11 +3138,6 @@ button.guest-pick.selected {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   vertical-align: 0.12em;
-}
-
-.sync-badge-pending {
-  color: var(--muted);
-  border: 1px solid var(--border-strong);
 }
 
 .sync-badge-conflict,

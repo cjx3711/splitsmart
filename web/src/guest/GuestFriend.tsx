@@ -19,6 +19,7 @@ import {
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { GroupTypeIcon } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { ConvertBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
 
@@ -41,7 +42,7 @@ export function GuestFriend() {
   // two on this page. Without them, a payer renders as "User 01ARZ3...".
   const [people, setPeople] = useState<GuestVisiblePerson[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -141,6 +142,23 @@ export function GuestFriend() {
         }}
       />
 
+      <ConvertBalanceDialog
+        open={openDialog === "convert"}
+        themName={name}
+        youId={me.id}
+        themId={counterpart.id}
+        balances={balances}
+        preferredCurrency={me.defaultCurrency}
+        onClose={() => setOpenDialog(null)}
+        onSubmit={async (payments) => {
+          for (const payment of payments) {
+            const { id } = await guestApi.createPayment({ ...payment, groupId: null });
+            await guestApi.addComment(id, payment.comment);
+          }
+          await load();
+        }}
+      />
+
       <div className="card">
         <span className="eyebrow">Between you</span>
         {balances.length === 0 ? (
@@ -161,6 +179,17 @@ export function GuestFriend() {
         )}
         {balances.length > 1 && (
           <EstimatedTotal balances={balances} preferredCurrency={me.defaultCurrency} />
+        )}
+        {balances.length > 1 && (
+          <div className="ledger-actions">
+            <button
+              type="button"
+              className="secondary inline"
+              onClick={() => setOpenDialog("convert")}
+            >
+              Convert balance
+            </button>
+          </div>
         )}
         <ConversionFootnote sets={[balances]} preferredCurrency={me.defaultCurrency} />
       </div>

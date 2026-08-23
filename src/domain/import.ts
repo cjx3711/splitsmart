@@ -33,8 +33,9 @@
  *    dropped, a system comment is left on the bill, and the row is listed in
  *    `warnings[]` rather than `skipped[]`. Unknown currency, a group that has
  *    not been imported yet, shares that do not add up: those still skip. A
- *    later rounding step then compares Splitwise friend totals and records a
- *    one-on-one settle-up for leftover cents so the books match.
+ *    later rounding step then matches Splitwise group member nets first, then
+ *    friend totals, and records settle-ups for leftover cents so the books
+ *    match per group and per friend.
  *
  * The API key never reaches this module as anything but a live client object,
  * and is never persisted. See src/splitwise/client.ts.
@@ -50,7 +51,12 @@ import {
   resumeRepeat,
   updateExpense,
 } from "./expenses.ts";
-import { getPairwiseBalances, getPairwiseBalancesByGroup } from "./balances.ts";
+import {
+  getGroupBalances,
+  getPairwiseBalances,
+  getPairwiseBalancesByGroup,
+} from "./balances.ts";
+import { simplifyDebts } from "./settle.ts";
 import { isRepeatInterval, type RepeatInterval } from "./recurring.ts";
 import { createComment } from "./comments.ts";
 import { logChange } from "./sync-log.ts";
@@ -1573,24 +1579,20 @@ export async function importCommentsPage(
 }
 
 /**
- * Compare Splitwise friend totals with ours and record settle-ups for
- * leftover cents.
+ * Compare Splitwise balances with ours and record settle-ups for leftover cents.
  *
  * Truncation (and the remainder bump that keeps paid/owed summing to the cost)
- * can leave friend totals a few minor units away from Splitwise. This step
- * reads `get_friends`, diffs per currency, and writes a payment for any gap
- * of at most `MAX_ROUNDING_MINOR`. Larger gaps are skipped: those are skipped
- * expenses or real drift, not dropped fractions, and must not be papered over.
+ * can leave a group, or a friend total, a few minor units away from Splitwise.
+ * This step writes a payment for any gap of at most `MAX_ROUNDING_MINOR`.
+ * Larger gaps are skipped: those are skipped expenses or real drift, not
+ * dropped fractions, and must not be papered over.
  *
- * `get_friends` only gives the total across every shared group plus one-on-one
- * expenses, never a per-group figure, so there is no Splitwise truth to check a
- * single group against. When exactly one shared group carries a nonzero
- * balance in the currency being corrected, the drift can only be there, and
- * the payment is recorded inside that group; otherwise (several candidate
- * groups, or none) it falls back to one-on-one as before. Recording it
- * one-on-one when the answer was actually a single group would leave that
- * group looking unsettled while a same-sized one-on-one balance quietly
- * cancels it out in the total - correct in aggregate, confusing per group.
+ * Groups first. `get_groups` includes each member's net, so a group Splitwise
+ * says is settled can be settled here too — including a 1-yen residue between
+ * two other people that the importer is not on. Friend totals run after, and
+ * only see what is still left (almost always the one-on-one bucket). Doing
+ * friends first would park a group residue as a phantom one-on-one payment
+ * that cancels in aggregate and looks wrong per group.
  *
  * Re-running is a no-op once the totals match. The payments carry no
  * `splitwise_id`, so a later expense refresh cannot treat them as upstream rows.
@@ -1607,6 +1609,7 @@ export interface RoundingTransfer {
   toUserId: string;
   /** Which group's residue this settles, or null for the one-on-one bucket. */
   groupId: string | null;
+  groupName?: string | null;
 }
 
 export interface RoundingSkip {
@@ -1625,24 +1628,204 @@ export async function reconcileImportedBalances(
   client: SplitwiseClient,
   userId: string,
 ): Promise<RoundingResult> {
-  const swFriends = await client.getFriends();
-  const [decimals, ours, byGroup, localBySw] = await Promise.all([
+  const [swFriends, swGroups] = await Promise.all([client.getFriends(), client.getGroups()]);
+  const [decimals, localBySw, groupBySw] = await Promise.all([
     loadCurrencyDecimals(),
-    getPairwiseBalances(db, userId),
-    getPairwiseBalancesByGroup(db, userId),
     loadUsersBySplitwiseId(),
+    loadGroupMap(),
   ]);
 
-  const oursByUser = new Map(ours.map((row) => [row.otherUserId, row.balances]));
+  const created: RoundingTransfer[] = [];
+  const skipped: RoundingSkip[] = [];
 
-  // Splitwise's `get_friends` total is not broken down by group, so a
-  // currency with only one shared group carrying a nonzero balance in it is
-  // the one place the drift can be: attribute the correction there instead of
-  // one-on-one, or the group looks unsettled while a phantom one-on-one
-  // balance quietly cancels it out. Two-plus candidate groups (or none) keep
-  // the old one-on-one fallback, since there is no way to tell which is real.
+  await reconcileGroupResidues({
+    userId,
+    swGroups,
+    decimals,
+    localBySw,
+    groupBySw,
+    created,
+    skipped,
+  });
+
+  // Friend totals after the group payments, so one-on-one only sees residue
+  // that is actually one-on-one (or a group we could not settle).
+  const [ours, byGroup] = await Promise.all([
+    getPairwiseBalances(db, userId),
+    getPairwiseBalancesByGroup(db, userId),
+  ]);
+  await reconcileFriendResidues({
+    userId,
+    swFriends,
+    decimals,
+    localBySw,
+    ours,
+    byGroup,
+    created,
+    skipped,
+  });
+
+  return { created, skipped };
+}
+
+async function reconcileGroupResidues(input: {
+  userId: string;
+  swGroups: SplitwiseGroup[];
+  decimals: Map<string, number>;
+  localBySw: Map<number, { id: string; name: string }>;
+  groupBySw: Map<number, string>;
+  created: RoundingTransfer[];
+  skipped: RoundingSkip[];
+}): Promise<void> {
+  for (const swGroup of input.swGroups) {
+    if (swGroup.id === NON_GROUP_ID) continue;
+
+    const members = swGroup.members ?? [];
+    // No `balance` key at all means this payload did not include group nets
+    // (the test fake, an older dump). Do not treat that as "everyone is zero".
+    if (!members.some((m) => m.balance !== undefined && m.balance !== null)) continue;
+
+    const groupId = input.groupBySw.get(swGroup.id);
+    if (!groupId) {
+      input.skipped.push({
+        splitwiseId: swGroup.id,
+        name: swGroup.name,
+        currencyCode: null,
+        reason: "Group not imported yet; run the groups step first",
+      });
+      continue;
+    }
+
+    const ours = await getGroupBalances(db, groupId);
+    const ourByUser = new Map(
+      ours.map((row) => [row.userId, new Map(row.balances.map((b) => [b.currencyCode, b.amountMinor]))]),
+    );
+
+    const residualByUser = new Map<string, Map<string, number>>();
+    const addResidual = (userId: string, currency: string, amount: number) => {
+      if (amount === 0) return;
+      const byCurrency = residualByUser.get(userId) ?? new Map<string, number>();
+      byCurrency.set(currency, (byCurrency.get(currency) ?? 0) + amount);
+      residualByUser.set(userId, byCurrency);
+    };
+
+    for (const member of members) {
+      if (member.balance === undefined || member.balance === null) continue;
+      const local = input.localBySw.get(member.id);
+      if (!local) continue;
+
+      const swByCurrency = parseSplitwiseAmounts(
+        member.balance,
+        input.decimals,
+        (code, reason) => {
+          input.skipped.push({
+            splitwiseId: member.id,
+            name: `${swGroup.name} · ${local.name}`,
+            currencyCode: code,
+            reason,
+          });
+        },
+      );
+
+      const currencies = new Set([
+        ...(ourByUser.get(local.id)?.keys() ?? []),
+        ...swByCurrency.keys(),
+      ]);
+      for (const currency of currencies) {
+        const ourMinor = ourByUser.get(local.id)?.get(currency) ?? 0;
+        const swMinor = swByCurrency.get(currency) ?? 0;
+        addResidual(local.id, currency, ourMinor - swMinor);
+      }
+    }
+
+    const currencies = new Set<string>();
+    for (const byCurrency of residualByUser.values()) {
+      for (const code of byCurrency.keys()) currencies.add(code);
+    }
+
+    for (const currency of [...currencies].sort()) {
+      const places = input.decimals.get(currency);
+      if (places === undefined) continue;
+
+      const nets: Array<{ userId: string; amountMinor: number }> = [];
+      for (const [userId, byCurrency] of residualByUser) {
+        const amount = byCurrency.get(currency) ?? 0;
+        if (amount !== 0) nets.push({ userId, amountMinor: amount });
+      }
+      if (nets.length === 0) continue;
+
+      const total = nets.reduce((sum, n) => sum + n.amountMinor, 0);
+      if (total !== 0) {
+        input.skipped.push({
+          splitwiseId: swGroup.id,
+          name: swGroup.name,
+          currencyCode: currency,
+          reason: `Group ${currency} residue does not net to zero`,
+        });
+        continue;
+      }
+
+      if (nets.some((n) => Math.abs(n.amountMinor) > MAX_ROUNDING_MINOR)) {
+        for (const n of nets) {
+          if (Math.abs(n.amountMinor) <= MAX_ROUNDING_MINOR) continue;
+          const who = [...input.localBySw.values()].find((u) => u.id === n.userId);
+          input.skipped.push({
+            splitwiseId: swGroup.id,
+            name: `${swGroup.name} · ${who?.name ?? n.userId}`,
+            currencyCode: currency,
+            reason:
+              `Difference of ${formatAmount(n.amountMinor, places)} ${currency} is larger than import rounding`,
+          });
+        }
+        continue;
+      }
+
+      for (const transfer of simplifyDebts(nets)) {
+        if (transfer.amountMinor <= 0) continue;
+        const from = nameOf(input.localBySw, transfer.fromUserId);
+        const to = nameOf(input.localBySw, transfer.toUserId);
+        const counterpartId =
+          transfer.fromUserId === input.userId ? transfer.toUserId : transfer.fromUserId;
+        const counterpartName = counterpartId === transfer.fromUserId ? from : to;
+        input.created.push(
+          await writeRoundingPayment({
+            actorUserId: input.userId,
+            fromUserId: transfer.fromUserId,
+            toUserId: transfer.toUserId,
+            amount: transfer.amountMinor,
+            currency,
+            places,
+            groupId,
+            groupName: swGroup.name,
+            friendId: counterpartId,
+            friendName:
+              transfer.fromUserId === input.userId || transfer.toUserId === input.userId
+                ? counterpartName
+                : `${from} → ${to}`,
+            scope: "group",
+          }),
+        );
+      }
+    }
+  }
+}
+
+async function reconcileFriendResidues(input: {
+  userId: string;
+  swFriends: SplitwiseUser[];
+  decimals: Map<string, number>;
+  localBySw: Map<number, { id: string; name: string }>;
+  ours: Awaited<ReturnType<typeof getPairwiseBalances>>;
+  byGroup: Awaited<ReturnType<typeof getPairwiseBalancesByGroup>>;
+  created: RoundingTransfer[];
+  skipped: RoundingSkip[];
+}): Promise<void> {
+  const oursByUser = new Map(input.ours.map((row) => [row.otherUserId, row.balances]));
+
+  // After the group pass, a leftover friend-total gap with exactly one
+  // unsettled shared group in that currency still belongs in that group.
   const groupCandidatesByUser = new Map<string, Map<string, string[]>>();
-  for (const row of byGroup) {
+  for (const row of input.byGroup) {
     if (row.groupId === null) continue;
     const byCurrency = groupCandidatesByUser.get(row.otherUserId) ?? new Map<string, string[]>();
     for (const b of row.balances) {
@@ -1654,13 +1837,10 @@ export async function reconcileImportedBalances(
     groupCandidatesByUser.set(row.otherUserId, byCurrency);
   }
 
-  const created: RoundingTransfer[] = [];
-  const skipped: RoundingSkip[] = [];
-
-  for (const friend of swFriends) {
-    const local = localBySw.get(friend.id);
+  for (const friend of input.swFriends) {
+    const local = input.localBySw.get(friend.id);
     if (!local) {
-      skipped.push({
+      input.skipped.push({
         splitwiseId: friend.id,
         name: splitwiseDisplayName(friend),
         currencyCode: null,
@@ -1672,32 +1852,18 @@ export async function reconcileImportedBalances(
     const ourByCurrency = new Map(
       (oursByUser.get(local.id) ?? []).map((b) => [b.currencyCode, b.amountMinor]),
     );
-    const swByCurrency = new Map<string, number>();
-
-    for (const entry of friend.balance ?? []) {
-      const code = (entry.currency_code ?? "").toUpperCase();
-      if (!code) continue;
-      const places = decimals.get(code);
-      if (places === undefined) {
-        skipped.push({
+    const swByCurrency = parseSplitwiseAmounts(
+      friend.balance,
+      input.decimals,
+      (code, reason) => {
+        input.skipped.push({
           splitwiseId: friend.id,
           name: local.name,
           currencyCode: code,
-          reason: `Unknown currency ${code}`,
+          reason,
         });
-        continue;
-      }
-      try {
-        swByCurrency.set(code, parseAmountRounded(String(entry.amount ?? "0"), places).minor);
-      } catch {
-        skipped.push({
-          splitwiseId: friend.id,
-          name: local.name,
-          currencyCode: code,
-          reason: `Could not parse ${entry.amount} ${code}`,
-        });
-      }
-    }
+      },
+    );
 
     const currencies = [...new Set([...ourByCurrency.keys(), ...swByCurrency.keys()])].sort();
     for (const currency of currencies) {
@@ -1706,9 +1872,9 @@ export async function reconcileImportedBalances(
       const delta = ourMinor - swMinor;
       if (delta === 0) continue;
 
-      const places = decimals.get(currency);
+      const places = input.decimals.get(currency);
       if (places === undefined) {
-        skipped.push({
+        input.skipped.push({
           splitwiseId: friend.id,
           name: local.name,
           currencyCode: currency,
@@ -1718,7 +1884,7 @@ export async function reconcileImportedBalances(
       }
 
       if (Math.abs(delta) > MAX_ROUNDING_MINOR) {
-        skipped.push({
+        input.skipped.push({
           splitwiseId: friend.id,
           name: local.name,
           currencyCode: currency,
@@ -1731,63 +1897,133 @@ export async function reconcileImportedBalances(
       // Positive delta: they owe us more here than on Splitwise, so they "pay"
       // us the residue. Negative: we owe them more here, so we pay them.
       const amount = Math.abs(delta);
-      const fromUserId = delta > 0 ? local.id : userId;
-      const toUserId = delta > 0 ? userId : local.id;
-
+      const fromUserId = delta > 0 ? local.id : input.userId;
+      const toUserId = delta > 0 ? input.userId : local.id;
       const groupCandidates = groupCandidatesByUser.get(local.id)?.get(currency) ?? [];
       const groupId = groupCandidates.length === 1 ? groupCandidates[0]! : null;
 
-      const expenseId = await createExpense({
-        description: "Payment",
-        details: "Offsets fractional amounts rounded off when importing from Splitwise.",
-        costMinor: amount,
-        currencyCode: currency,
-        date: new Date().toISOString(),
-        splitType: "exact",
-        isPayment: true,
-        groupId,
-        metadata: { import_rounding: true },
-        createdBy: userId,
-        recordActivity: false,
-        participants: [
-          { userId: fromUserId, paidMinor: amount, input: 0 },
-          { userId: toUserId, paidMinor: 0, input: amount },
-        ],
-      });
-
-      try {
-        await createComment({
-          expenseId,
-          userId,
-          kind: "system",
-          recordActivity: false,
-          enforceVisibility: false,
-          content:
-            `Splitwise stored extra digits past what ${currency} allows. Those were rounded on ` +
-            `import, which left this balance ${formatAmount(amount, places)} ${currency} away from ` +
-            `Splitwise. This payment restores the Splitwise friend total.`,
-        });
-      } catch (err) {
-        console.error(
-          `Could not record a rounding comment on expense ${expenseId}:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
-
-      created.push({
-        expenseId,
-        friendId: local.id,
-        friendName: local.name,
-        currencyCode: currency,
-        amountMinor: amount,
-        fromUserId,
-        toUserId,
-        groupId,
-      });
+      input.created.push(
+        await writeRoundingPayment({
+          actorUserId: input.userId,
+          fromUserId,
+          toUserId,
+          amount,
+          currency,
+          places,
+          groupId,
+          friendId: local.id,
+          friendName: local.name,
+          scope: "friend",
+        }),
+      );
     }
   }
+}
 
-  return { created, skipped };
+function parseSplitwiseAmounts(
+  entries: Array<{ currency_code: string; amount: string }> | null | undefined,
+  decimals: Map<string, number>,
+  onSkip: (currencyCode: string | null, reason: string) => void,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const entry of entries ?? []) {
+    const code = (entry.currency_code ?? "").toUpperCase();
+    if (!code) continue;
+    const places = decimals.get(code);
+    if (places === undefined) {
+      onSkip(code, `Unknown currency ${code}`);
+      continue;
+    }
+    try {
+      out.set(code, parseAmountRounded(String(entry.amount ?? "0"), places).minor);
+    } catch {
+      onSkip(code, `Could not parse ${entry.amount} ${code}`);
+    }
+  }
+  return out;
+}
+
+function nameOf(
+  localBySw: Map<number, { id: string; name: string }>,
+  userId: string,
+): string {
+  for (const row of localBySw.values()) {
+    if (row.id === userId) return row.name;
+  }
+  return userId;
+}
+
+async function writeRoundingPayment(input: {
+  actorUserId: string;
+  fromUserId: string;
+  toUserId: string;
+  amount: number;
+  currency: string;
+  places: number;
+  groupId: string | null;
+  groupName?: string;
+  friendId: string;
+  friendName: string;
+  scope: "group" | "friend";
+}): Promise<RoundingTransfer> {
+  if (input.groupId !== null) {
+    await ensureMember(input.groupId, input.fromUserId, "import");
+    await ensureMember(input.groupId, input.toUserId, "import");
+  }
+
+  const expenseId = await createExpense({
+    description: "Payment",
+    details: "Offsets fractional amounts rounded off when importing from Splitwise.",
+    costMinor: input.amount,
+    currencyCode: input.currency,
+    date: new Date().toISOString(),
+    splitType: "exact",
+    isPayment: true,
+    groupId: input.groupId,
+    metadata: { import_rounding: true },
+    createdBy: input.actorUserId,
+    recordActivity: false,
+    participants: [
+      { userId: input.fromUserId, paidMinor: input.amount, input: 0 },
+      { userId: input.toUserId, paidMinor: 0, input: input.amount },
+    ],
+  });
+
+  const where =
+    input.scope === "group"
+      ? `This payment restores the Splitwise totals in ${input.groupName ?? "the group"}.`
+      : "This payment restores the Splitwise friend total.";
+
+  try {
+    await createComment({
+      expenseId,
+      userId: input.actorUserId,
+      kind: "system",
+      recordActivity: false,
+      enforceVisibility: false,
+      content:
+        `Splitwise stored extra digits past what ${input.currency} allows. Those were rounded on ` +
+        `import, which left this balance ${formatAmount(input.amount, input.places)} ${input.currency} ` +
+        `away from Splitwise. ${where}`,
+    });
+  } catch (err) {
+    console.error(
+      `Could not record a rounding comment on expense ${expenseId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return {
+    expenseId,
+    friendId: input.friendId,
+    friendName: input.friendName,
+    currencyCode: input.currency,
+    amountMinor: input.amount,
+    fromUserId: input.fromUserId,
+    toUserId: input.toUserId,
+    groupId: input.groupId,
+    groupName: input.groupName ?? null,
+  };
 }
 
 async function loadUsersBySplitwiseId(): Promise<Map<number, { id: string; name: string }>> {

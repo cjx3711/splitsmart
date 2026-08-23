@@ -86,35 +86,35 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "Test User paid You <DATE> 50.00USD":
+  - link "Test User paid You <DATE> received 50.00USD":
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid You <DATE> 50.00USD
-  - link "Trader Joe's run <DATE> · Groceries · Test User paid · 2 comments 92.43USD you borrowed 46.21USD":
+    - text: paid You <DATE> received 50.00USD
+  - link "Trader Joe's run <DATE> · Groceries · Test User paid · 2 comments borrowed 46.21USD 92.43USD":
     - text: Trader Joe's run <DATE> · Groceries ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid · 2 comments 92.43USD you borrowed 46.21USD
-  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: paid · 2 comments borrowed 46.21USD 92.43USD
+  - link "Rent <DATE> · Rent · Test User paid series borrowed 900.00USD 1800.00USD":
     - text: Rent <DATE> · Rent ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid series 1800.00USD you borrowed 900.00USD
-  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: paid series borrowed 900.00USD 1800.00USD
+  - link "Rent <DATE> · Rent · Test User paid series borrowed 900.00USD 1800.00USD":
     - text: Rent <DATE> · Rent ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid series 1800.00USD you borrowed 900.00USD
-  - link "Rent <DATE> · Rent · Test User paid series 1800.00USD you borrowed 900.00USD":
+    - text: paid series borrowed 900.00USD 1800.00USD
+  - link "Rent <DATE> · Rent · Test User paid series borrowed 900.00USD 1800.00USD":
     - text: Rent <DATE> · Rent ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid series 1800.00USD you borrowed 900.00USD
-  - link "Rent <DATE> · Rent · Test User paid repeats 1800.00USD you borrowed 900.00USD":
+    - text: paid series borrowed 900.00USD 1800.00USD
+  - link "Rent <DATE> · Rent · Test User paid repeats borrowed 900.00USD 1800.00USD":
     - text: Rent <DATE> · Rent ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid repeats 1800.00USD you borrowed 900.00USD
+    - text: paid repeats borrowed 900.00USD 1800.00USD
   - heading "Members" [level=2]
   - link "Test User owner · has an account":
     - /url: /app/friends/<ULID>

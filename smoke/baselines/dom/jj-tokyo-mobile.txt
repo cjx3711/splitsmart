@@ -92,12 +92,12 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "TeamLab tickets <DATE> · Life · You paid 9600JPY you lent 7200JPY"
-  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments 4800JPY you borrowed 1200JPY":
+  - link "TeamLab tickets <DATE> · Life · You paid lent 7200JPY 9600JPY"
+  - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments borrowed 1200JPY 4800JPY":
     - text: Ramen at Ichiran <DATE> · Dining out ·
     - link "Test User":
       - /url: /app/friends/<ULID>
-    - text: paid · 2 comments 4800JPY you borrowed 1200JPY
+    - text: paid · 2 comments borrowed 1200JPY 4800JPY
   - heading "Members" [level=2]
   - link "Test User owner · has an account":
     - /url: /app/friends/<ULID>

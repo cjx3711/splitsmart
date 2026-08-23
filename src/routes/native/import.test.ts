@@ -63,7 +63,23 @@ const swFriends = [
   },
 ];
 
-const swGroups = [
+type FakeMember = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  registration_status?: string;
+  balance?: Array<{ currency_code: string; amount: string }>;
+};
+
+const swGroups: Array<{
+  id: number;
+  name: string;
+  group_type?: string;
+  simplify_by_default?: boolean;
+  created_at?: string;
+  members: FakeMember[];
+}> = [
   // Splitwise always includes this pseudo-group. It is not a group.
   { id: 0, name: "Non-group expenses", members: [], simplify_by_default: true },
   {
@@ -74,7 +90,23 @@ const swGroups = [
     created_at: "2019-06-01T00:00:00Z",
     members: [
       { id: ME_SW_ID, first_name: "Alice", last_name: "Anderson", email: "alice@example.com" },
-      ...swFriends,
+      // Friend objects carry *friend* totals on `balance`. Nested group
+      // members must not reuse those, or the rounding step would treat
+      // Bob's 1698 JPY friend total as his net in Flat.
+      {
+        id: 2001,
+        first_name: "Bob",
+        last_name: "Brown",
+        email: "bob@example.com",
+        registration_status: "confirmed",
+      },
+      {
+        id: 2002,
+        first_name: "Carol",
+        last_name: "Clark",
+        email: "carol@example.com",
+        registration_status: "dummy",
+      },
     ],
   },
 ];
@@ -357,8 +389,11 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { ulid, isUlid, ulidTime } = await import("../../domain/ulid.ts");
-const { splitwiseIdOf, splitwiseIdSql, parseMetadata } = await import("../../domain/metadata.ts");
+const { splitwiseIdOf, splitwiseIdSql, parseMetadata, serializeMetadata } = await import(
+  "../../domain/metadata.ts"
+);
 const { runDueRecurrences } = await import("../../domain/scheduler.ts");
+const { createExpense } = await import("../../domain/expenses.ts");
 
 let apiToken: string;
 let aliceId: string;
@@ -1090,6 +1125,95 @@ describe("rounding", () => {
     assert.equal(status, 200);
     assert.equal(body.created.length, 0);
     assert.equal(body.skipped.length, 0);
+  });
+
+  test("settles leftover yen inside a group, including between two other people", async () => {
+    const carolId = (
+      await db
+        .selectFrom("users")
+        .select("id")
+        .where(splitwiseIdSql(), "=", 2002)
+        .executeTakeFirstOrThrow()
+    ).id;
+
+    swGroups.push({
+      id: 3002,
+      name: "Ski",
+      simplify_by_default: true,
+      members: [
+        {
+          id: ME_SW_ID,
+          first_name: "Alice",
+          last_name: "Anderson",
+          email: "alice@example.com",
+          balance: [{ currency_code: "JPY", amount: "0" }],
+        },
+        {
+          id: 2001,
+          first_name: "Bob",
+          last_name: "Brown",
+          email: "bob@example.com",
+          balance: [{ currency_code: "JPY", amount: "0" }],
+        },
+        {
+          id: 2002,
+          first_name: "Carol",
+          last_name: "Clark",
+          email: "carol@example.com",
+          balance: [{ currency_code: "JPY", amount: "0" }],
+        },
+      ],
+    });
+
+    const groupId = ulid();
+    await db
+      .insertInto("groups")
+      .values({
+        id: groupId,
+        name: "Ski",
+        created_by: aliceId,
+        metadata: serializeMetadata({ splitwise_id: 3002 }),
+      })
+      .execute();
+    for (const userId of [aliceId, bobId, carolId]) {
+      await db
+        .insertInto("group_members")
+        .values({ group_id: groupId, user_id: userId, role: "member" })
+        .execute();
+    }
+
+    // Alice is settled. Bob is owed 1 JPY, Carol owes 1 JPY. Splitwise says
+    // the group is 0, so the payment must be Carol → Bob, not through Alice.
+    await createExpense({
+      description: "Lift pass residue",
+      costMinor: 1,
+      currencyCode: "JPY",
+      date: "2026-03-09",
+      splitType: "exact",
+      groupId,
+      createdBy: aliceId,
+      recordActivity: false,
+      participants: [
+        { userId: bobId, paidMinor: 1, input: 0 },
+        { userId: carolId, paidMinor: 0, input: 1 },
+      ],
+    });
+
+    const { status, body } = await post("/import/rounding", { apiKey: API_KEY });
+    assert.equal(status, 200);
+    const groupPayments = body.created.filter((row: { groupId: string | null }) => row.groupId === groupId);
+    assert.equal(groupPayments.length, 1);
+    assert.equal(groupPayments[0].fromUserId, carolId);
+    assert.equal(groupPayments[0].toUserId, bobId);
+    assert.equal(groupPayments[0].amountMinor, 1);
+    assert.equal(groupPayments[0].currencyCode, "JPY");
+
+    const friends = await get("/friends");
+    const bob = friends.body.friends.find((f: { id: string }) => f.id === bobId);
+    assert.equal(bob.balances.find((b: { currencyCode: string }) => b.currencyCode === "JPY")?.amountMinor, 1698);
+
+    const again = await post("/import/rounding", { apiKey: API_KEY });
+    assert.equal(again.body.created.length, 0);
   });
 });
 

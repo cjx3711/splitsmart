@@ -16,7 +16,11 @@
     - /url: /app/friends/new
     - button "Add a friend"
   - text: Net position 6000JPY -3836.21USD You owe 3836.21USD You are owed 6000JPY
-  - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+  - paragraph:
+    - text: "* Converted to USD using"
+    - link "Rates By Exchange Rate API":
+      - /url: https://www.exchangerate-api.com
+    - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
   - heading "You owe" [level=2]
   - link "Test User you owe 3836.21USD -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
     - /url: /app/friends/<ULID>

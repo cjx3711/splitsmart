@@ -5,8 +5,12 @@ import type { CurrencyAmount } from "./api.ts";
 export function ConversionNote({ code, date }: { code: string; date: string }) {
   return (
     <p className="conversion-note">
-      * Converted to {code} using exchange rates from Frankfurter (frankfurter.dev), as of {date}.
-      This is an estimate for display only - balances are tracked separately per currency.
+      * Converted to {code} using{" "}
+      <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">
+        Rates By Exchange Rate API
+      </a>
+      , as of {date}. This is an estimate for display only - balances are tracked separately per
+      currency.
     </p>
   );
 }

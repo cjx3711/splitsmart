@@ -25,6 +25,8 @@ export interface SettlePayment {
   amountMinor: number;
   currencyCode: string;
   date: string;
+  description?: string;
+  details?: string;
 }
 
 export function SettleUpForm({

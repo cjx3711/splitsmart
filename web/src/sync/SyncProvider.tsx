@@ -269,8 +269,33 @@ export function SyncProvider({ children }: { children: ReactNode }) {
 
   const syncNow = useCallback(() => void engineRef.current?.sync(), []);
   const resetMirror = useCallback(async () => {
-    await engineRef.current?.resetMirror();
-  }, []);
+    const engine = engineRef.current;
+    if (!engine) return;
+    const profile = user
+      ? {
+          id: user.id,
+          name: user.name,
+          nickname: user.nickname,
+          iconLetters: user.iconLetters,
+          iconEmoji: user.iconEmoji,
+          iconHue: user.iconHue,
+          email: user.email,
+          isGhost: user.isGhost,
+          defaultCurrency: user.defaultCurrency,
+          mergedIntoUserId: null,
+          deletedAt: null,
+        }
+      : undefined;
+    // Drop the closed Dexie out of the tree first so live queries do not keep
+    // reading it, then point them at the empty replacement before bootstrap.
+    setDb(null);
+    try {
+      await engine.resetMirror(profile, setDb);
+    } catch (err) {
+      if (engine.db.isOpen()) setDb(engine.db);
+      throw err;
+    }
+  }, [user]);
 
   return (
     <SyncContext.Provider

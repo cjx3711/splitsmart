@@ -20,6 +20,7 @@ import type {
   SyncFriendship,
   SyncGroup,
   SyncGroupMember,
+  SyncRepayment,
   SyncShare,
   SyncUser,
 } from "../../domain/sync-types.ts";
@@ -179,6 +180,24 @@ export async function loadExpenses(
     sharesByExpense.set(share.expense_id, list);
   }
 
+  const repayments = await database
+    .selectFrom("expense_repayments")
+    .select(["expense_id", "from_user_id", "to_user_id", "amount_minor"])
+    .where("expense_id", "in", rows.map((r) => r.id))
+    .orderBy("seq")
+    .execute();
+
+  const repaymentsByExpense = new Map<string, SyncRepayment[]>();
+  for (const row of repayments) {
+    const list = repaymentsByExpense.get(row.expense_id) ?? [];
+    list.push({
+      fromUserId: row.from_user_id,
+      toUserId: row.to_user_id,
+      amountMinor: row.amount_minor,
+    });
+    repaymentsByExpense.set(row.expense_id, list);
+  }
+
   const people = await loadUsers(database, shares.map((s) => s.user_id));
 
   return rows.map((row) => {
@@ -210,6 +229,7 @@ export async function loadExpenses(
       people: expenseShares
         .map((s) => people.get(s.userId))
         .filter((u): u is SyncUser => u !== undefined),
+      repayments: repaymentsByExpense.get(row.id) ?? [],
     };
   });
 }

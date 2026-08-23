@@ -3,7 +3,8 @@
  *
  * Expenses here span every group plus the one-on-one ones; the question "what
  * is between us" does not stop at a group boundary. Shared groups are listed
- * from current membership, including settled ones the balance breakdown omits.
+ * from current membership. Settled ones are hidden behind "Show settled up groups"
+ * so the list stays the groups that still have something between you.
  * New expenses added from this screen are one-on-one (no group).
  *
  * Adding and settling live in dialogs off the header rather than inline, so the
@@ -38,6 +39,7 @@ import { useSync } from "../sync/SyncProvider.tsx";
 import { patchPerson, revertPerson } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { ConvertBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { LinkPanel } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
@@ -48,7 +50,10 @@ export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | "identity" | null>(
+    null,
+  );
+  const [showSettledGroups, setShowSettledGroups] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
   const { engine, syncNow, db } = useSync();
@@ -86,6 +91,13 @@ export function FriendDetail() {
   const currenciesInPlay = [
     ...new Set([...owed.map((b) => b.currencyCode), user.defaultCurrency]),
   ];
+  const outstandingGroupIds = new Set(
+    friend.breakdown.filter((entry) => entry.groupId && entry.balances.length > 0).map((entry) => entry.groupId),
+  );
+  const settledSharedGroups = sharedGroups.filter((g) => !outstandingGroupIds.has(g.id));
+  const visibleSharedGroups = showSettledGroups
+    ? sharedGroups
+    : sharedGroups.filter((g) => outstandingGroupIds.has(g.id));
 
   return (
     <>
@@ -173,6 +185,32 @@ export function FriendDetail() {
         }}
       />
 
+      <ConvertBalanceDialog
+        open={openDialog === "convert"}
+        themName={name}
+        youId={user.id}
+        themId={friend.id}
+        balances={friend.balances}
+        preferredCurrency={user.defaultCurrency}
+        onClose={() => setOpenDialog(null)}
+        onSubmit={async (payments) => {
+          if (!engine) throw new Error("Not ready to save yet.");
+          for (const payment of payments) {
+            const id = ulid();
+            await engine.enqueue({
+              kind: "payment.create",
+              id,
+              payload: paymentAsExpense(payment, null),
+            });
+            await engine.enqueue({
+              kind: "comment.create",
+              id: ulid(),
+              payload: { expenseId: id, content: payment.comment },
+            });
+          }
+        }}
+      />
+
       <div className="card">
         <span className="eyebrow">
           <span className="with-help">
@@ -202,10 +240,25 @@ export function FriendDetail() {
         {friend.balances.length > 1 && (
           <EstimatedTotal balances={friend.balances} preferredCurrency={user.defaultCurrency} />
         )}
+        {friend.balances.length > 1 && (
+          <div className="ledger-actions">
+            <OnlineOnly what="Converting a balance">
+              <button
+                type="button"
+                className="secondary inline"
+                onClick={() => setOpenDialog("convert")}
+              >
+                Convert balance
+              </button>
+            </OnlineOnly>
+          </div>
+        )}
 
-        {friend.breakdown.length > 1 && (
+        {(friend.breakdown.length > 1 ||
+          (showSettledGroups && settledSharedGroups.length > 0)) && (
           <div className="list breakdown-list" style={{ marginTop: "0.6rem" }}>
-            {friend.breakdown.map((entry) => {
+            {friend.breakdown.length > 1 &&
+              friend.breakdown.map((entry) => {
               const groupType = entry.groupId
                 ? sharedGroups.find((g) => g.id === entry.groupId)?.group_type
                 : undefined;
@@ -258,16 +311,38 @@ export function FriendDetail() {
                 </div>
               );
             })}
+            {showSettledGroups &&
+              settledSharedGroups.map((g) => (
+                <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
+                  <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
+                  <div className="list-item-body">
+                    <div className="list-item-title">{g.name.trim() || "Unnamed group"}</div>
+                  </div>
+                  <div className="list-item-figures muted">settled up</div>
+                </Link>
+              ))}
+          </div>
+        )}
+        {settledSharedGroups.length > 0 && (
+          <div className="ledger-actions">
+            <button
+              type="button"
+              className="secondary inline"
+              aria-expanded={showSettledGroups}
+              onClick={() => setShowSettledGroups((open) => !open)}
+            >
+              {showSettledGroups ? "Hide settled up groups" : "Show settled up groups"}
+            </button>
           </div>
         )}
         <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
       </div>
 
-      {sharedGroups.length > 0 && (
+      {visibleSharedGroups.length > 0 && (
         <>
           <h2>Shared groups</h2>
           <div className="list">
-            {sharedGroups.map((g) => {
+            {visibleSharedGroups.map((g) => {
               const bucket = friend.breakdown.find((entry) => entry.groupId === g.id);
               return (
                 <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
@@ -280,7 +355,9 @@ export function FriendDetail() {
                     <div className="list-item-figures">
                       <Amounts balances={bucket.balances} signed />
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="list-item-figures muted">settled up</div>
+                  )}
                 </Link>
               );
             })}

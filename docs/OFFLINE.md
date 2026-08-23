@@ -171,8 +171,9 @@ and `pairwiseWithSimplify` are already pure; friend totals run the latter with
 the same per-group `simplify_by_default` flags as the server. One-on-one
 expenses stay pairwise.
 
-Per-currency arrays stay arrays (rule 2). The Frankfurter ≈ estimate is
-display-only and simply omitted offline.
+Per-currency arrays stay arrays (rule 2). The ≈ estimate is display-only. A
+day-old browser cache of Exchange Rate API rates can still paint it offline;
+without that cache it is omitted.
 
 **Do not replicate `expense_repayments`.** It is a write-time cache (rule 4).
 

@@ -56,9 +56,9 @@ const RULES: [RegExp, string][] = [
 ];
 
 /**
- * The dashboard's ≈ overall figure comes from live Frankfurter rates (rule 2:
- * display-only). Left alone it would diff every run. Capture also hides the
- * node in CSS; this is the belt for the aria dump.
+ * The dashboard's ≈ overall figure comes from live Exchange Rate API rates
+ * (rule 2: display-only). Left alone it would diff every run. Capture also
+ * hides the node in CSS; this is the belt for the aria dump.
  */
 function blankFxEstimate(lines: string[]): string[] {
   return lines.map((line, i) =>

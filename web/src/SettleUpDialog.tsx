@@ -95,10 +95,22 @@ export function groupSettleChoices(
  * The expense body a payment is: the payer fronts the lot, the recipient
  * owes it all. Logged-in screens enqueue this; guests post a slimmer body.
  */
-export function paymentAsExpense(payment: SettlePayment, groupId: string | null) {
+export function paymentAsExpense(
+  payment: {
+    fromUserId: string;
+    toUserId: string;
+    amountMinor: number;
+    currencyCode: string;
+    date?: string;
+    description?: string;
+    details?: string;
+  },
+  groupId: string | null,
+) {
   return {
     groupId,
-    description: "Payment",
+    description: payment.description ?? "Payment",
+    details: payment.details,
     costMinor: payment.amountMinor,
     currencyCode: payment.currencyCode,
     date: payment.date ?? new Date().toISOString(),

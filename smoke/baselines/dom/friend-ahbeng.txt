@@ -76,16 +76,20 @@
   - text: Between you
   - button "About this balance": "?"
   - text: Ah Beng owes you 1200JPY Ah Beng owes you 149.25USD
+  - button "Convert balance"
   - link "Ski Trip 2026 140.00USD":
     - /url: /app/groups/<ULID>
   - link "Weekend in Tokyo 1200JPY":
     - /url: /app/groups/<ULID>
   - text: One-on-one 9.25USD
-  - paragraph: "* Converted to USD using exchange rates from Frankfurter (frankfurter.dev), as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+  - button "Show settled up groups"
+  - paragraph:
+    - text: "* Converted to USD using"
+    - link "Rates By Exchange Rate API":
+      - /url: https://www.exchangerate-api.com
+    - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
   - heading "Shared groups" [level=2]
   - link "Ski Trip 2026 Trip 140.00USD":
-    - /url: /app/groups/<ULID>
-  - link "Summer BBQ Outing":
     - /url: /app/groups/<ULID>
   - link "Weekend in Tokyo Trip 1200JPY":
     - /url: /app/groups/<ULID>
@@ -143,25 +147,25 @@
     - option "Expenses only"
     - option "Settle-ups only"
   - button "Download CSV"
-  - link "Coffee catch-up <DATE> · Dining out · You paid 18.50USD you lent 9.25USD"
-  - link "TeamLab tickets <DATE> · Weekend in Tokyo · Life · JJ paid 9600JPY you borrowed 2400JPY":
+  - link "Coffee catch-up <DATE> · Dining out · You paid lent 9.25USD 18.50USD"
+  - link "TeamLab tickets <DATE> · Weekend in Tokyo · Life · JJ paid borrowed 2400JPY 9600JPY":
     - text: TeamLab tickets <DATE> ·
     - link "Weekend in Tokyo":
       - /url: /app/groups/<ULID>
     - text: · Life ·
     - link "JJ":
       - /url: /app/friends/<ULID>
-    - text: paid 9600JPY you borrowed 2400JPY
-  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY":
+    - text: paid borrowed 2400JPY 9600JPY
+  - link "Ramen at Ichiran <DATE> · Weekend in Tokyo · Dining out · You paid · 2 comments lent 3600JPY 4800JPY":
     - text: Ramen at Ichiran <DATE> ·
     - link "Weekend in Tokyo":
       - /url: /app/groups/<ULID>
-    - text: · Dining out · You paid · 2 comments 4800JPY you lent 3600JPY
-  - link "Lift tickets <DATE> · Ski Trip 2026 · Life · You paid 420.00USD you lent 280.00USD":
+    - text: · Dining out · You paid · 2 comments lent 3600JPY 4800JPY
+  - link "Lift tickets <DATE> · Ski Trip 2026 · Life · You paid lent 280.00USD 420.00USD":
     - text: Lift tickets <DATE> ·
     - link "Ski Trip 2026":
       - /url: /app/groups/<ULID>
-    - text: · Life · You paid 420.00USD you lent 280.00USD
+    - text: · Life · You paid lent 280.00USD 420.00USD
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
 import { Routes, Route, Navigate, Link, useNavigate, useParams } from "react-router-dom";
 import { CurrencyProvider } from "../money.tsx";
+import { ExchangeRatesProvider } from "../exchangeRates.ts";
 import { Logo } from "../Logo.tsx";
 import { Footer } from "../Footer.tsx";
 import { displayName } from "../api.ts";
@@ -72,11 +73,13 @@ type State =
 export function GuestApp() {
   return (
     <CurrencyProvider fetchCurrencies={guestApi.currencies}>
-      <Routes>
-        {/* The secret arrives here and leaves the URL immediately. */}
-        <Route path="/l/:token" element={<Landing />} />
-        <Route path="*" element={<Shell />} />
-      </Routes>
+      <ExchangeRatesProvider>
+        <Routes>
+          {/* The secret arrives here and leaves the URL immediately. */}
+          <Route path="/l/:token" element={<Landing />} />
+          <Route path="*" element={<Shell />} />
+        </Routes>
+      </ExchangeRatesProvider>
     </CurrencyProvider>
   );
 }

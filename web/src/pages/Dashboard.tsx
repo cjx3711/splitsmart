@@ -5,7 +5,7 @@
  * exchange-rate table in the ledger and there must not be one (see
  * src/domain/balances.ts). When a person holds more than one currency, a
  * labeled ≈ estimate in their preferred currency is added underneath, sourced
- * from live Frankfurter rates and never persisted. The estimate is opt-in
+ * from Exchange Rate API and cached in the browser for a day. The estimate is opt-in
  * (it appears only when there are ≥2 currencies and rates loaded), dated, and
  * additive to the stack, not a replacement for it.
  */

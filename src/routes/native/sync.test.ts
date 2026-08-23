@@ -210,6 +210,37 @@ describe("bootstrap", () => {
       [aliceId, bobId].sort(),
     );
     assert.equal(typeof expense.version, "number");
+    assert.ok(Array.isArray(expense.repayments));
+  });
+
+  test("an expense carries the stored pairing, not a re-derived one", async () => {
+    const dave = await ghostUser("Dave");
+    const erin = await ghostUser("Erin");
+    const preferred = [
+      { fromUserId: aliceId, toUserId: erin, amountMinor: 13_000 },
+      { fromUserId: aliceId, toUserId: bobId, amountMinor: 3_000 },
+      { fromUserId: dave, toUserId: bobId, amountMinor: 16_000 },
+    ];
+    const id = await createExpense({
+      description: "Hut Part 3",
+      costMinor: 64_000,
+      currencyCode: "JPY",
+      date: "2024-09-16",
+      splitType: "exact",
+      createdBy: aliceId,
+      repayments: preferred,
+      participants: [
+        { userId: aliceId, paidMinor: 0, input: 16_000 },
+        { userId: bobId, paidMinor: 35_000, input: 16_000 },
+        { userId: erin, paidMinor: 29_000, input: 16_000 },
+        { userId: dave, paidMinor: 0, input: 16_000 },
+      ],
+    });
+
+    const { body } = await as(aliceToken, "/sync/bootstrap");
+    const expense = body.expenses.find((e: { id: string }) => e.id === id);
+    assert.ok(expense, "the hut bill must be on the bootstrap page");
+    assert.deepEqual(expense.repayments, preferred);
   });
 
   test("a stranger sees none of it", async () => {
@@ -1492,6 +1523,21 @@ describe("gzip", () => {
       method: "POST",
       headers: { "Content-Encoding": "gzip" },
       body: gzipSync(Buffer.from(json)),
+    });
+    assert.equal(status, 200);
+    assert.equal(body.results[0].status, "applied");
+    assert.equal(body.results[0].id, id);
+  });
+
+  test("a Content-Encoding: gzip header on already-plain JSON still applies", async () => {
+    const id = ulid();
+    const json = JSON.stringify({
+      ops: [{ kind: "expense.create", id, payload: expenseBody([aliceId]) }],
+    });
+    const { status, body } = await as(aliceToken, "/sync/push", {
+      method: "POST",
+      headers: { "Content-Encoding": "gzip" },
+      body: json,
     });
     assert.equal(status, 200);
     assert.equal(body.results[0].status, "applied");

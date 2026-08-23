@@ -1,26 +1,57 @@
 /**
- * Live exchange rates for display only.
+ * Live exchange rates for the ≈ estimate and for "convert balance".
  *
- * Fetched client-side from Frankfurter and held in memory. Never written to
- * the database, never sent back to the server, never used to compute a
- * balance. The ledger stays a stack of per-currency amounts; these numbers
- * exist so a person looking at yen and dollars at once can see an estimate
- * of "what that would be in my preferred currency", labeled as such.
+ * Fetched in the browser from Exchange Rate API and cached in localStorage
+ * for a day. Never written to the database, never sent back as a rate, never
+ * used to compute a stored balance. The ledger stays a stack of per-currency
+ * amounts.
  *
- * On failure there is no fallback of 1. A 1:1 conversion is worse than no
- * conversion, so callers hide the estimate rather than show a wrong number.
+ * Use `useExchangeRates` from any screen. Wrap the app in `ExchangeRatesProvider`
+ * (tests pass `rates` / `date` and skip the network).
+ *
+ * A missing rate still never becomes 1: callers hide the estimate or refuse
+ * the conversion rather than show a 1:1 stand-in.
  */
-import { useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-const FRANKFURTER = "https://api.frankfurter.dev/v1/latest";
+const OPEN_ER = "https://open.er-api.com/v6/latest";
+const STORAGE_PREFIX = "splitsmart.fx.v1:";
+const TTL_MS = 24 * 60 * 60 * 1000;
 
 interface CachedRates {
   rates: Record<string, number>;
   date: string;
+  fetchedAt: number;
 }
 
-const cache = new Map<string /* base */, CachedRates>();
+export type ExchangeRates = {
+  rates: Record<string, number> | null;
+  date: string | null;
+  loading: boolean;
+  error: boolean;
+};
+
+const memory = new Map<string /* base */, CachedRates>();
 const inflight = new Map<string, Promise<CachedRates>>();
+
+const HardcodedFx = createContext<{ rates: Record<string, number>; date: string } | null>(null);
+
+function storage(): Storage | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
 
 function neededSymbols(base: string, symbols: string[]): string[] {
   const upperBase = base.toUpperCase();
@@ -33,22 +64,78 @@ function neededSymbols(base: string, symbols: string[]): string[] {
   ].sort();
 }
 
-function cacheCovers(base: string, symbols: string[]): CachedRates | null {
-  const entry = cache.get(base);
-  if (!entry) return null;
-  return symbols.every((s) => s in entry.rates) ? entry : null;
+function readCache(base: string): CachedRates | null {
+  const now = Date.now();
+  const mem = memory.get(base);
+  if (mem && now - mem.fetchedAt < TTL_MS) return mem;
+  if (mem) memory.delete(base);
+
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(STORAGE_PREFIX + base);
+    if (!raw) return null;
+    const stored = JSON.parse(raw) as Partial<CachedRates>;
+    if (
+      !stored.rates ||
+      typeof stored.rates !== "object" ||
+      typeof stored.date !== "string" ||
+      typeof stored.fetchedAt !== "number" ||
+      now - stored.fetchedAt >= TTL_MS
+    ) {
+      store.removeItem(STORAGE_PREFIX + base);
+      return null;
+    }
+    const entry = { rates: stored.rates, date: stored.date, fetchedAt: stored.fetchedAt };
+    memory.set(base, entry);
+    return entry;
+  } catch {
+    return null;
+  }
 }
 
-async function fetchRates(base: string, symbols: string[]): Promise<CachedRates> {
-  const url = new URL(FRANKFURTER);
-  url.searchParams.set("base", base);
-  url.searchParams.set("symbols", symbols.join(","));
+function writeCache(base: string, entry: CachedRates): void {
+  memory.set(base, entry);
+  try {
+    storage()?.setItem(STORAGE_PREFIX + base, JSON.stringify(entry));
+  } catch {
+    // Quota or private mode: memory still holds the day's rates.
+  }
+}
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Frankfurter ${res.status}`);
-  const body = (await res.json()) as { date?: string; rates?: Record<string, number> };
-  if (!body.date || !body.rates) throw new Error("Malformed rates response");
-  return { rates: body.rates, date: body.date };
+async function fetchRates(base: string): Promise<CachedRates> {
+  const res = await fetch(`${OPEN_ER}/${encodeURIComponent(base)}`);
+  if (!res.ok) throw new Error(`Exchange Rate API ${res.status}`);
+  const body = (await res.json()) as {
+    result?: string;
+    rates?: Record<string, number>;
+    time_last_update_unix?: number;
+  };
+  if (body.result !== "success" || !body.rates || typeof body.time_last_update_unix !== "number") {
+    throw new Error("Malformed rates response");
+  }
+  return {
+    rates: body.rates,
+    date: new Date(body.time_last_update_unix * 1000).toISOString().slice(0, 10),
+    fetchedAt: Date.now(),
+  };
+}
+
+function loadRates(base: string): Promise<CachedRates> {
+  const pending = inflight.get(base);
+  if (pending) return pending;
+  const promise = fetchRates(base)
+    .then((result) => {
+      writeCache(base, result);
+      inflight.delete(base);
+      return result;
+    })
+    .catch((err: unknown) => {
+      inflight.delete(base);
+      throw err;
+    });
+  inflight.set(base, promise);
+  return promise;
 }
 
 export function convertMinor(
@@ -84,75 +171,64 @@ export function convertBalances(
   return total;
 }
 
-export function useExchangeRates(
-  base: string,
-  symbols: string[],
-): {
-  rates: Record<string, number> | null;
-  date: string | null;
-  loading: boolean;
-  error: boolean;
-} {
+/**
+ * The global rates source. Mount once around the app. Tests pass `rates` (and
+ * optionally `date`) so `useExchangeRates` returns that snapshot and never
+ * fetches.
+ */
+export function ExchangeRatesProvider({
+  children,
+  rates,
+  date = "2000-01-01",
+}: {
+  children: ReactNode;
+  rates?: Record<string, number>;
+  date?: string;
+}) {
+  const hardcoded = useMemo(
+    () => (rates ? { rates, date } : null),
+    [rates, date],
+  );
+  return createElement(HardcodedFx.Provider, { value: hardcoded }, children);
+}
+
+export function useExchangeRates(base: string, symbols: string[]): ExchangeRates {
+  const hardcoded = useContext(HardcodedFx);
   const baseCode = base.trim().toUpperCase();
   const needed = neededSymbols(baseCode, symbols);
   const neededKey = needed.join(",");
 
-  const [state, setState] = useState<{
-    rates: Record<string, number> | null;
-    date: string | null;
-    loading: boolean;
-    error: boolean;
-  }>(() => {
+  const [state, setState] = useState<ExchangeRates>(() => {
+    if (hardcoded) {
+      return { rates: hardcoded.rates, date: hardcoded.date, loading: false, error: false };
+    }
     if (!baseCode || needed.length === 0) {
       return { rates: {}, date: null, loading: false, error: false };
     }
-    const hit = cacheCovers(baseCode, needed);
+    const hit = readCache(baseCode);
     if (hit) return { rates: hit.rates, date: hit.date, loading: false, error: false };
     return { rates: null, date: null, loading: true, error: false };
   });
 
   useEffect(() => {
+    if (hardcoded) {
+      setState({ rates: hardcoded.rates, date: hardcoded.date, loading: false, error: false });
+      return;
+    }
     if (!baseCode || needed.length === 0) {
       setState({ rates: {}, date: null, loading: false, error: false });
       return;
     }
 
-    const hit = cacheCovers(baseCode, needed);
+    const hit = readCache(baseCode);
     if (hit) {
       setState({ rates: hit.rates, date: hit.date, loading: false, error: false });
       return;
     }
 
-    const cached = cache.get(baseCode);
-    const union = cached
-      ? [...new Set([...Object.keys(cached.rates), ...needed])].sort()
-      : needed;
-    const key = `${baseCode}:${union.join(",")}`;
-
     let cancelled = false;
     setState({ rates: null, date: null, loading: true, error: false });
-
-    let promise = inflight.get(key);
-    if (!promise) {
-      promise = fetchRates(baseCode, union)
-        .then((result) => {
-          const previous = cache.get(baseCode);
-          const merged = {
-            date: result.date,
-            rates: { ...(previous?.rates ?? {}), ...result.rates },
-          };
-          cache.set(baseCode, merged);
-          inflight.delete(key);
-          return merged;
-        })
-        .catch((err: unknown) => {
-          inflight.delete(key);
-          throw err;
-        });
-      inflight.set(key, promise);
-    }
-
-    promise
+    loadRates(baseCode)
       .then((result) => {
         if (!cancelled) setState({ rates: result.rates, date: result.date, loading: false, error: false });
       })
@@ -163,9 +239,10 @@ export function useExchangeRates(
     return () => {
       cancelled = true;
     };
-    // neededKey is the stable serialisation of `needed`.
+    // neededKey gates the "nothing to convert" short-circuit; the endpoint
+    // returns every code, so the fetch itself is per-base.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseCode, neededKey]);
+  }, [baseCode, neededKey, hardcoded]);
 
   return state;
 }

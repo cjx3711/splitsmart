@@ -1,7 +1,9 @@
 /**
- * Display-only conversion math. Frankfurter's `rates[X]` is "units of X per
- * one unit of base", so converting X → base divides. A missing rate must
- * return null, never 1.
+ * Conversion math. open.er-api's `rates[X]` is "units of X per one unit of
+ * base", so converting X → base divides. Tests hardcode the table; the hook
+ * and the day cache are not exercised here.
+ *
+ * A missing rate must return null, never 1.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +19,7 @@ test("same currency is a no-op, even without rates", () => {
   assert.equal(convertMinor(1234, "USD", "USD", {}, decimalsFor), 1234);
 });
 
-test("JPY to USD divides by the Frankfurter rate", () => {
+test("JPY to USD divides by the quoted rate", () => {
   // 1 USD = 159.01 JPY → 15,901 JPY converts to 100.00 USD.
   const rates = { JPY: 159.01 };
   assert.equal(convertMinor(15901, "JPY", "USD", rates, decimalsFor), 10000);

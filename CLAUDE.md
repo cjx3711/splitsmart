@@ -116,11 +116,11 @@ returns an **array**. There is no exchange-rate table and there must not be one 
 netting USD against EUR requires an opinion about which day's rate applies, and
 that does not belong in a ledger.
 
-The web UI may show a labeled ≈ estimate from live Frankfurter rates
+The web UI may show a labeled ≈ estimate from live Exchange Rate API rates
 (`web/src/exchangeRates.ts`). That is display-only: rates are fetched in the
-browser, held in memory, and never persisted. If the fetch fails, the estimate
-is omitted. Nothing in `expense_users`, `expense_repayments`, or any balance
-query may use a rate.
+browser, cached in localStorage for a day, and never written to the ledger. If
+the fetch fails and nothing is cached, the estimate is omitted. Nothing in
+`expense_users`, `expense_repayments`, or any balance query may use a rate.
 
 ### 3. All expense writes go through `src/domain/expenses.ts`
 
@@ -650,7 +650,7 @@ POST /api/v1/import/friends    step 1
 POST /api/v1/import/groups     step 2
 POST /api/v1/import/expenses   step 3, one page per call, resumable
 POST /api/v1/import/comments   step 4, one page of expenses per call
-POST /api/v1/import/rounding   step 5, settle leftover cents vs Splitwise friend totals
+POST /api/v1/import/rounding   step 5, settle leftover cents vs Splitwise group nets, then friend totals
 POST /api/v1/import/continue-recurring  resume stopped imported series (no key)
 POST /api/v1/import/run        all five server-side, for small accounts
 POST /api/v1/import/wipe       hard-delete this ledger so a reimport starts empty
@@ -694,8 +694,9 @@ Four things this must keep doing:
   centres the error at zero so the corrections cancel. Unknown
   currency, missing group, shares that do not add up; those still come back in
   `skipped[]` and write nothing. After comments, `POST /import/rounding`
-  compares Splitwise friend totals and records a one-on-one settle-up for any
-  leftover of at most 100 minor units, with a note on the payment.
+  matches Splitwise group member nets first (anyone-to-anyone inside the group),
+  then friend totals, and records a settle-up for any leftover of at most 100
+  minor units, with a note on the payment.
 - **Splitwise's `repayments[]` are imported, not re-derived.** Per-person nets
   do not determine who pays whom: a two-payer bill has several valid pairings
   and our greedy matcher picks a different one from Splitwise. Inside a group

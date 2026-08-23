@@ -23,7 +23,9 @@
  * Nothing here computes a balance. Balances are derived on the client from
  * `expense_users` via the same pure `deriveRepayments` the server uses, because a
  * pairwise net taken from two people's shares on a three-way bill is wrong
- * (docs/OFFLINE.md, decision 3).
+ * (docs/OFFLINE.md, decision 3). The stored pairing travels on the expense as
+ * `repayments` and is a hint, so an imported two-payer bill keeps Splitwise's
+ * who-owes-whom instead of the client's greedy matcher.
  */
 import { Hono } from "hono";
 import { compress } from "hono/compress";
@@ -526,8 +528,14 @@ type PushOp = z.infer<typeof pushOpSchema>;
 async function readPushBody(c: { req: { header: (name: string) => string | undefined; arrayBuffer: () => Promise<ArrayBuffer>; json: () => Promise<unknown> } }): Promise<unknown> {
   const encoding = (c.req.header("content-encoding") ?? "").toLowerCase();
   if (encoding !== "gzip") return c.req.json();
-  const inflated = gunzipSync(Buffer.from(await c.req.arrayBuffer()));
-  return JSON.parse(inflated.toString("utf8"));
+  const buf = Buffer.from(await c.req.arrayBuffer());
+  try {
+    return JSON.parse(gunzipSync(buf).toString("utf8"));
+  } catch {
+    // Vite's proxy (and some CDNs) inflate the body but leave the header on.
+    // The bytes are already JSON; treating them as gzip would reject a valid push.
+    return JSON.parse(buf.toString("utf8"));
+  }
 }
 
 /** Runs one op, turning every failure into a status rather than a 500. */

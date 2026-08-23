@@ -22,7 +22,7 @@
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call
  *   POST /api/v1/import/comments         step 4, one page of expenses per call
- *   POST /api/v1/import/rounding         step 5, settle leftover cents vs Splitwise
+ *   POST /api/v1/import/rounding         step 5, settle leftover cents vs Splitwise groups, then friends
  *   POST /api/v1/import/continue-recurring  resume stopped imported series
  *   POST /api/v1/import/run              all five server-side, for small accounts
  *   POST /api/v1/import/wipe             hard-delete this account's ledger (reimport)

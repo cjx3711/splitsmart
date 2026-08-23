@@ -47,7 +47,9 @@ import {
   putUsers,
 } from "../db/apply.ts";
 import {
+  deleteLocalDb,
   getMeta,
+  openLocalDb,
   setMeta,
   type LocalComment,
   type LocalDb,
@@ -92,6 +94,14 @@ const MAX_PAGES = 50;
  */
 const GROUP_SHAPE = 1;
 
+/**
+ * Expense document shape this client knows how to read. Existing mirrors that
+ * bootstrapped before `repayments` was on the payload will not receive those
+ * rows again (unchanged bills write no new sync_log), so `hydrateExpenseDocs`
+ * re-pages bootstrap once and stamps the stored pairing.
+ */
+const EXPENSE_SHAPE = 1;
+
 export interface SyncStatus {
   /** `navigator.onLine` plus whether the last attempt actually reached the server. */
   online: boolean;
@@ -108,12 +118,17 @@ export interface SyncStatus {
 }
 
 export class SyncEngine {
-  readonly db: LocalDb;
+  db: LocalDb;
   readonly selfId: string;
 
   private inFlight: Promise<void> | null = null;
   /** Another sync() arrived while a cycle was running. Run one more after. */
   private queued = false;
+  /**
+   * A reset is throwing the mirror away. Kick/queue must not start a cycle
+   * against the closing Dexie, or clear and sync deadlock on the same stores.
+   */
+  private resetting = false;
   private listeners = new Set<() => void>();
 
   /**
@@ -168,6 +183,10 @@ export class SyncEngine {
    * than an error to propagate into a render.
    */
   sync(): Promise<void> {
+    if (this.resetting) {
+      this.queued = true;
+      return this.inFlight ?? Promise.resolve();
+    }
     if (this.inFlight) {
       // Callers that write then sync (the simplify-debts toggle) must not join
       // a pull that already ran against the pre-write server. Queue a fresh
@@ -176,13 +195,17 @@ export class SyncEngine {
       return this.inFlight;
     }
 
-    this.inFlight = this.run()
+    const cycle = this.run()
       .catch(async (err: unknown) => {
-        await setMeta(this.db, "lastError", describeError(err));
+        try {
+          await setMeta(this.db, "lastError", describeError(err));
+        } catch {
+          // resetMirror closed this Dexie mid-cycle. The replacement is empty.
+        }
         if (err instanceof ApiError && err.status === 401) this.onAuthInvalid?.();
       })
       .finally(() => {
-        this.inFlight = null;
+        if (this.inFlight === cycle) this.inFlight = null;
         this.announce();
         if (this.queued) {
           this.queued = false;
@@ -190,16 +213,24 @@ export class SyncEngine {
         }
       });
 
+    this.inFlight = cycle;
     this.announce();
-    return this.inFlight;
+    return cycle;
   }
 
   private async run(): Promise<void> {
     if (!(await getMeta(this.db, "bootstrapped"))) await this.bootstrap();
-    await this.hydrateGroupDocs();
 
-    await this.pullAll();
+    // Local writes go out before hydrate/pull. Those two can take a long time
+    // on a large imported ledger (or fail), and a dinner sitting in the outbox
+    // while the tab looks online is the failure mode we are avoiding. Creates
+    // cannot conflict with a missed pull; an update that does becomes a
+    // conflict on the next cycle.
     const pushed = await this.pushAll();
+
+    await this.hydrateGroupDocs();
+    await this.hydrateExpenseDocs();
+    await this.pullAll();
 
     // One more pull when something landed: the server's own copy of what we just
     // wrote, plus the system comments its edits generated. Those have seqs above
@@ -217,16 +248,36 @@ export class SyncEngine {
    * Used after the server wiped this account's data. Pull cannot reconstruct a
    * deleted history, so the mirror has to start over. The cached profile stays
    * so a reload still knows who is signed in.
+   *
+   * Deletes the IndexedDB rather than clearing stores: a live sync cycle plus
+   * liveQuery readers plus `table.clear()` on a large ledger deadlock, which
+   * is why the wipe/clear dialogs sat on "Deleting…" after the server had
+   * already answered. Closing the Dexie aborts the in-flight cycle.
+   *
+   * `onReopened` fires after the new empty database exists and before
+   * bootstrap, so React can point live queries at it.
    */
-  async resetMirror(): Promise<void> {
-    if (this.inFlight) await this.inFlight;
-    const profile = await getMeta(this.db, "profile");
-    await this.db.transaction("rw", this.db.tables, async () => {
-      await Promise.all(this.db.tables.map((table) => table.clear()));
-    });
-    if (profile) await setMeta(this.db, "profile", profile);
-    await setMeta(this.db, "bootstrapped", false);
-    await setMeta(this.db, "cursor", 0);
+  async resetMirror(
+    profile?: SyncUser,
+    onReopened?: (db: LocalDb) => void,
+  ): Promise<void> {
+    this.resetting = true;
+    this.queued = false;
+    try {
+      const kept = profile ?? (await getMeta(this.db, "profile").catch(() => undefined));
+      this.db.close();
+      await deleteLocalDb(this.selfId);
+      this.db = openLocalDb(this.selfId);
+      if (kept) await setMeta(this.db, "profile", kept);
+      await setMeta(this.db, "bootstrapped", false);
+      await setMeta(this.db, "cursor", 0);
+      onReopened?.(this.db);
+    } catch (err) {
+      if (!this.db.isOpen()) this.db = openLocalDb(this.selfId);
+      throw err;
+    } finally {
+      this.resetting = false;
+    }
     await this.sync();
   }
 
@@ -263,6 +314,7 @@ export class SyncEngine {
     await setMeta(this.db, "cursor", firstSeq ?? 0);
     await setMeta(this.db, "bootstrapped", true);
     await setMeta(this.db, "groupShape", GROUP_SHAPE);
+    await setMeta(this.db, "expenseShape", EXPENSE_SHAPE);
   }
 
   /**
@@ -295,6 +347,50 @@ export class SyncEngine {
     } catch {
       // Offline, or the list endpoint failed. Friend totals still default
       // missing flags to on; this retries next cycle.
+    }
+  }
+
+  /**
+   * Stamps the stored who-owes-whom pairing onto expenses that bootstrapped
+   * before that field existed. Pull will not rewrite a bill that has not
+   * changed, and without the hint a two-payer non-group expense re-derives a
+   * different valid pairing — a phantom friend balance the other side does
+   * not have.
+   */
+  private async hydrateExpenseDocs(): Promise<void> {
+    if ((await getMeta(this.db, "expenseShape")) === EXPENSE_SHAPE) return;
+
+    try {
+      let cursor: string | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const snapshot = await api.syncBootstrap(cursor);
+        const incoming = snapshot.expenses ?? [];
+        if (incoming.length > 0) {
+          const existing = await this.db.expenses.bulkGet(incoming.map((e) => e.id));
+          const updates = [];
+          for (const [i, next] of incoming.entries()) {
+            const prev = existing[i];
+            if (prev && prev.syncState !== "synced") continue;
+            if (prev) {
+              updates.push({ ...prev, repayments: next.repayments ?? [] });
+            } else {
+              updates.push({
+                ...next,
+                syncState: "synced" as const,
+                conflictWith: null,
+                rejectedReason: null,
+              });
+            }
+          }
+          if (updates.length > 0) await this.db.expenses.bulkPut(updates);
+        }
+        if (!snapshot.nextCursor) break;
+        cursor = snapshot.nextCursor;
+      }
+      await setMeta(this.db, "expenseShape", EXPENSE_SHAPE);
+    } catch {
+      // Offline, or bootstrap failed. Friend totals keep using greedy until
+      // this succeeds; it retries next cycle.
     }
   }
 

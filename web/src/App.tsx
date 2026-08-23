@@ -8,6 +8,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import { CurrencyProvider } from "./money.tsx";
+import { ExchangeRatesProvider } from "./exchangeRates.ts";
 import { SyncProvider, useSync } from "./sync/SyncProvider.tsx";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
 import { Conflicts } from "./pages/Conflicts.tsx";
@@ -70,7 +71,9 @@ export function App() {
   return (
     <SyncProvider>
       <CurrencyProvider>
-        <Shell />
+        <ExchangeRatesProvider>
+          <Shell />
+        </ExchangeRatesProvider>
       </CurrencyProvider>
     </SyncProvider>
   );

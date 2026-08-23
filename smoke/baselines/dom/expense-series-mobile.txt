@@ -29,10 +29,10 @@
     - button "About this series": "?"
   - button "Stop repeating"
   - heading "Bills" [level=2]
-  - link "Rent <DATE> · Rent · You paid repeats 1800.00USD you lent 900.00USD"
-  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
-  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
-  - link "Rent <DATE> · Rent · You paid series 1800.00USD you lent 900.00USD"
+  - link "Rent <DATE> · Rent · You paid repeats lent 900.00USD 1800.00USD"
+  - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
+  - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
+  - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
   - text: Coming <DATE> · will be created soon
 - contentinfo:
   - text: Created out of spite by cjx3711.

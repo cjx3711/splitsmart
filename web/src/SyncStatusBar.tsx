@@ -11,14 +11,15 @@
  *
  *   1. Writes the server REFUSED or overtook. A link to the quarantine screen.
  *   2. No connection, with the unsynced count and when we last managed a sync.
- *   3. Unsynced writes while apparently online - a failing sync rather than a
- *      missing network, which is a different problem and worth distinguishing.
+ *   3. Unsynced writes while apparently online - either a cycle still running
+ *      or a lastError from a failed one. "Sync now" is always on this bar.
  *   4. Working from the mirror because the server did not answer at all -
  *      offline, timed out, 5xx. A confirmed 401 does not reach this bar: it
  *      logs the account out (see SyncProvider's `forceLogout`) and `Protected`
  *      takes the screen to /login before this would ever render for it.
  */
 import { Link } from "react-router-dom";
+import { LuCloudOff } from "react-icons/lu";
 import { useSync } from "./sync/SyncProvider.tsx";
 
 export function SyncStatusBar() {
@@ -27,9 +28,9 @@ export function SyncStatusBar() {
 
   const unresolved = status.conflicts + status.rejected;
   const offline = !status.online;
-  const stuck = status.online && status.pending > 0 && status.lastError !== null;
+  const waiting = status.online && status.pending > 0;
 
-  if (unresolved === 0 && !offline && !stuck && !reconnecting) return null;
+  if (unresolved === 0 && !offline && !waiting && !reconnecting) return null;
 
   return (
     <div className={`syncbar ${unresolved > 0 ? "syncbar-warn" : ""}`.trim()}>
@@ -54,9 +55,10 @@ export function SyncStatusBar() {
           </span>
         )}
 
-        {unresolved === 0 && !offline && !reconnecting && stuck && (
+        {unresolved === 0 && !offline && !reconnecting && waiting && (
           <span>
-            {count(status.pending, "change")} not saved yet: {status.lastError}
+            {count(status.pending, "change")} not saved yet
+            {status.lastError ? `: ${status.lastError}` : "."}
           </span>
         )}
       </div>
@@ -102,8 +104,14 @@ function lastSynced(at: string | null): string {
 export function SyncBadge({ state }: { state?: string }) {
   if (!state || state === "synced") return null;
 
-  const label =
-    state === "pending" ? "Not synced" : state === "conflict" ? "Conflict" : "Not saved";
+  if (state === "pending") {
+    return (
+      <span className="sync-icon" title="Not yet synced" aria-label="Not yet synced">
+        <LuCloudOff size={14} />
+      </span>
+    );
+  }
 
+  const label = state === "conflict" ? "Conflict" : "Not saved";
   return <span className={`sync-badge sync-badge-${state}`}>{label}</span>;
 }
