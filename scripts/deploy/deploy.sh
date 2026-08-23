@@ -54,7 +54,10 @@ fi
 # expansion) already keep it simple.
 env_value() {
   local key="$1" file="$2"
-  grep -E "^${key}=" "$file" | tail -n1 | cut -d'=' -f2-
+  # A missing key is unset, not an error: optional mail providers are
+  # omitted from .env.prod rather than left as blank lines. Without
+  # `|| true`, grep's "no match" plus pipefail would abort the deploy.
+  grep -E "^${key}=" "$file" | tail -n1 | cut -d'=' -f2- || true
 }
 
 missing=()
