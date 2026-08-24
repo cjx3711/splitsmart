@@ -24,7 +24,7 @@ export type AvatarHsla = {
 };
 
 export type AvatarLayer = AvatarHsla & {
-  /** 0–100, along the rotated axis. */
+  /** 0–100 along the disc diameter (the visible axis), not the square's diagonal. */
   start: number;
   /** 0–100, greater than start. */
   end: number;
@@ -51,9 +51,25 @@ export function hslaCss(c: AvatarHsla): string {
  */
 export function avatarLayerCss(layer: AvatarLayer): string {
   const color = hslaCss(layer);
-  const start = round(layer.start, 2);
-  const end = round(layer.end, 2);
+  const start = round(circleStopToCss(layer.start, layer.rotation), 2);
+  const end = round(circleStopToCss(layer.end, layer.rotation), 2);
   return `linear-gradient(${round(layer.rotation, 1)}deg, transparent ${start}%, ${color} ${start}%, ${color} ${end}%, transparent ${end}%)`;
+}
+
+/**
+ * CSS linear-gradient percentages run along the square, which is longer on
+ * the diagonal. Stops on the disc are along the diameter; this maps them so
+ * 0% and 100% stay on the rim at every angle.
+ */
+export function circleStopToCss(percent: number, rotation: number): number {
+  const span = cssGradientSpan(rotation);
+  return ((percent / 100 - 0.5) / span) * 100 + 50;
+}
+
+function cssGradientSpan(rotation: number): number {
+  const theta = (rotation * Math.PI) / 180;
+  const max = Math.max(Math.abs(Math.sin(theta)), Math.abs(Math.cos(theta)));
+  return max === 0 ? 1 : 1 / max;
 }
 
 export function avatarPatternCss(pattern: AvatarPattern): string {
@@ -132,8 +148,24 @@ export function avatarPatternFromId(id: string, iconHue?: number | null): Avatar
   });
 }
 
-export function randomizeAvatarPattern(baseHue?: number): AvatarPattern {
-  return randomAvatarPattern(Math.random, { baseHue });
+/** Which parts of a pattern Randomise must leave alone. Session-only; not stored. */
+export type AvatarLockMask = {
+  base?: boolean;
+  /** Parallel to `current.layers`. A missing/false entry is unlocked. */
+  layers?: boolean[];
+};
+
+export function randomizeAvatarPattern(
+  current: AvatarPattern,
+  locks?: AvatarLockMask,
+): AvatarPattern {
+  return randomAvatarPattern(Math.random, {
+    baseHue: current.base.h,
+    // The editor always passes a lock mask so a click cannot add or
+    // remove discs. The form Randomise omits it and rolls a new count.
+    keepLayerCount: locks !== undefined,
+    keep: locks ? { current, locks } : undefined,
+  });
 }
 
 export function resolveAvatarPattern(person: {
@@ -186,38 +218,96 @@ export function isNeutral(c: AvatarHsla): boolean {
 
 export function randomAvatarPattern(
   rng: () => number,
-  opts: { baseHue?: number } = {},
+  opts: {
+    baseHue?: number;
+    /** Keep `current.layers.length`. Editor Randomise; a fresh roll omits this. */
+    keepLayerCount?: boolean;
+    keep?: { current: AvatarPattern; locks?: AvatarLockMask };
+  } = {},
 ): AvatarPattern {
-  const origin = opts.baseHue !== undefined ? wrapHue(opts.baseHue) : rng() * 360;
+  const current = opts.keep?.current;
+  const locks = opts.keep?.locks;
+  const keepBase = Boolean(locks?.base && current);
+  const layerLocks = locks?.layers ?? [];
+  const keepAnyLayer = Boolean(current && layerLocks.some(Boolean));
+
+  const origin = keepBase
+    ? current!.base.h
+    : opts.baseHue !== undefined
+      ? wrapHue(opts.baseHue)
+      : rng() * 360;
   const span = 55 + rng() * 125;
-  const sat = 48 + rng() * 32;
-  const light = 26 + rng() * 22;
 
-  const base: AvatarHsla = {
-    h: round(origin, 1),
-    s: round(sat, 1),
-    l: round(light, 1),
-    a: 1,
-  };
-  const baseEnd: AvatarHsla = {
-    h: round(wrapHue(origin + Math.min(span, 8 + rng() * 24)), 1),
-    s: round(clamp(sat + (rng() - 0.5) * 18, 38, 84), 1),
-    l: round(clamp(light + (rng() - 0.5) * 16, 16, 56), 1),
-    a: 1,
-  };
+  let base: AvatarHsla;
+  let baseEnd: AvatarHsla | undefined;
+  let baseRotation: number | undefined;
+  if (keepBase && current) {
+    base = current.base;
+    baseEnd = current.baseEnd;
+    baseRotation = current.baseRotation;
+  } else {
+    const sat = 48 + rng() * 32;
+    const light = 26 + rng() * 22;
+    base = {
+      h: round(origin, 1),
+      s: round(sat, 1),
+      l: round(light, 1),
+      a: 1,
+    };
+    baseEnd = {
+      h: round(wrapHue(origin + Math.min(span, 8 + rng() * 24)), 1),
+      s: round(clamp(sat + (rng() - 0.5) * 18, 38, 84), 1),
+      l: round(clamp(light + (rng() - 0.5) * 16, 16, 56), 1),
+      a: 1,
+    };
+    baseRotation = round(rng() * 360, 1);
+  }
 
-  const layerCount = 3 + Math.floor(rng() * 4);
+  const layerCount =
+    (opts.keepLayerCount || keepAnyLayer) && current
+      ? current.layers.length
+      : 3 + Math.floor(rng() * 4);
   const layers: AvatarLayer[] = [];
   let neutrals = 0;
+  if (keepAnyLayer && current) {
+    for (let i = 0; i < layerCount; i++) {
+      if (layerLocks[i] && isNeutral(current.layers[i]!)) neutrals += 1;
+    }
+  }
 
   for (let i = 0; i < layerCount; i++) {
-    const wantNeutral = neutrals < 2 && rng() < (i === 0 ? 0.05 : 0.16);
-    if (wantNeutral) {
-      neutrals += 1;
-      const lightAccent = rng() < 0.55;
-      const start = rng() * 78;
-      const width = 4 + rng() * 12;
-      layers.push({
+    if (keepAnyLayer && current && layerLocks[i] && current.layers[i]) {
+      layers.push(current.layers[i]!);
+      continue;
+    }
+    const rolled = rollLayer(rng, origin, span, i, neutrals);
+    layers.push(rolled.layer);
+    neutrals = rolled.neutrals;
+  }
+
+  return {
+    base,
+    ...(baseEnd ? { baseEnd } : {}),
+    ...(baseRotation !== undefined ? { baseRotation } : {}),
+    layers,
+  };
+}
+
+function rollLayer(
+  rng: () => number,
+  origin: number,
+  span: number,
+  index: number,
+  neutrals: number,
+): { layer: AvatarLayer; neutrals: number } {
+  const wantNeutral = neutrals < 2 && rng() < (index === 0 ? 0.05 : 0.16);
+  if (wantNeutral) {
+    const lightAccent = rng() < 0.55;
+    const start = rng() * 78;
+    const width = 4 + rng() * 12;
+    return {
+      neutrals: neutrals + 1,
+      layer: {
         start: round(start, 2),
         end: round(Math.min(100, start + width), 2),
         rotation: round(rng() * 180, 1),
@@ -225,13 +315,15 @@ export function randomAvatarPattern(
         s: round(rng() * 10, 1),
         l: round(lightAccent ? 86 + rng() * 10 : 6 + rng() * 12, 1),
         a: round(0.22 + rng() * 0.38, 3),
-      });
-      continue;
-    }
+      },
+    };
+  }
 
-    const start = rng() * 62;
-    const width = 14 + rng() * 36;
-    layers.push({
+  const start = rng() * 62;
+  const width = 14 + rng() * 36;
+  return {
+    neutrals,
+    layer: {
       start: round(start, 2),
       end: round(Math.min(100, start + width), 2),
       rotation: round(rng() * 180, 1),
@@ -239,14 +331,7 @@ export function randomAvatarPattern(
       s: round(35 + rng() * 48, 1),
       l: round(18 + rng() * 42, 1),
       a: round(0.38 + rng() * 0.5, 3),
-    });
-  }
-
-  return {
-    base,
-    baseEnd,
-    baseRotation: round(rng() * 360, 1),
-    layers,
+    },
   };
 }
 

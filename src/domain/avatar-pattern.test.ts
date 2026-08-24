@@ -4,12 +4,14 @@ import {
   MAX_AVATAR_LAYERS,
   avatarPatternCss,
   avatarPatternFromId,
+  circleStopToCss,
   hexFromHsla,
   hslaFromHex,
   isNeutral,
   paletteSpan,
   parseAvatarPattern,
   randomAvatarPattern,
+  randomizeAvatarPattern,
   stringifyAvatarPattern,
 } from "./avatar-pattern.ts";
 
@@ -103,6 +105,107 @@ describe("avatarPatternCss", () => {
     assert.match(css, /linear-gradient\(23deg/);
     assert.match(css, /linear-gradient\(150deg, hsla\(340/);
     assert.ok(css.indexOf("110deg") < css.indexOf("23deg"));
+  });
+});
+
+describe("circleStopToCss", () => {
+  test("is a no-op on the cardinal axes", () => {
+    assert.equal(circleStopToCss(0, 0), 0);
+    assert.equal(circleStopToCss(100, 90), 100);
+    assert.equal(circleStopToCss(50, 180), 50);
+  });
+
+  test("keeps 0% and 100% on the disc rim at 45°", () => {
+    const start = circleStopToCss(0, 45);
+    const end = circleStopToCss(100, 45);
+    assert.ok(Math.abs(start - (50 - 50 / Math.SQRT2)) < 1e-6);
+    assert.ok(Math.abs(end - (50 + 50 / Math.SQRT2)) < 1e-6);
+    assert.ok(start > 0);
+    assert.ok(end < 100);
+  });
+});
+
+describe("randomize with locks", () => {
+  function seqRng(seed: number) {
+    let i = seed;
+    return () => {
+      i += 1;
+      return ((i * 17) % 100) / 100;
+    };
+  }
+
+  test("keeps a locked base and locked layers, randomises the rest", () => {
+    const current = randomAvatarPattern(seqRng(3));
+    assert.ok(current.layers.length >= 2);
+    const locks = {
+      base: true,
+      layers: current.layers.map((_, i) => i === 0),
+    };
+    const next = randomAvatarPattern(seqRng(99), {
+      baseHue: current.base.h,
+      keep: { current, locks },
+    });
+    assert.deepEqual(next.base, current.base);
+    assert.deepEqual(next.baseEnd, current.baseEnd);
+    assert.equal(next.baseRotation, current.baseRotation);
+    assert.equal(next.layers.length, current.layers.length);
+    assert.deepEqual(next.layers[0], current.layers[0]);
+    if (current.layers.length > 1) {
+      assert.notDeepEqual(next.layers.slice(1), current.layers.slice(1));
+    }
+  });
+
+  test("returns the same pattern when everything is locked", () => {
+    const current = randomAvatarPattern(seqRng(3));
+    const next = randomAvatarPattern(seqRng(1), {
+      keep: {
+        current,
+        locks: { base: true, layers: current.layers.map(() => true) },
+      },
+    });
+    assert.deepEqual(next, current);
+  });
+
+  test("keepLayerCount reshuffles without adding or removing bands", () => {
+    const current = {
+      base: SAMPLE.base,
+      layers: Array.from({ length: 5 }, (_, i) => ({
+        start: 10 + i * 8,
+        end: 16 + i * 8,
+        rotation: i * 20,
+        h: 340,
+        s: 50,
+        l: 40,
+        a: 0.5,
+      })),
+    };
+    const next = randomAvatarPattern(seqRng(11), {
+      keepLayerCount: true,
+      keep: { current, locks: { base: false, layers: current.layers.map(() => false) } },
+    });
+    assert.equal(next.layers.length, 5);
+    assert.notDeepEqual(next.layers, current.layers);
+    assert.notDeepEqual(next.base, current.base);
+  });
+
+  test("a lock mask (editor Randomise) keeps the band count", () => {
+    const current = {
+      base: SAMPLE.base,
+      layers: Array.from({ length: 5 }, (_, i) => ({
+        start: 10 + i * 8,
+        end: 16 + i * 8,
+        rotation: i * 20,
+        h: 340,
+        s: 50,
+        l: 40,
+        a: 0.5,
+      })),
+    };
+    const next = randomizeAvatarPattern(current, {
+      base: false,
+      layers: current.layers.map(() => false),
+    });
+    assert.equal(next.layers.length, 5);
   });
 });
 

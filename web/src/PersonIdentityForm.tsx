@@ -3,15 +3,22 @@
  *
  * Shared by Settings (yourself) and the friend/group screens (placeholder
  * people). The parent owns the value and the save; this is just the fields.
+ * Pattern bands and letters/emoji open in modals so the form stays simple.
  */
+import { useState } from "react";
 import {
   defaultIconLetters,
   type AvatarPattern,
 } from "../../src/domain/person.ts";
-import { parseAvatarPattern } from "../../src/domain/avatar-pattern.ts";
+import {
+  avatarPatternFromId,
+  parseAvatarPattern,
+  randomizeAvatarPattern,
+} from "../../src/domain/avatar-pattern.ts";
 import { Avatar } from "./Avatar.tsx";
 import { AvatarPatternEditor } from "./AvatarPatternEditor.tsx";
 import { HelpTip } from "./HelpTip.tsx";
+import { Modal } from "./Modal.tsx";
 
 export type IdentityDraft = {
   name: string;
@@ -92,11 +99,27 @@ export function PersonIdentityForm({
   onChange: (next: IdentityDraft) => void;
   idPrefix?: string;
 }) {
+  const [patternOpen, setPatternOpen] = useState(false);
+  const [iconOpen, setIconOpen] = useState(false);
   const previewName = value.nickname.trim() || value.name.trim() || "Name";
   const autoLetters = defaultIconLetters({
     name: value.name,
     nickname: value.nickname.trim() || null,
   });
+  const iconPreview = value.iconEmoji.trim() || value.iconLetters.trim() || autoLetters;
+
+  function setPattern(iconPattern: AvatarPattern | null) {
+    onChange({
+      ...value,
+      iconPattern,
+      iconHue: iconPattern ? Math.round(iconPattern.base.h) % 360 : null,
+    });
+  }
+
+  function randomisePattern() {
+    const current = value.iconPattern ?? avatarPatternFromId(id, value.iconHue);
+    setPattern(randomizeAvatarPattern(current));
+  }
 
   return (
     <div className="identity-form">
@@ -142,74 +165,118 @@ export function PersonIdentityForm({
         />
       </div>
 
-      <AvatarPatternEditor
-        id={id}
-        iconHue={value.iconHue}
-        value={value.iconPattern}
-        onChange={(iconPattern) =>
-          onChange({
-            ...value,
-            iconPattern,
-            iconHue: iconPattern ? Math.round(iconPattern.base.h) % 360 : null,
-          })
-        }
-      />
-
-      <div>
+      <div className="identity-row">
         <div className="label-with-help">
-          <label htmlFor={`${idPrefix}-letters`}>Icon letters</label>
-          <HelpTip label="About icon letters">
-            Up to two characters, drawn on top of the pattern. Leave blank to
-            derive them from the name.
+          <span className="identity-pattern-label">Profile image</span>
+          <HelpTip label="About the profile image">
+            A geometric pattern of coloured bands. Randomise for a new one, or
+            edit the bands, colours, and rotation.
           </HelpTip>
         </div>
-        <input
-          id={`${idPrefix}-letters`}
-          value={value.iconLetters}
-          onChange={(e) => onChange({ ...value, iconLetters: e.target.value })}
-          maxLength={8}
-          placeholder={autoLetters}
-        />
+        <div className="identity-row-actions">
+          <button type="button" className="secondary inline" onClick={randomisePattern}>
+            Randomise
+          </button>
+          <button type="button" className="secondary inline" onClick={() => setPatternOpen(true)}>
+            Edit
+          </button>
+        </div>
       </div>
 
-      <fieldset className="identity-fieldset">
-        <legend>Icon emoji</legend>
-        <div className="identity-emoji-grid">
-          <button
-            type="button"
-            className={!value.iconEmoji ? "identity-swatch selected" : "identity-swatch"}
-            onClick={() => onChange({ ...value, iconEmoji: "" })}
-            aria-pressed={!value.iconEmoji}
-            aria-label="No emoji"
-          >
-            {value.iconLetters.trim() || autoLetters}
-          </button>
-          {EMOJIS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              className={
-                value.iconEmoji === emoji ? "identity-swatch selected" : "identity-swatch"
-              }
-              onClick={() => onChange({ ...value, iconEmoji: emoji })}
-              aria-pressed={value.iconEmoji === emoji}
-              aria-label={`Use ${emoji}`}
-            >
-              {emoji}
-            </button>
-          ))}
+      <div className="identity-row">
+        <div className="label-with-help">
+          <span className="identity-pattern-label">Icon</span>
+          <HelpTip label="About icon letters and emoji">
+            Up to two characters, or an emoji, drawn on top of the pattern.
+            Leave the letters blank to derive them from the name.
+          </HelpTip>
         </div>
-        <label htmlFor={`${idPrefix}-emoji`} className="sr-only">
-          Or paste any emoji
-        </label>
-        <input
-          id={`${idPrefix}-emoji`}
-          value={value.iconEmoji}
-          onChange={(e) => onChange({ ...value, iconEmoji: e.target.value })}
-          placeholder="Or paste any emoji"
-          maxLength={16}
+        <div className="identity-row-actions">
+          <span className="identity-icon-chip" aria-hidden="true">
+            {iconPreview}
+          </span>
+          <button type="button" className="secondary inline" onClick={() => setIconOpen(true)}>
+            Edit
+          </button>
+        </div>
+      </div>
+
+      <Modal
+        open={patternOpen}
+        title="Profile image"
+        onClose={() => setPatternOpen(false)}
+        className="modal-wide"
+      >
+        <AvatarPatternEditor
+          id={id}
+          name={value.name}
+          nickname={value.nickname.trim() || null}
+          iconLetters={value.iconLetters.trim() || null}
+          iconEmoji={value.iconEmoji.trim() || null}
+          iconHue={value.iconHue}
+          value={value.iconPattern}
+          onChange={setPattern}
         />
-      </fieldset>
+      </Modal>
+
+      <Modal open={iconOpen} title="Icon letters and emoji" onClose={() => setIconOpen(false)}>
+        <div className="stack">
+          <div>
+            <label htmlFor={`${idPrefix}-letters`}>Icon letters</label>
+            <input
+              id={`${idPrefix}-letters`}
+              value={value.iconLetters}
+              onChange={(e) => onChange({ ...value, iconLetters: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
+              maxLength={8}
+              placeholder={autoLetters}
+            />
+          </div>
+          <fieldset className="identity-fieldset">
+            <legend>Icon emoji</legend>
+            <div className="identity-emoji-grid">
+              <button
+                type="button"
+                className={!value.iconEmoji ? "identity-swatch selected" : "identity-swatch"}
+                onClick={() => onChange({ ...value, iconEmoji: "" })}
+                aria-pressed={!value.iconEmoji}
+                aria-label="No emoji"
+              >
+                {value.iconLetters.trim() || autoLetters}
+              </button>
+              {EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className={
+                    value.iconEmoji === emoji ? "identity-swatch selected" : "identity-swatch"
+                  }
+                  onClick={() => onChange({ ...value, iconEmoji: emoji })}
+                  aria-pressed={value.iconEmoji === emoji}
+                  aria-label={`Use ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            <label htmlFor={`${idPrefix}-emoji`} className="sr-only">
+              Or paste any emoji
+            </label>
+            <input
+              id={`${idPrefix}-emoji`}
+              value={value.iconEmoji}
+              onChange={(e) => onChange({ ...value, iconEmoji: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.preventDefault();
+              }}
+              placeholder="Or paste any emoji"
+              maxLength={16}
+            />
+          </fieldset>
+        </div>
+      </Modal>
     </div>
   );
 }

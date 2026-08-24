@@ -2,8 +2,8 @@
  * Chord-band avatar editor. The parent owns the pattern; this is the fields.
  *
  * Null means "hash from the user id". Any edit materialises a stored pattern.
- * Geometry is a disc you drag (rotate) with two edge dots (start/end). Colour
- * and opacity live in one swatch picker, not a row of sliders.
+ * Each disc has edge dots (start/end) and a knob outside for rotation. Colour
+ * and opacity live in one swatch picker. A lock keeps that disc off Randomise.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import {
@@ -19,21 +19,32 @@ import {
   type AvatarLayer,
   type AvatarPattern,
 } from "../../src/domain/avatar-pattern.ts";
+import { Avatar } from "./Avatar.tsx";
 import { HelpTip } from "./HelpTip.tsx";
 
 export function AvatarPatternEditor({
   id,
+  name = "",
+  nickname = null,
+  iconLetters = null,
+  iconEmoji = null,
   iconHue,
   value,
   onChange,
 }: {
   id: string;
+  name?: string;
+  nickname?: string | null;
+  iconLetters?: string | null;
+  iconEmoji?: string | null;
   iconHue: number | null;
   value: AvatarPattern | null;
   onChange: (next: AvatarPattern | null) => void;
 }) {
   const pattern = value ?? avatarPatternFromId(id, iconHue);
   const auto = value === null;
+  const [baseLocked, setBaseLocked] = useState(false);
+  const [layerLocks, setLayerLocks] = useState<boolean[]>([]);
 
   function commit(next: AvatarPattern) {
     onChange(next);
@@ -46,21 +57,49 @@ export function AvatarPatternEditor({
     });
   }
 
+  function locksFor(layers: AvatarLayer[]): boolean[] {
+    return layers.map((_, i) => layerLocks[i] ?? false);
+  }
+
   return (
     <div className="identity-pattern">
+      <div className="identity-pattern-preview">
+        <Avatar
+          id={id}
+          name={name}
+          nickname={nickname}
+          iconLetters={iconLetters}
+          iconEmoji={iconEmoji}
+          iconHue={iconHue}
+          iconPattern={pattern}
+          size={120}
+        />
+        <span className="identity-pattern-caption">Preview</span>
+      </div>
+
       <div className="identity-pattern-toolbar">
         <div className="label-with-help">
-          <span className="identity-pattern-label">Profile image</span>
+          <span className="identity-pattern-label">Bands</span>
           <HelpTip label="About the profile image">
-            Each disc is a coloured band. Drag to rotate, pull the dots to move
-            the edges. The chip under it is the colour, opacity included.
+            The circle at the top is every band stacked. Drag the outer knob
+            to rotate, pull the dots to move the edges. Randomise reshuffles
+            each unlocked band and keeps the number of discs. Lock a band so
+            Randomise leaves it alone. The chip under it is the colour,
+            opacity included.
           </HelpTip>
         </div>
         <div className="identity-pattern-toolbar-actions">
           <button
             type="button"
             className="secondary inline"
-            onClick={() => onChange(randomizeAvatarPattern(pattern.base.h))}
+            onClick={() =>
+              onChange(
+                randomizeAvatarPattern(pattern, {
+                  base: baseLocked,
+                  layers: locksFor(pattern.layers),
+                }),
+              )
+            }
           >
             Randomise
           </button>
@@ -87,6 +126,11 @@ export function AvatarPatternEditor({
             onChange={({ rotation }) => commit({ ...pattern, baseRotation: rotation })}
           />
           <div className="identity-pattern-cell-meta">
+            <LockToggle
+              locked={baseLocked}
+              label="base"
+              onToggle={() => setBaseLocked((value) => !value)}
+            />
             <HslaPicker
               label="Base"
               colour={{ ...pattern.base, a: 1 }}
@@ -114,6 +158,17 @@ export function AvatarPatternEditor({
               onChange={(next) => patchLayer(index, next)}
             />
             <div className="identity-pattern-cell-meta">
+              <LockToggle
+                locked={layerLocks[index] ?? false}
+                label={`band ${index + 1}`}
+                onToggle={() =>
+                  setLayerLocks((prev) => {
+                    const next = locksFor(pattern.layers);
+                    next[index] = !next[index];
+                    return next;
+                  })
+                }
+              />
               <HslaPicker
                 label={`Band ${index + 1} colour`}
                 colour={layer}
@@ -123,12 +178,13 @@ export function AvatarPatternEditor({
                 type="button"
                 className="identity-pattern-remove"
                 aria-label={`Remove band ${index + 1}`}
-                onClick={() =>
+                onClick={() => {
                   commit({
                     ...pattern,
                     layers: pattern.layers.filter((_, i) => i !== index),
-                  })
-                }
+                  });
+                  setLayerLocks((prev) => prev.filter((_, i) => i !== index));
+                }}
               >
                 ×
               </button>
@@ -140,12 +196,13 @@ export function AvatarPatternEditor({
           <button
             type="button"
             className="identity-pattern-add"
-            onClick={() =>
+            onClick={() => {
               commit({
                 ...pattern,
                 layers: [...pattern.layers, defaultAvatarLayer(pattern.base)],
-              })
-            }
+              });
+              setLayerLocks((prev) => [...locksFor(pattern.layers), false]);
+            }}
           >
             <span aria-hidden="true">+</span>
             Add band
@@ -156,7 +213,50 @@ export function AvatarPatternEditor({
   );
 }
 
+function LockToggle({
+  locked,
+  label,
+  onToggle,
+}: {
+  locked: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={locked ? "identity-pattern-lock is-locked" : "identity-pattern-lock"}
+      aria-pressed={locked}
+      aria-label={locked ? `Unlock ${label}` : `Lock ${label}`}
+      title={locked ? "Unlock so Randomise can change this" : "Lock so Randomise leaves this"}
+      onClick={onToggle}
+    >
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+        <rect x="3.5" y="7" width="9" height="7.5" rx="1.6" fill="currentColor" />
+        {locked ? (
+          <path
+            d="M5.25 7V5.4a2.75 2.75 0 0 1 5.5 0V7"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+        ) : (
+          <path
+            d="M5.25 7V5.4a2.75 2.75 0 0 1 5.2-1.25"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+        )}
+      </svg>
+    </button>
+  );
+}
+
 type DragMode = "rotate" | "start" | "end";
+
+/** Radius of the outer rotate knob, as a percent of the frame from centre. */
+const ROTATE_RADIUS_PCT = 47;
 
 function BandPad({
   rotation,
@@ -175,30 +275,24 @@ function BandPad({
   edges?: boolean;
   onChange: (next: { rotation: number; start: number; end: number }) => void;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const discRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{
     mode: DragMode;
     angle0: number;
     rotation0: number;
   } | null>(null);
 
-  function localPoint(event: React.PointerEvent<HTMLDivElement>) {
-    const box = event.currentTarget.getBoundingClientRect();
-    return {
-      x: event.clientX - box.left,
-      y: event.clientY - box.top,
-      size: box.width,
-    };
-  }
-
   function apply(event: React.PointerEvent<HTMLDivElement>) {
     const session = drag.current;
-    if (!session) return;
-    const { x, y, size } = localPoint(event);
-    const cx = size / 2;
-    const cy = size / 2;
+    const disc = discRef.current;
+    if (!session || !disc) return;
+    const box = disc.getBoundingClientRect();
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    const dx = event.clientX - cx;
+    const dy = event.clientY - cy;
     if (session.mode === "rotate") {
-      const angle = pointerAngle(x - cx, y - cy);
+      const angle = pointerAngle(dx, dy);
       onChange({
         rotation: wrapDeg(session.rotation0 + angle - session.angle0),
         start,
@@ -206,7 +300,7 @@ function BandPad({
       });
       return;
     }
-    const pct = projectPercent(x - cx, y - cy, size, rotation);
+    const pct = projectPercent(dx, dy, box.width, rotation);
     if (session.mode === "start") {
       onChange({ rotation, start: clamp(pct, 0, end - 3), end });
     } else {
@@ -216,11 +310,11 @@ function BandPad({
 
   const startPos = handlePos(start, rotation);
   const endPos = handlePos(end, rotation);
+  const rotatePos = rotateHandlePos(rotation);
 
   return (
     <div
-      ref={rootRef}
-      className="band-pad"
+      className="band-pad-frame"
       role="slider"
       aria-label={label}
       aria-valuemin={0}
@@ -232,14 +326,36 @@ function BandPad({
           : `${Math.round(rotation)}°`
       }
       tabIndex={0}
-      style={{ backgroundImage: fill }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
-        const { x, y, size } = localPoint(event);
-        const mode = edges ? hitMode(x, y, size, startPos, endPos) : "rotate";
+        const disc = discRef.current;
+        if (!disc) return;
+        const frameBox = event.currentTarget.getBoundingClientRect();
+        const discBox = disc.getBoundingClientRect();
+        const wx = event.clientX - frameBox.left;
+        const wy = event.clientY - frameBox.top;
+        const rx = (Number.parseFloat(rotatePos.x) / 100) * frameBox.width;
+        const ry = (Number.parseFloat(rotatePos.y) / 100) * frameBox.height;
+        const onRotate = Math.hypot(wx - rx, wy - ry) <= 16;
+
+        const px = event.clientX - discBox.left;
+        const py = event.clientY - discBox.top;
+        const onDisc =
+          Math.hypot(px - discBox.width / 2, py - discBox.height / 2) <= discBox.width / 2 + 2;
+
+        if (!onRotate && !onDisc) return;
+
+        const mode = onRotate
+          ? "rotate"
+          : edges
+            ? hitMode(px, py, discBox.width, startPos, endPos)
+            : "rotate";
         drag.current = {
           mode,
-          angle0: pointerAngle(x - size / 2, y - size / 2),
+          angle0: pointerAngle(
+            event.clientX - (discBox.left + discBox.width / 2),
+            event.clientY - (discBox.top + discBox.height / 2),
+          ),
           rotation0: rotation,
         };
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -280,12 +396,20 @@ function BandPad({
         }
       }}
     >
-      {edges && (
-        <>
-          <span className="band-pad-handle" style={{ left: startPos.x, top: startPos.y }} />
-          <span className="band-pad-handle" style={{ left: endPos.x, top: endPos.y }} />
-        </>
-      )}
+      <div ref={discRef} className="band-pad" style={{ backgroundImage: fill }}>
+        {edges && (
+          <>
+            <span className="band-pad-handle" style={{ left: startPos.x, top: startPos.y }} />
+            <span className="band-pad-handle" style={{ left: endPos.x, top: endPos.y }} />
+          </>
+        )}
+      </div>
+      <span
+        className="band-pad-rotate-arm"
+        aria-hidden="true"
+        style={{ transform: `rotate(${rotation}deg)` }}
+      />
+      <span className="band-pad-rotate" style={{ left: rotatePos.x, top: rotatePos.y }} />
     </div>
   );
 }
@@ -383,18 +507,24 @@ function projectPercent(dx: number, dy: number, size: number, rotation: number):
   const theta = (rotation * Math.PI) / 180;
   const dirX = Math.sin(theta);
   const dirY = -Math.cos(theta);
-  const length = size * (Math.abs(dirX) + Math.abs(dirY));
-  if (length === 0) return 50;
-  return clamp(((dx * dirX + dy * dirY) / length + 0.5) * 100, 0, 100);
+  if (size === 0) return 50;
+  return clamp(((dx * dirX + dy * dirY) / size + 0.5) * 100, 0, 100);
 }
 
 function handlePos(percent: number, rotation: number): { x: string; y: string } {
   const theta = (rotation * Math.PI) / 180;
-  const span = Math.abs(Math.sin(theta)) + Math.abs(Math.cos(theta));
-  const t = (percent / 100 - 0.5) * span;
+  const t = percent / 100 - 0.5;
   return {
     x: `${50 + t * Math.sin(theta) * 100}%`,
     y: `${50 + t * -Math.cos(theta) * 100}%`,
+  };
+}
+
+function rotateHandlePos(rotation: number): { x: string; y: string } {
+  const theta = (rotation * Math.PI) / 180;
+  return {
+    x: `${50 + Math.sin(theta) * ROTATE_RADIUS_PCT}%`,
+    y: `${50 - Math.cos(theta) * ROTATE_RADIUS_PCT}%`,
   };
 }
 

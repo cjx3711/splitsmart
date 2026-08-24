@@ -1602,6 +1602,62 @@ dialog.modal.modal-wide {
   border-color: var(--text);
 }
 
+.identity-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+
+.identity-row .label-with-help {
+  margin-bottom: 0;
+}
+
+.identity-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.identity-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.05rem;
+  height: 2.05rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-weight: 650;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.identity-pattern-preview {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  padding-bottom: 1rem;
+  margin-bottom: 0.95rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.identity-pattern-preview .avatar {
+  border: 1px solid var(--border-strong);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+
+.identity-pattern-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
 .identity-pattern-toolbar .label-with-help {
   margin-bottom: 0;
 }
@@ -1619,9 +1675,10 @@ dialog.modal.modal-wide {
 .identity-pattern-grid {
   --hsla-check: repeating-conic-gradient(#8a9399 0% 25%, #c5ccd0 0% 50%);
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(9.25rem, 1fr));
   gap: 1rem 0.75rem;
   align-items: start;
+  padding: 0.35rem 0.1rem 0.15rem;
 }
 
 .identity-pattern-cell {
@@ -1637,6 +1694,27 @@ dialog.modal.modal-wide {
   gap: 0.3rem;
 }
 
+.band-pad-frame {
+  position: relative;
+  width: 8rem;
+  height: 8rem;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.band-pad-frame:active {
+  cursor: grabbing;
+}
+
+.band-pad-frame:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
 .band-pad {
   position: relative;
   width: 5.5rem;
@@ -1645,19 +1723,7 @@ dialog.modal.modal-wide {
   border: 1px solid var(--border-strong);
   background-color: #12171b;
   background-repeat: no-repeat;
-  cursor: grab;
-  touch-action: none;
-  user-select: none;
   box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
-}
-
-.band-pad:active {
-  cursor: grabbing;
-}
-
-.band-pad:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .band-pad-handle {
@@ -1670,6 +1736,49 @@ dialog.modal.modal-wide {
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.45);
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+.band-pad-rotate-arm {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: 2px;
+  height: 3.76rem;
+  margin-left: -1px;
+  background: var(--muted);
+  transform-origin: bottom center;
+  pointer-events: none;
+}
+
+.band-pad-rotate {
+  position: absolute;
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.identity-pattern-lock {
+  width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.identity-pattern-lock.is-locked {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
 }
 
 .identity-pattern-caption {
@@ -1689,6 +1798,7 @@ dialog.modal.modal-wide {
   height: 5.5rem;
   min-height: 5.5rem;
   justify-self: center;
+  margin-top: 1.25rem;
   padding: 0;
   border: 1px dashed var(--border-strong);
   border-radius: 50%;
