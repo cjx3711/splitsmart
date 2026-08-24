@@ -17,10 +17,77 @@
  *      offline, timed out, 5xx. A confirmed 401 does not reach this bar: it
  *      logs the account out (see SyncProvider's `forceLogout`) and `Protected`
  *      takes the screen to /login before this would ever render for it.
+ *
+ * The header chip next to the wordmark is the always-on counterpart. A click
+ * opens the status panel (cursors, local counts, reload) rather than firing a
+ * sync: "Syncing…" with no numbers is why that panel exists.
  */
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { LuCloudOff } from "react-icons/lu";
+import {
+  LuCloud,
+  LuCloudAlert,
+  LuCloudOff,
+  LuCloudUpload,
+} from "react-icons/lu";
 import { useSync } from "./sync/SyncProvider.tsx";
+import { headerSyncView, lastSynced } from "./headerSync.ts";
+import { SyncDetails } from "./SyncDetails.tsx";
+
+/** Live `navigator.onLine`, so airplane mode does not wait on a stuck cycle. */
+function useNavigatorOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine);
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
+  return online;
+}
+
+const HEADER_ICONS = {
+  conflict: LuCloudAlert,
+  offline: LuCloudOff,
+  syncing: LuCloud,
+  pending: LuCloudUpload,
+  synced: LuCloud,
+} as const;
+
+/** Always-visible cloud / offline / queue chip, parked next to the logo. */
+export function HeaderSyncStatus() {
+  const { status, reconnecting } = useSync();
+  const online = useNavigatorOnline();
+  const [open, setOpen] = useState(false);
+  if (!status) return null;
+
+  const view = headerSyncView({ ...status, online }, reconnecting);
+  const Icon = HEADER_ICONS[view.kind];
+  const hint = `${view.label}. ${view.detail}`;
+  const showCount = view.count > 0;
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`sync-status sync-status-${view.kind}`}
+        title={hint}
+        aria-label={hint}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <Icon size={16} className="sync-status-icon" aria-hidden />
+        <span className="sync-status-label">{view.label}</span>
+        {showCount && <span className="sync-status-count">{view.count}</span>}
+      </button>
+      <SyncDetails open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
 
 export function SyncStatusBar() {
   const { status, reconnecting, syncNow } = useSync();
@@ -65,7 +132,7 @@ export function SyncStatusBar() {
 
       {!offline && (
         <button className="inline secondary" onClick={syncNow} disabled={status.syncing}>
-          {status.syncing ? "Syncing…" : "Sync now"}
+          {status.syncing ? "Saving…" : "Sync now"}
         </button>
       )}
     </div>
@@ -74,24 +141,6 @@ export function SyncStatusBar() {
 
 function count(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-
-/**
- * The last SUCCESSFUL sync, not the last attempt.
- *
- * "Last synced 3 minutes ago" has to mean the data actually moved, or it is worse
- * than saying nothing: someone reads it and assumes their expense is safe.
- */
-function lastSynced(at: string | null): string {
-  if (!at) return "Nothing has synced yet.";
-
-  const minutes = Math.round((Date.now() - new Date(at).getTime()) / 60_000);
-  if (minutes < 1) return "Last synced just now.";
-  if (minutes < 60) return `Last synced ${count(minutes, "minute")} ago.`;
-
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `Last synced ${count(hours, "hour")} ago.`;
-  return `Last synced on ${at.slice(0, 10)}.`;
 }
 
 /**

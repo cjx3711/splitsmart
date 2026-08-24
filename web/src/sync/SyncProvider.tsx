@@ -147,7 +147,16 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       engine.onAuthInvalid = forceLogout;
       engineRef.current = engine;
 
-      const refresh = () => void engine.status().then(setStatus);
+      // status() is several Dexie reads. A fast cycle announces many times, and
+      // an older read can resolve after the idle one — which is how the chip
+      // sat on "Syncing…" with both cursors already equal and nothing in flight.
+      let statusGen = 0;
+      const refresh = () => {
+        const mine = ++statusGen;
+        void engine.status().then((next) => {
+          if (mine === statusGen) setStatus(next);
+        });
+      };
       const unsubscribe = engine.onChange(refresh);
       const stopTriggers = engine.start();
       refresh();

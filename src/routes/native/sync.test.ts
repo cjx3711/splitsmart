@@ -157,6 +157,7 @@ describe("access", () => {
     for (const path of [
       "/sync/bootstrap",
       "/sync/pull?since=0",
+      "/sync/status",
       "/sync/push",
       `/sync/snapshot?group_id=${groupId}`,
     ]) {
@@ -250,6 +251,44 @@ describe("bootstrap", () => {
   });
 });
 
+describe("status", () => {
+  test("reports the log tip, matching an empty pull's head", async () => {
+    const status = await as(aliceToken, "/sync/status");
+    assert.equal(status.status, 200);
+    assert.equal(typeof status.body.head, "number");
+    assert.equal(typeof status.body.visibleSeq, "number");
+    assert.ok(status.body.visibleSeq <= status.body.head);
+    assert.equal(typeof status.body.visibleAt, "string");
+    assert.equal(typeof status.body.newestId, "string");
+    assert.equal(status.body.newestId.length, 26);
+
+    const pull = await as(aliceToken, `/sync/pull?since=${status.body.head}`);
+    assert.equal(pull.body.head, status.body.head);
+    assert.equal(pull.body.more, false);
+    assert.equal(pull.body.remaining, 0);
+    assert.deepEqual(pull.body.changes, []);
+    assert.deepEqual(pull.body.catchUp, []);
+  });
+
+  test("visible clocks are per caller, not the global tip", async () => {
+    const alice = await as(aliceToken, "/sync/status");
+    const carol = await as(carolToken, "/sync/status");
+    assert.equal(alice.body.head, carol.body.head);
+    assert.equal(typeof alice.body.newestId, "string");
+    assert.equal(carol.body.newestId, null, "carol has no expenses, groups, or comments");
+    assert.ok(alice.body.visibleSeq <= alice.body.head);
+    assert.ok(carol.body.visibleSeq <= carol.body.head);
+  });
+
+  test("cursorAt is this caller's latest visible row at or before that seq", async () => {
+    const status = await as(aliceToken, "/sync/status");
+    const pinned = await as(aliceToken, `/sync/status?cursor=${status.body.visibleSeq}`);
+    assert.equal(pinned.body.cursorAt, status.body.visibleAt);
+    assert.equal(typeof pinned.body.cursorId, "string");
+    assert.equal(pinned.body.cursorId.length, 26);
+  });
+});
+
 describe("pull", () => {
   test("delivers a group expense to a member and not to anybody else", async () => {
     const before = (await as(aliceToken, "/sync/pull?since=0")).body.seq;
@@ -266,6 +305,8 @@ describe("pull", () => {
         (ch: any) => ch.entity === "expense" && ch.data.description === "Audience test",
       ),
     );
+    assert.equal(typeof mine.body.head, "number");
+    assert.ok(mine.body.head >= mine.body.seq);
 
     const stranger = await as(carolToken, `/sync/pull?since=${before}`);
     assert.deepEqual(stranger.body.changes, []);

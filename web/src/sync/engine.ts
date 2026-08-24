@@ -46,6 +46,7 @@ import {
   putReferenceData,
   putUsers,
 } from "../db/apply.ts";
+import { rememberFriendRecency } from "../db/rememberFriendRecency.ts";
 import {
   deleteLocalDb,
   getMeta,
@@ -102,6 +103,8 @@ const GROUP_SHAPE = 1;
  */
 const EXPENSE_SHAPE = 1;
 
+export type SyncPhase = "idle" | "bootstrap" | "hydrate" | "pull" | "push";
+
 export interface SyncStatus {
   /** `navigator.onLine` plus whether the last attempt actually reached the server. */
   online: boolean;
@@ -115,6 +118,17 @@ export interface SyncStatus {
   lastSyncedAt: string | null;
   lastError: string | null;
   bootstrapped: boolean;
+  /** Highest `sync_log.seq` this device has applied. */
+  localCursor: number;
+  /** Tip of the server log, from the last pull or status poll. Null until one succeeds. */
+  cloudSeq: number | null;
+  /**
+   * Visible log rows still ahead of the local cursor, from the last pull page.
+   * Null before the first pull of a cycle; 0 once that cycle drained.
+   */
+  remaining: number | null;
+  /** What the in-flight cycle is doing. Idle when nothing is running. */
+  phase: SyncPhase;
 }
 
 export class SyncEngine {
@@ -124,6 +138,9 @@ export class SyncEngine {
   private inFlight: Promise<void> | null = null;
   /** Another sync() arrived while a cycle was running. Run one more after. */
   private queued = false;
+  private phase: SyncPhase = "idle";
+  private cloudSeq: number | null = null;
+  private remaining: number | null = null;
   /**
    * A reset is throwing the mirror away. Kick/queue must not start a cycle
    * against the closing Dexie, or clear and sync deadlock on the same stores.
@@ -168,7 +185,17 @@ export class SyncEngine {
       lastSyncedAt: (await getMeta(this.db, "lastSyncedAt")) ?? null,
       lastError: (await getMeta(this.db, "lastError")) ?? null,
       bootstrapped: (await getMeta(this.db, "bootstrapped")) ?? false,
+      localCursor: (await getMeta(this.db, "cursor")) ?? 0,
+      cloudSeq: this.cloudSeq,
+      remaining: this.remaining,
+      phase: this.inFlight ? this.phase : "idle",
     };
+  }
+
+  /** Remember the server tip from a status poll, so the panel does not go blank. */
+  noteCloudSeq(head: number): void {
+    this.cloudSeq = head;
+    this.announce();
   }
 
   // -------------------------------------------------------------------------
@@ -181,17 +208,20 @@ export class SyncEngine {
    * Never rejects. A sync failure is a status, not an exception: it happens every
    * time the network drops, which offline-first treats as the normal case rather
    * than an error to propagate into a render.
+   *
+   * `queueIfBusy` is the write-then-sync path: a cycle already in flight pulled
+   * against the pre-write server, so those callers need another pass. Interval,
+   * visibility, and `online` pass false - a long import drain that is already
+   * running does not need a second identical cycle stacked behind it, which is
+   * how the chip sat on "Syncing…" for minutes after both cursors already matched.
    */
-  sync(): Promise<void> {
+  sync(opts?: { queueIfBusy?: boolean }): Promise<void> {
     if (this.resetting) {
       this.queued = true;
       return this.inFlight ?? Promise.resolve();
     }
     if (this.inFlight) {
-      // Callers that write then sync (the simplify-debts toggle) must not join
-      // a pull that already ran against the pre-write server. Queue a fresh
-      // cycle instead of returning the in-flight one as if it were theirs.
-      this.queued = true;
+      if (opts?.queueIfBusy !== false) this.queued = true;
       return this.inFlight;
     }
 
@@ -219,27 +249,43 @@ export class SyncEngine {
   }
 
   private async run(): Promise<void> {
-    if (!(await getMeta(this.db, "bootstrapped"))) await this.bootstrap();
+    this.remaining = null;
+    try {
+      if (!(await getMeta(this.db, "bootstrapped"))) {
+        this.phase = "bootstrap";
+        this.announce();
+        await this.bootstrap();
+      }
 
-    // Local writes go out before hydrate/pull. Those two can take a long time
-    // on a large imported ledger (or fail), and a dinner sitting in the outbox
-    // while the tab looks online is the failure mode we are avoiding. Creates
-    // cannot conflict with a missed pull; an update that does becomes a
-    // conflict on the next cycle.
-    const pushed = await this.pushAll();
+      // Local writes go out before hydrate/pull. Those two can take a long time
+      // on a large imported ledger (or fail), and a dinner sitting in the outbox
+      // while the tab looks online is the failure mode we are avoiding. Creates
+      // cannot conflict with a missed pull; an update that does becomes a
+      // conflict on the next cycle.
+      this.phase = "push";
+      this.announce();
+      const pushed = await this.pushAll();
 
-    await this.hydrateGroupDocs();
-    await this.hydrateExpenseDocs();
-    await this.pullAll();
+      this.phase = "hydrate";
+      this.announce();
+      await this.hydrateGroupDocs();
+      await this.hydrateExpenseDocs();
 
-    // One more pull when something landed: the server's own copy of what we just
-    // wrote, plus the system comments its edits generated. Those have seqs above
-    // our cursor, so they are cheap to fetch and the alternative is a thread that
-    // looks incomplete until the next tick.
-    if (pushed) await this.pullAll();
+      this.phase = "pull";
+      this.announce();
+      await this.pullAll();
 
-    await setMeta(this.db, "lastSyncedAt", new Date().toISOString());
-    await setMeta(this.db, "lastError", null);
+      // One more pull when something landed: the server's own copy of what we just
+      // wrote, plus the system comments its edits generated. Those have seqs above
+      // our cursor, so they are cheap to fetch and the alternative is a thread that
+      // looks incomplete until the next tick.
+      if (pushed) await this.pullAll();
+
+      await setMeta(this.db, "lastSyncedAt", new Date().toISOString());
+      await setMeta(this.db, "lastError", null);
+    } finally {
+      this.phase = "idle";
+    }
   }
 
   /**
@@ -403,17 +449,21 @@ export class SyncEngine {
     for (let page = 0; page < MAX_PAGES; page++) {
       const since = (await getMeta(this.db, "cursor")) ?? 0;
       const response = await api.syncPull(since);
+      if (typeof response.head === "number") this.cloudSeq = response.head;
+      const rest = response.more ? response.remaining : 0;
+      this.remaining = rest + response.catchUp.length;
+      this.announce();
 
       for (const change of response.changes) await this.applyChange(change);
-
-      // Advanced even when nothing applied: the rows were delivered, and asking
-      // for them again forever is how a client gets stuck on one bad page.
-      if (response.seq > since) await setMeta(this.db, "cursor", response.seq);
 
       // Access granted since we last synced. `since` is NOT rewound - the history
       // being fetched is all below the cursor by definition, which is the entire
       // reason a snapshot exists rather than a re-bootstrap.
-      for (const target of response.catchUp) {
+      //
+      // The cursor stays put until these snapshots land. Advancing first is what
+      // made the panel say "Caught up" while 39 group snapshots were still
+      // writing into Dexie and the chip sat on Syncing….
+      for (const [i, target] of response.catchUp.entries()) {
         const snapshot =
           target.entity === "group"
             ? await api.syncSnapshotGroup(target.id)
@@ -423,7 +473,13 @@ export class SyncEngine {
         await putGroupMembers(this.db, snapshot.members ?? []);
         await putExpenses(this.db, snapshot.expenses ?? []);
         await putComments(this.db, snapshot.comments ?? []);
+        this.remaining = rest + (response.catchUp.length - i - 1);
+        this.announce();
       }
+
+      // Advanced even when nothing applied: the rows were delivered, and asking
+      // for them again forever is how a client gets stuck on one bad page.
+      if (response.seq > since) await setMeta(this.db, "cursor", response.seq);
 
       this.announce();
       if (!response.more) return;
@@ -710,6 +766,17 @@ export class SyncEngine {
       await this.applyLocally(write, decision.action === "drop");
     });
 
+    if (
+      write.kind === "expense.create" ||
+      write.kind === "expense.update" ||
+      write.kind === "expense.delete" ||
+      write.kind === "expense.restore" ||
+      write.kind === "payment.create"
+    ) {
+      const row = await this.db.expenses.get(write.id);
+      if (row) await rememberFriendRecency(this.db, this.selfId, [row]);
+    }
+
     this.announce();
     // Best-effort: offline this fails and the queue simply waits.
     void this.sync();
@@ -944,10 +1011,11 @@ export class SyncEngine {
    *
    * Foreground, `online`, an interval, and whatever calls `sync()` by hand. All of
    * them funnel through the single-flight above, so a tab that regains focus at the
-   * same moment the network returns runs one cycle, not two.
+   * same moment the network returns runs one cycle, not two. Background kicks do
+   * not queue behind a cycle that is already running; a write-then-sync still does.
    */
   start(): () => void {
-    const kick = () => void this.sync();
+    const kick = () => void this.sync({ queueIfBusy: false });
 
     const onVisible = () => {
       if (document.visibilityState === "visible") kick();

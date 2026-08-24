@@ -1,7 +1,7 @@
 /**
  * `/api/v1/sync/*` - the endpoints an offline-capable client replicates through.
  *
- * Three reads and one write, all for a LOGGED-IN account: a cookie session or a
+ * Four reads and one write, all for a LOGGED-IN account: a cookie session or a
  * bearer API token. `requireAuth` rejects a `link_` guest secret outright, which
  * is the whole reason this can be a plain native router - a guest link is a
  * capability its owner can expire at any moment, and offline-first means keeping a
@@ -11,6 +11,9 @@
  *   GET  /bootstrap   everything you can see, plus the seq to start from
  *   GET  /snapshot    catch up on one group, or one expense's thread
  *   GET  /pull        what changed since a seq
+ *   GET  /status      the log tip (`head`) plus this caller's latest visible
+ *                     change and newest entity id, so a client can say how far
+ *                     behind it is in time, not just in seq
  *   POST /push        queued writes, routed to the existing domain writers
  *
  * `/push` ADDS NO SQL against `expenses`, `expense_users` or
@@ -47,6 +50,7 @@ import { listRelatedUserIds } from "../../domain/friends.ts";
 import { currentSeq } from "../../domain/sync-log.ts";
 import { isUlid } from "../../domain/ulid.ts";
 import { expenseBodyFields, ulidSchema } from "./expense-schema.ts";
+import { latestVisibleRow, newestVisibleId } from "./sync-status.ts";
 import {
   loadCategories,
   loadComments,
@@ -255,17 +259,6 @@ async function pullPage(userId: string, since: number, limit: number): Promise<L
   `.execute(db);
 
   return rows.rows;
-}
-
-/**
- * How many rows are still waiting past this page.
- *
- * Only ever called when the page came back full, because it re-runs the whole
- * audience union to count and there is no point paying for that to learn "none".
- */
-async function pullRemaining(userId: string, since: number): Promise<number> {
-  const page = await pullPage(userId, since, PULL_PAGE * 100);
-  return page.length;
 }
 
 /**
@@ -994,6 +987,44 @@ export const syncRoutes = new Hono<AppEnv>()
   return c.json({ groups, members, expenses, comments });
 })
 /**
+ * The tip of `sync_log`, plus the two clocks the status panel actually needs.
+ *
+ * `head` is the highest seq written so far, not how far THIS caller has got -
+ * that lives on the device as its pull cursor. The difference includes rows
+ * the caller cannot see. `visibleSeq` / `visibleAt` are this caller's latest
+ * log row; `newestId` is the most recently minted entity they can see (ULID
+ * time). Optional `cursor` is this device's seq, so `cursorAt` is when that
+ * applied row landed. Pull's `remaining` is still the raw seq gap when a
+ * page is full - cheap enough to report on every page, close enough for the
+ * chip.
+ */
+  .get(
+    "/status",
+    zValidator("query", z.object({ cursor: z.string().optional() })),
+    async (c) => {
+  const auth = c.get("user");
+  const head = await currentSeq(db);
+  const visible = await latestVisibleRow(auth.id);
+  const newestId = await newestVisibleId(auth.id);
+
+  const cursorRaw = c.req.query("cursor");
+  const cursor = cursorRaw !== undefined ? Number(cursorRaw) : NaN;
+  const applied =
+    Number.isInteger(cursor) && cursor > 0
+      ? await latestVisibleRow(auth.id, cursor)
+      : null;
+
+  return c.json({
+    head,
+    visibleSeq: visible?.seq ?? 0,
+    visibleAt: visible?.server_ts ?? null,
+    newestId,
+    cursorAt: applied?.server_ts ?? null,
+    cursorId: applied?.entity_id ?? null,
+  });
+    },
+  )
+/**
  * What changed since `since`.
  *
  * Entities are returned WHOLE, and the page is collapsed so each entity appears
@@ -1025,13 +1056,36 @@ export const syncRoutes = new Hono<AppEnv>()
   }
 
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? PULL_PAGE) || PULL_PAGE, 1), PULL_PAGE);
+  const head = await currentSeq(db);
+
+  // Nothing in the log is past this cursor. Skip the audience UNION: on a
+  // just-imported ledger that query walks every expense and comment the caller
+  // can see, which is how a heartbeat pull after a finished drain sat on
+  // "Syncing…" for minutes with both cursors already equal.
+  if (since >= head) {
+    return c.json({
+      changes: [],
+      seq: since,
+      more: false,
+      remaining: 0,
+      catchUp: [],
+      head,
+    });
+  }
 
   const rows = await pullPage(auth.id, since, limit + 1);
   const more = rows.length > limit;
   const page = more ? rows.slice(0, limit) : rows;
 
   if (page.length === 0) {
-    return c.json({ changes: [], seq: since, more: false, remaining: 0, catchUp: [] });
+    return c.json({
+      changes: [],
+      seq: since,
+      more: false,
+      remaining: 0,
+      catchUp: [],
+      head,
+    });
   }
 
   // Last row per entity wins. Insertion order in a Map is preserved, and the
@@ -1078,15 +1132,19 @@ export const syncRoutes = new Hono<AppEnv>()
     changes.push({ seq: row.seq, entity: row.entity, op: row.op, data });
   }
 
+  const pageHead = page.at(-1)!.seq;
   const catchUp = await collectCatchUp(page, auth.id);
-  const head = page.at(-1)!.seq;
 
   return c.json({
     changes,
-    seq: head,
+    seq: pageHead,
     more,
-    remaining: more ? await pullRemaining(auth.id, head) : 0,
+    // Seq gap, not another audience scan. Visible remaining can be smaller;
+    // the exact count used to re-run the UNION with a 100_000-row limit on
+    // every full page, which is what made an import drain look frozen.
+    remaining: more ? Math.max(0, head - pageHead) : 0,
     catchUp,
+    head,
   });
 })
   .post("/push", async (c) => {
