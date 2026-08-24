@@ -121,6 +121,20 @@ a:visited {
   letter-spacing: -0.025em;
 }
 
+.topbar-start {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 .topbar-right {
   display: flex;
   align-items: center;
@@ -182,25 +196,89 @@ a:visited {
   display: none;
 }
 
+.rail-shade {
+  display: none;
+}
+
+html.rail-open,
+html.rail-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 @media (max-width: 860px) {
+  /* Fixed, not sticky: locking body overflow while the drawer is open takes
+     sticky headers out of the viewport, which is the "menu vanished after I
+     scrolled" bug. Reserve the same height so the page does not jump. */
+  .topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+  body {
+    padding-top: var(--topbar-h);
+  }
   .shell {
-    grid-template-columns: minmax(0, 1fr);
+    display: block;
   }
   .rail {
-    display: none;
-    position: static;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    display: block;
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    z-index: 19;
+    width: min(var(--rail-w), 86vw);
+    height: calc(100vh - var(--topbar-h));
+    height: calc(100dvh - var(--topbar-h));
+    max-height: calc(100vh - var(--topbar-h));
+    max-height: calc(100dvh - var(--topbar-h));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.22s ease, visibility 0.22s;
   }
   .rail.open {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    box-shadow: 12px 0 32px rgb(0 0 0 / 0.35);
+  }
+  .rail-shade {
     display: block;
+    position: fixed;
+    top: var(--topbar-h);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 18;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgb(0 0 0 / 0.55);
+    cursor: pointer;
+    touch-action: none;
+    animation: rail-shade-in 0.2s ease;
   }
   .main {
     padding: 1.25rem 1rem 4rem;
   }
   .menu-toggle {
     display: inline-flex;
+  }
+}
+
+@keyframes rail-shade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -218,6 +296,10 @@ a:visited {
 .footer a {
   color: var(--muted);
   text-decoration: underline;
+}
+
+.footer-version {
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- sidebar nav ---------------------------------------------------------- */
@@ -2083,6 +2165,35 @@ button.danger {
   border-color: color-mix(in srgb, var(--negative) 45%, transparent);
 }
 
+.danger-zone {
+  margin-top: 3rem;
+  padding: 1.15rem 1.25rem 1.35rem;
+  border: 1px solid color-mix(in srgb, var(--negative) 40%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--negative) 7%, transparent);
+}
+
+.danger-zone > h2 {
+  margin-top: 0;
+  color: var(--negative);
+}
+
+.danger-zone .danger-item + .danger-item {
+  margin-top: 1.35rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid color-mix(in srgb, var(--negative) 22%, var(--border));
+}
+
+.danger-zone .danger-item h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.danger-zone .danger-item p {
+  margin: 0 0 0.75rem;
+}
+
 button.link,
 a.link {
   background: none;
@@ -3458,6 +3569,11 @@ dialog.mkt-lightbox::backdrop {
   letter-spacing: -0.02em;
 }
 
+.mkt-changelog-date {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .mkt-prose p,
 .mkt-prose li {
   color: color-mix(in srgb, var(--text) 88%, var(--muted));
@@ -3859,6 +3975,94 @@ button.guest-pick.selected {
   display: block;
 }
 
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.2rem 0.55rem 0.2rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 550;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+button.sync-status {
+  width: auto;
+  cursor: pointer;
+}
+
+button.sync-status:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-2);
+  filter: none;
+}
+
+a.sync-status:hover {
+  color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 10%, transparent);
+}
+
+.sync-status-icon {
+  display: block;
+  flex: none;
+}
+
+.sync-status-syncing .sync-status-icon {
+  animation: sync-status-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes sync-status-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.sync-status-pending {
+  color: var(--text);
+}
+
+.sync-status-conflict {
+  color: var(--negative);
+}
+
+.sync-status-count {
+  display: none;
+  min-width: 1.1em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+  font-size: 0.688rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.sync-status-conflict .sync-status-count {
+  background: color-mix(in srgb, var(--negative) 18%, transparent);
+}
+
+@media (max-width: 520px) {
+  .sync-status {
+    padding: 0.3rem;
+    gap: 0.2rem;
+  }
+
+  .sync-status-label {
+    display: none;
+  }
+
+  .sync-status-count {
+    display: inline-block;
+  }
+}
+
 .sync-badge {
   display: inline-block;
   margin-left: 0.4rem;
@@ -3869,6 +4073,72 @@ button.guest-pick.selected {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   vertical-align: 0.12em;
+}
+
+.sync-details-lede {
+  margin: 0;
+}
+
+.sync-details-heading {
+  margin: 0 0 0.45rem;
+  font-size: 0.688rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sync-details-dl {
+  display: grid;
+  gap: 0.45rem 1rem;
+  margin: 0;
+}
+
+.sync-details-dl > div {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 40%) 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.sync-details-dl dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.sync-details-dl dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 550;
+}
+
+.sync-details-relation-match {
+  color: var(--positive);
+}
+
+.sync-details-relation-behind {
+  color: var(--negative);
+}
+
+.sync-details-relation-ahead {
+  color: var(--accent);
+}
+
+.sync-details-error {
+  color: var(--negative);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.sync-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sync-details-actions button {
+  width: auto;
 }
 
 .sync-badge-conflict,

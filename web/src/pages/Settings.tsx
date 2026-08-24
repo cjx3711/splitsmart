@@ -1,9 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api.ts";
+import { api, ApiError } from "../api.ts";
 import { useAuth } from "../App.tsx";
 import { CurrencySelect } from "../CurrencySelect.tsx";
-import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { OnlineOnly, useOnline } from "../OnlineOnly.tsx";
 import {
   PersonIdentityForm,
@@ -13,59 +12,27 @@ import {
 } from "../PersonIdentityForm.tsx";
 import { HelpTip } from "../HelpTip.tsx";
 import { WipeLedgerButton } from "../WipeLedger.tsx";
+import { DeleteAccountButton } from "../DeleteAccount.tsx";
 import { ClearLocalDataButton } from "../ClearLocalData.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { patchPerson, revertPerson } from "../sync/localFirst.ts";
 
 /**
- * Account settings and API tokens.
- *
- * Tokens are a bearer credential for `/api/v1`, for anything that is not this
- * browser: scripts, another app, a recoded Splitwise client.
+ * Account settings. Tokens, import, and the two delete actions used to share
+ * this page; tokens have their own route and the deletes sit in a danger zone
+ * at the bottom so they are hard to mix up with "log out" and "clear this device".
  */
 export function Settings() {
   const { user, setUser } = useAuth();
   const { db, syncNow } = useSync();
-  const online = useOnline();
   const navigate = useNavigate();
-  const [tokens, setTokens] = useState<
-    Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>
-  >([]);
-  const [name, setName] = useState("API client");
-  const [freshToken, setFreshToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
-  const [revokingBusy, setRevokingBusy] = useState(false);
   const [identity, setIdentity] = useState<IdentityDraft | null>(null);
   const [identityBusy, setIdentityBusy] = useState(false);
 
   useEffect(() => {
     if (user) setIdentity(draftFromPerson(user));
   }, [user]);
-
-  async function load() {
-    try {
-      setTokens((await api.listTokens()).tokens);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load tokens");
-    }
-  }
-
-  useEffect(() => {
-    if (online) void load();
-  }, [online]);
-
-  async function handleCreate(event: FormEvent) {
-    event.preventDefault();
-    try {
-      const created = await api.createToken(name);
-      // Shown once; the server only stores a hash.
-      setFreshToken(created.token);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create token");
-    }
-  }
 
   return (
     <>
@@ -206,94 +173,30 @@ export function Settings() {
         </>
       )}
 
-      <h2>Delete all data</h2>
+      <h2 className="with-help">
+        Export your data
+        <HelpTip label="About exporting">
+          A zip of CSV files covering this account: expenses, comments, groups, people, and your
+          profile. Money is a decimal string with the currency in its own column, same as the
+          download on the expenses screen. Nothing in the ledger changes.
+        </HelpTip>
+      </h2>
       <p className="muted">
-        Permanently remove this account&apos;s groups, friends, expenses and
-        guest links so you can import from Splitwise again. Your login is not
-        deleted.
+        Download everything you can see as CSV files in a zip. Filtered downloads of just the
+        current expense list still live on each expenses screen.
       </p>
-      <OnlineOnly what="Deleting this account's data">
-        <WipeLedgerButton />
+      <OnlineOnly what="Exporting your data">
+        <ExportDataButton onError={setError} />
       </OnlineOnly>
 
       <h2 className="with-help">
         API tokens
         <HelpTip label="About API tokens">
-          Use a token as the bearer credential for /api/v1. Cookie sessions are for this browser; tokens are for everything else.
+          Bearer credentials for /api/v1. Cookie sessions are for this browser; tokens are for
+          scripts and other apps. The API documentation is linked from that page.
         </HelpTip>
       </h2>
-
-      {freshToken && (
-        <div className="notice stack">
-          <strong>Copy this token now</strong>
-          <p style={{ margin: 0 }}>It will not be shown again.</p>
-          <code>{freshToken}</code>
-          <button className="secondary" onClick={() => void navigator.clipboard.writeText(freshToken)}>
-            Copy token
-          </button>
-        </div>
-      )}
-
-      <div className="stack" style={{ marginTop: "0.75rem" }}>
-        {tokens.map((token) => (
-          <div key={token.id} className="card row">
-            <div>
-              <strong>{token.name}</strong>
-              <div className="muted">
-                created {token.created_at.split(" ")[0]}
-                {token.last_used_at ? ` · last used ${token.last_used_at.split("T")[0]}` : " · never used"}
-                {token.revoked_at ? " · revoked" : ""}
-              </div>
-            </div>
-            {!token.revoked_at && (
-              <OnlineOnly what="Revoking an API token">
-                <button
-                  className="secondary"
-                  style={{ width: "auto" }}
-                  onClick={() => setRevoking({ id: token.id, name: token.name })}
-                >
-                  Revoke
-                </button>
-              </OnlineOnly>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <form onSubmit={handleCreate} className="stack" style={{ marginTop: "1rem" }}>
-        <div>
-          <label htmlFor="tokenName">New token name</label>
-          <input id="tokenName" value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
-        <OnlineOnly what="Creating an API token">
-          <button type="submit">Create token</button>
-        </OnlineOnly>
-      </form>
-
-      <ConfirmDialog
-        open={revoking !== null}
-        title={revoking ? `Revoke "${revoking.name}"?` : "Revoke token?"}
-        confirmLabel="Revoke token"
-        busyLabel="Revoking…"
-        busy={revokingBusy}
-        onClose={() => setRevoking(null)}
-        onConfirm={async () => {
-          if (!revoking) return;
-          setRevokingBusy(true);
-          try {
-            await api.revokeToken(revoking.id);
-            await load();
-            setRevoking(null);
-          } finally {
-            setRevokingBusy(false);
-          }
-        }}
-      >
-        <p style={{ margin: 0 }}>
-          Anything using this token will stop working immediately. You cannot
-          undo this.
-        </p>
-      </ConfirmDialog>
+      <Link to="/settings/tokens">Manage API tokens</Link>
 
       <h2 className="with-help">
         This device
@@ -318,6 +221,80 @@ export function Settings() {
       >
         Log out
       </button>
+
+      <section className="danger-zone">
+        <h2>Danger zone</h2>
+        <div className="danger-item">
+          <h3>Delete all data</h3>
+          <p className="muted">
+            Permanently remove this account&apos;s groups, friends, expenses and guest links so
+            you can import from Splitwise again. Your login is not deleted. Refuses if another
+            real account still shares a group or expense with you.
+          </p>
+          <OnlineOnly what="Deleting this account's data">
+            <WipeLedgerButton />
+          </OnlineOnly>
+        </div>
+        <div className="danger-item">
+          <h3>Delete account</h3>
+          <p className="muted">
+            Close this login. If other people with accounts still share groups or expenses with
+            you, you become a placeholder they can still see — they can send you a guest link,
+            and the history stays. If nobody else has an account on this data, everything is
+            deleted, including this login.
+          </p>
+          <OnlineOnly what="Deleting this account">
+            <DeleteAccountButton />
+          </OnlineOnly>
+        </div>
+      </section>
     </>
   );
+}
+
+function ExportDataButton({ onError }: { onError: (message: string | null) => void }) {
+  const online = useOnline();
+  const [busy, setBusy] = useState(false);
+
+  async function download() {
+    setBusy(true);
+    onError(null);
+    try {
+      const res = await fetch("/api/v1/export.zip", { credentials: "same-origin" });
+      if (!res.ok) {
+        let message = "Could not export your data";
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body.error) message = body.error;
+        } catch {
+          // Non-JSON error body.
+        }
+        throw new ApiError(message, res.status);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filenameFromDisposition(res.headers.get("Content-Disposition"))
+        ?? "splitsmart-export.zip";
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Could not export your data");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button type="button" className="secondary" style={{ width: "auto" }} disabled={!online || busy} onClick={() => void download()}>
+      {busy ? "Preparing…" : "Download all data"}
+    </button>
+  );
+}
+
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const match = /filename="([^"]+)"/.exec(header);
+  return match?.[1] ?? null;
 }

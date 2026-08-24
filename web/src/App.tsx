@@ -10,7 +10,7 @@ import { Routes, Route, Link, Navigate, useLocation } from "react-router-dom";
 import { CurrencyProvider } from "./money.tsx";
 import { ExchangeRatesProvider } from "./exchangeRates.ts";
 import { SyncProvider, useSync } from "./sync/SyncProvider.tsx";
-import { SyncStatusBar } from "./SyncStatusBar.tsx";
+import { HeaderSyncStatus, SyncStatusBar } from "./SyncStatusBar.tsx";
 import { Conflicts } from "./pages/Conflicts.tsx";
 import { Logo } from "./Logo.tsx";
 import { Sidebar } from "./Sidebar.tsx";
@@ -29,6 +29,7 @@ import { Series } from "./pages/Series.tsx";
 import { Activity } from "./pages/Activity.tsx";
 import { Claim } from "./pages/Claim.tsx";
 import { Settings } from "./pages/Settings.tsx";
+import { ApiTokens } from "./pages/ApiTokens.tsx";
 import { Import } from "./pages/Import.tsx";
 import { Admin } from "./pages/Admin.tsx";
 import { AdminUser } from "./pages/AdminUser.tsx";
@@ -99,6 +100,33 @@ function Shell() {
   // doesn't leave the menu covering the screen you just asked for.
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
+  // Crossing the 860px breakpoint leaves the drawer class on with no toggle.
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 860px)");
+    const onChange = () => {
+      if (!mq.matches) setMenuOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
+  // Lock the page behind the drawer. The rail is position:fixed, so without
+  // this the page would keep scrolling and the shade would slide away with it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    document.documentElement.classList.add("rail-open");
+    return () => document.documentElement.classList.remove("rail-open");
+  }, [menuOpen]);
+
   const routes = (
     <Routes>
       {/* Public: the link is often opened in a different browser. */}
@@ -127,6 +155,7 @@ function Shell() {
       {/* Writes the server refused or overtook. Non-negotiable: an expense that
           silently vanishes between devices is worse than an error message. */}
       <Route path="/conflicts" element={<Protected><Conflicts /></Protected>} />
+      <Route path="/settings/tokens" element={<Protected><ApiTokens /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/import" element={<Protected><Import /></Protected>} />
       <Route
@@ -174,6 +203,14 @@ function Shell() {
       {appChrome && <SyncStatusBar />}
       {appChrome ? (
         <div className="shell">
+          {menuOpen && (
+            <button
+              type="button"
+              className="rail-shade"
+              aria-label="Close menu"
+              onClick={() => setMenuOpen(false)}
+            />
+          )}
           <Sidebar className={menuOpen ? "rail open" : "rail"} />
           <main className="main">{routes}</main>
         </div>
@@ -265,7 +302,7 @@ function TopBar({
 
   return (
     <header className="topbar">
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <div className="topbar-start">
         {appChrome && (
           <button
             className="icon menu-toggle"
@@ -276,9 +313,12 @@ function TopBar({
             ☰
           </button>
         )}
-        <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
-          <Logo />
-        </Link>
+        <div className="topbar-brand">
+          <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
+            <Logo />
+          </Link>
+          {appChrome && <HeaderSyncStatus />}
+        </div>
       </div>
 
       <div className="topbar-right">

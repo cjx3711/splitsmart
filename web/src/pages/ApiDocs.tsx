@@ -16,7 +16,7 @@ export function ApiDocs() {
         token.
       </p>
       <p>
-        Mint a token in Settings after you log in. Send it as{" "}
+        Mint a token under Settings → API tokens after you log in. Send it as{" "}
         <code>Authorization: Bearer &lt;token&gt;</code>. Cookie sessions work
         too; they are how the browser talks to itself.
       </p>
@@ -157,6 +157,18 @@ export function ApiDocs() {
       </Endpoint>
       <Endpoint method="DELETE" path="/api/v1/auth/tokens/:id">
         <p>Revoke. <code>{`{ ok: true }`}</code></p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/auth/delete">
+        <Code>{`{ "confirm": "DELETE ACCOUNT" }`}</Code>
+        <p>
+          Closes this account. The confirmation phrase is required so a stray
+          POST cannot do this. If another live real account still shares a group
+          or an expense, the row becomes a placeholder (ghost) so their balances
+          stay; <code>{`{ ok: true, convertedToGhost: true }`}</code>. Otherwise
+          the ledger is wiped and the login is retired;{" "}
+          <code>{`{ ok: true, convertedToGhost: false }`}</code>. Sessions and
+          API tokens die either way. The session cookie is cleared.
+        </p>
       </Endpoint>
 
       <h2 id="money">Money</h2>
@@ -364,6 +376,14 @@ export function ApiDocs() {
           expense, money as a decimal string with the currency in its own column.
           Guests have their own link-scoped{" "}
           <code>/api/v1/guest/expenses.csv</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/export.zip">
+        <p>
+          A zip of CSV files for this account: profile, expenses, comments,
+          groups, and people. No filters — everything you can see. Money in{" "}
+          <code>expenses.csv</code> is the same decimal shape as the file above.
+          Settings offers this as &quot;Download all data&quot;.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/expenses/currencies/frequent">
@@ -646,13 +666,13 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/comments">
-        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 10 }`}</Code>
+        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 25 }`}</Code>
         <p>
           Step 4, after expenses, because a comment references one. Only expenses
           Splitwise reported a <code>comments_count</code> for (and did not nest
           the thread on the list) are a request; the count is stamped as pending
           metadata and removed once fetched, so a second run is a no-op.{" "}
-          <code>limit</code> is at most 10. <code>offset</code> is ignored: the
+          <code>limit</code> is at most 25. <code>offset</code> is ignored: the
           pending set shrinks as rows finish. Returns <code>total</code> (how
           many imported expenses still need a fetch, including this page).
           Splitwise&apos;s automatic <em>System</em> comments are imported too -

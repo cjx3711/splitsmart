@@ -110,7 +110,7 @@ Listed in `scripts/smoke-screens.ts`. Every id is captured twice: desktop
 | `expense-series` | Test User | Every bill in the Rent series, oldest first |
 | `expense-rent-stop` | Test User | Stop-repeating warning modal on Rent |
 | `add-expense-dialog` | Test User | The add form |
-| `settings` | Test User | Account + API tokens |
+| `settings` | Test User | Account, export, danger zone |
 | `jj-dashboard` | JJ | Same ledger, other side |
 | `jj-tokyo` | JJ | Tokyo as the member who paid TeamLab |
 | `jj-apartment` | JJ | Apartment 4B as the other roommate |

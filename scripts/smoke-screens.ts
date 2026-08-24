@@ -67,7 +67,8 @@ export const CAPTURE_PARAMS = {
  *   .avatar     pattern is hashed from the user's ULID; every smoke:reset mints new ones.
  *   .estimate   the ≈ overall figure, converted at live Exchange Rate API rates.
  *   .comment-time  system comments are stamped at seed time, not SEED_TODAY.
- *   .sync-badge / .sync-icon / .syncbar  pending vs synced is a race against the outbox.
+ *   .sync-badge / .sync-icon / .syncbar / .sync-status
+ *     pending vs synced is a race against the outbox.
  */
 export const STABILISE_CSS = `
   *, *::before, *::after {
@@ -84,6 +85,8 @@ export const STABILISE_CSS = `
      from layout rather than hiding it in place, or a late fetch shifts pixels. */
   .estimate { display: none !important; }
   .comment-time, .sync-badge, .sync-icon, .syncbar { visibility: hidden !important; }
+  /* New in the header: hide from layout so existing PNG baselines stay put. */
+  .sync-status { display: none !important; }
 `;
 
 const DEFS: ScreenDef[] = [
@@ -198,7 +201,7 @@ const DEFS: ScreenDef[] = [
     id: "settings",
     auth: { kind: "user" },
     path: "/app/settings",
-    waitForText: "API tokens",
+    waitForText: "Danger zone",
   },
   {
     id: "admin",
