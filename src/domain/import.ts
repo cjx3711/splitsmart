@@ -1444,7 +1444,7 @@ export async function continueImportedRepeats(
 // skip-don't-fudge behave identically whichever one runs.
 
 /** One wizard request is this many Splitwise `get_comments` calls, plus delays. */
-export const COMMENTS_PAGE_SIZE = 10;
+export const COMMENTS_PAGE_SIZE = 25;
 
 const PENDING_COMMENT_KEYS = [
   "splitwise_comments_count",

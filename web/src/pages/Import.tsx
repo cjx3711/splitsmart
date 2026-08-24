@@ -51,8 +51,10 @@ interface PhaseProgress {
   current?: number;
   total?: number;
   totalCapped?: boolean;
-  /** When this phase became active. Used to estimate remaining time. */
+  /** When this phase became active. Used for elapsed time and remaining-time ETA. */
   startedAt?: number;
+  /** When this phase finished. Elapsed stays visible after the checkmark. */
+  finishedAt?: number;
 }
 
 interface Progress {
@@ -69,7 +71,7 @@ function initialProgress(preview: ImportPreview): Progress {
   return {
     friendsCount: preview.counts.friends,
     groupsCount: preview.counts.groups,
-    friends: { status: "active" },
+    friends: { status: "active", startedAt: Date.now() },
     groups: { status: "pending" },
     expenses: {
       status: "pending",
@@ -157,8 +159,8 @@ export function Import() {
         prev
           ? {
               ...prev,
-              friends: { status: "done" },
-              groups: { status: "active" },
+              friends: finishPhase(prev.friends),
+              groups: startPhase(prev.groups),
             }
           : prev,
       );
@@ -168,14 +170,12 @@ export function Import() {
         prev
           ? {
               ...prev,
-              groups: { status: "done" },
-              expenses: {
-                status: "active",
+              groups: finishPhase(prev.groups),
+              expenses: startPhase(prev.expenses, {
                 current: 0,
                 total,
                 totalCapped: preview.counts.expensesCapped,
-                startedAt: Date.now(),
-              },
+              }),
             }
           : prev,
       );
@@ -231,24 +231,19 @@ export function Import() {
         offset = page.done ? null : page.nextOffset;
       }
 
-      // Step 4. Only expenses Splitwise said have comments, 10 fetches per call.
+      // Step 4. Only expenses Splitwise said have comments, 25 fetches per call.
       let commentsFetched = 0;
       let commentsTotal = 0;
       setProgress((prev) =>
         prev
           ? {
               ...prev,
-              expenses: {
-                status: "done",
+              expenses: finishPhase(prev.expenses, {
                 current: seen,
                 total: seen,
                 totalCapped: false,
-              },
-              comments: {
-                status: "active",
-                current: 0,
-                startedAt: Date.now(),
-              },
+              }),
+              comments: startPhase(prev.comments, { current: 0 }),
             }
           : prev,
       );
@@ -282,13 +277,12 @@ export function Import() {
         prev
           ? {
               ...prev,
-              comments: {
-                status: "done",
+              comments: finishPhase(prev.comments, {
                 current: commentsFetched,
                 total: commentsTotal,
                 totalCapped: false,
-              },
-              rounding: { status: "active", startedAt: Date.now() },
+              }),
+              rounding: startPhase(prev.rounding),
             }
           : prev,
       );
@@ -299,7 +293,7 @@ export function Import() {
         prev
           ? {
               ...prev,
-              rounding: { status: "done" },
+              rounding: finishPhase(prev.rounding),
             }
           : prev,
       );
@@ -425,7 +419,8 @@ function KeyStep({
           <a href="https://secure.splitwise.com/apps" target="_blank" rel="noreferrer">
             secure.splitwise.com/apps
           </a>
-          .
+          . Splitwise APIs are now a paid feature. Start a 7-day free trial and
+          add a credit card; you can finish this export before you are charged.
         </p>
         <button
           type="submit"
@@ -546,9 +541,28 @@ function PeopleList({
 
 // ---------------------------------------------------------------------------
 
+function startPhase(phase: PhaseProgress, extras: Partial<PhaseProgress> = {}): PhaseProgress {
+  return { ...phase, ...extras, status: "active", startedAt: Date.now() };
+}
+
+function finishPhase(phase: PhaseProgress, extras: Partial<PhaseProgress> = {}): PhaseProgress {
+  return {
+    ...phase,
+    ...extras,
+    status: "done",
+    startedAt: phase.startedAt,
+    finishedAt: Date.now(),
+  };
+}
+
 function RunningStep({ progress }: { progress: Progress }) {
-  const expensesEta = useImportEta(progress.expenses);
-  const commentsEta = useImportEta(progress.comments);
+  const ticking =
+    progress.friends.status === "active" ||
+    progress.groups.status === "active" ||
+    progress.expenses.status === "active" ||
+    progress.comments.status === "active" ||
+    progress.rounding.status === "active";
+  const now = useTickingNow(ticking);
 
   return (
     <div className="card stack">
@@ -557,21 +571,29 @@ function RunningStep({ progress }: { progress: Progress }) {
           label="Friends"
           count={progress.friendsCount}
           phase={progress.friends}
+          now={now}
         />
-        <ImportPhaseRow label="Groups" count={progress.groupsCount} phase={progress.groups} />
+        <ImportPhaseRow
+          label="Groups"
+          count={progress.groupsCount}
+          phase={progress.groups}
+          now={now}
+        />
         <ImportPhaseRow
           label="Expenses"
           count={progress.expenses.totalCapped ? undefined : progress.expenses.total}
           phase={progress.expenses}
-          eta={expensesEta}
+          now={now}
+          eta={importEta(progress.expenses, now)}
         />
         <ImportPhaseRow
           label="Comments"
           count={progress.comments.totalCapped ? undefined : progress.comments.total}
           phase={progress.comments}
-          eta={commentsEta}
+          now={now}
+          eta={importEta(progress.comments, now)}
         />
-        <ImportPhaseRow label="Balances" phase={progress.rounding} />
+        <ImportPhaseRow label="Balances" phase={progress.rounding} now={now} />
       </div>
       <span className="muted">
         Leave this page open. Anything already imported is matched on its Splitwise id, so if this
@@ -585,11 +607,13 @@ function ImportPhaseRow({
   label,
   count,
   phase,
+  now,
   eta,
 }: {
   label: string;
   count?: number;
   phase: PhaseProgress;
+  now: number;
   eta?: string | null;
 }) {
   const done = phase.status === "done";
@@ -599,6 +623,8 @@ function ImportPhaseRow({
     active && phase.current !== undefined && phase.total !== undefined
       ? `${phase.current} of ${phase.totalCapped ? "~" : ""}${phase.total}`
       : null;
+  const elapsed = phaseElapsed(phase, now);
+  const timeLabel = [elapsed, active && eta ? eta : null].filter(Boolean).join(" · ");
 
   let rowLabel = label;
   if (done) rowLabel = `${label}${countLabel}`;
@@ -614,7 +640,7 @@ function ImportPhaseRow({
           {done ? "✓" : ""}
         </span>
         <span className="import-phase-label">{rowLabel}</span>
-        {active && eta && <span className="import-phase-eta">{eta}</span>}
+        {timeLabel && <span className="import-phase-eta">{timeLabel}</span>}
       </div>
       {done ? (
         <progress value={1} max={1} />
@@ -632,19 +658,29 @@ function ImportPhaseRow({
   );
 }
 
+function useTickingNow(enabled: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [enabled]);
+
+  return now;
+}
+
+function phaseElapsed(phase: PhaseProgress, now: number): string | null {
+  if (phase.status === "pending" || phase.startedAt === undefined) return null;
+  const end = phase.status === "done" ? (phase.finishedAt ?? now) : now;
+  return formatElapsed(end - phase.startedAt);
+}
+
 /**
  * Remaining-time caption from elapsed work. Null until a page has landed, so
  * we have a real rate rather than a guess from a 0/N bar.
  */
-function useImportEta(phase: PhaseProgress): string | null {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (phase.status !== "active") return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [phase.status]);
-
+function importEta(phase: PhaseProgress, now: number): string | null {
   if (
     phase.status !== "active" ||
     phase.startedAt === undefined ||
@@ -665,6 +701,18 @@ function useImportEta(phase: PhaseProgress): string | null {
   const ms = (elapsed / phase.current) * remaining;
   if (!Number.isFinite(ms) || ms < 0) return null;
   return formatEta(ms);
+}
+
+function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 1) return "<1s";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rem = seconds % 60;
+  if (minutes < 60) return rem === 0 ? `${minutes}m` : `${minutes}m ${rem}s`;
+  const hours = Math.floor(minutes / 60);
+  const minRem = minutes % 60;
+  return minRem === 0 ? `${hours}h` : `${hours}h ${minRem}m`;
 }
 
 function formatEta(ms: number): string {

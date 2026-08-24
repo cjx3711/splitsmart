@@ -33,9 +33,28 @@ import type { NativeApi } from "../../src/routes/native/v1.ts";
 
 export type { SplitItem, SplitType, RepeatInterval };
 
+/**
+ * Sync pull/bootstrap/push can hang forever if the API process restarts while
+ * the request is in flight (node --watch, a deploy). The chip then sits on
+ * "Syncing…" with both cursors already equal, because `inFlight` never
+ * clears. 45s is well above a healthy page and short enough to unstick.
+ */
+const SYNC_FETCH_MS = 45_000;
+
+function withTimeout(init?: RequestInit): RequestInit {
+  const timeout = AbortSignal.timeout(SYNC_FETCH_MS);
+  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  return { ...init, credentials: "same-origin", signal };
+}
+
+function isSyncCycleUrl(input: RequestInfo | URL): boolean {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  return /\/sync\/(pull|bootstrap|push|snapshot)\b/.test(url);
+}
+
 export const client = hc<NativeApi>("/api/v1", {
   fetch: ((input: RequestInfo | URL, init?: RequestInit) =>
-    fetch(input, { ...init, credentials: "same-origin" })) as typeof fetch,
+    fetch(input, isSyncCycleUrl(input) ? withTimeout(init) : { ...init, credentials: "same-origin" })) as typeof fetch,
 });
 
 async function toApiError(res: {
@@ -246,7 +265,7 @@ async function pushRequest(
     method: "POST",
     body,
     headers,
-    credentials: "same-origin",
+    ...withTimeout(),
   });
   if (!res.ok) throw await toApiError(res);
   return res.json() as Promise<InferResponseType<typeof client.sync.push.$post, 200>>;
@@ -301,6 +320,10 @@ export const api = {
 
   revokeToken: (id: string) =>
     call(client.auth.tokens[":id"].$delete, client.auth.tokens[":id"].$delete({ param: { id } })),
+
+  /** Close this account. Confirmation must be the exact phrase. */
+  deleteAccount: (confirm: "DELETE ACCOUNT") =>
+    call(client.auth.delete.$post, client.auth.delete.$post({ json: { confirm } })),
 
   listGroups: () => call(client.groups.$get, client.groups.$get()),
 
@@ -472,7 +495,7 @@ export const api = {
    * Step 4. Fetches comments for expenses stamped with a pending count; those
    * Splitwise said have none are never a request. Call until `done`.
    */
-  importComments: (apiKey: string, offset = 0, limit = 10) =>
+  importComments: (apiKey: string, offset = 0, limit = 25) =>
     call(
       client.import.comments.$post,
       client.import.comments.$post({ json: { apiKey, offset, limit } }),
@@ -539,6 +562,15 @@ export const api = {
           since: String(since),
           ...(limit === undefined ? {} : { limit: String(limit) }),
         },
+      }),
+    ),
+
+  /** The tip of the server log, plus this caller's visible clocks. */
+  syncStatus: (cursor?: number) =>
+    call(
+      client.sync.status.$get,
+      client.sync.status.$get({
+        query: cursor !== undefined && cursor > 0 ? { cursor: String(cursor) } : {},
       }),
     ),
 

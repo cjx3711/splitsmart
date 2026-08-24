@@ -649,7 +649,7 @@ POST /api/v1/import/preview    dry run: reads Splitwise, writes nothing
 POST /api/v1/import/friends    step 1
 POST /api/v1/import/groups     step 2
 POST /api/v1/import/expenses   step 3, one page per call, resumable
-POST /api/v1/import/comments   step 4, pending commented expenses, 10 per call
+POST /api/v1/import/comments   step 4, pending commented expenses, 25 per call
 POST /api/v1/import/rounding   step 5, settle leftover cents vs Splitwise group nets, then friend totals
 POST /api/v1/import/continue-recurring  resume stopped imported series (no key)
 POST /api/v1/import/run        all five server-side, for small accounts
@@ -720,7 +720,7 @@ against a live account while the API is still free (`docs/PARITY.md`, "Capture
 what import will need"), so the importer handles both: nested comments come in
 with their expense, and step 4 fetches the rest with `get_comments`. Expense
 import stamps a pending `splitwise_comments_count` when the list did not nest
-the thread and the count is > 0; step 4 fetches only those rows (10 per call)
+the thread and the count is > 0; step 4 fetches only those rows (25 per call)
 and removes the stamp, so a second run does not spend a request per bill.
 
 **System comments are imported too.** They are the only edit history Splitwise

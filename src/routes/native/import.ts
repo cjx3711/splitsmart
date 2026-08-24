@@ -21,7 +21,7 @@
  *   POST /api/v1/import/friends   step 1
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call
- *   POST /api/v1/import/comments         step 4, pending commented expenses, 10 per call
+ *   POST /api/v1/import/comments         step 4, pending commented expenses, 25 per call
  *   POST /api/v1/import/rounding         step 5, settle leftover cents vs Splitwise groups, then friends
  *   POST /api/v1/import/continue-recurring  resume stopped imported series
  *   POST /api/v1/import/run              all five server-side, for small accounts
@@ -107,7 +107,7 @@ const expensePageSchema = keySchema.extend({
  */
 const commentPageSchema = keySchema.extend({
   offset: z.number().int().min(0).default(0),
-  // One Splitwise request per pending expense, with a courtesy delay. 10 keeps
+  // One Splitwise request per pending expense, with a courtesy delay. 25 keeps
   // a wizard round-trip well inside a normal HTTP timeout.
   limit: z.number().int().min(1).max(COMMENTS_PAGE_SIZE).default(COMMENTS_PAGE_SIZE),
 });
