@@ -1,14 +1,18 @@
 /**
  * How recently you shared an expense with someone.
  *
- * Derived at read time from live expenses, never stored. A column on
- * `friendships` would miss derived friends (there is no row for those), and
- * every insert / import / delete / restore would need a matching write that
- * could drift from the ledger. The expense ULID already encodes created time,
- * including for Splitwise import (`originalInstant` stamps both the id and
- * `created_at`), so MAX(expense id) among bills you are both on is "the latest
- * expense with me". Import rounding settle-ups are skipped: they exist to
- * match Splitwise leftover cents, not to mark a new interaction.
+ * Derived at read time from live expenses. A column on `friendships` would
+ * miss derived friends (there is no row for those), and every insert / import
+ * / delete / restore would need a matching write that could drift from the
+ * ledger. The expense ULID already encodes created time, including for
+ * Splitwise import (`originalInstant` stamps both the id and `created_at`),
+ * so MAX(expense id) among bills you are both on is "the latest expense with
+ * me". Import rounding settle-ups are skipped: they exist to match Splitwise
+ * leftover cents, not to mark a new interaction.
+ *
+ * The web rail caches this map in localStorage (`friendRecencyCache.ts`) so
+ * it can sort without opening the expense store. This function is still the
+ * rebuild.
  */
 import { isImportRoundingExpense } from "./metadata.ts";
 

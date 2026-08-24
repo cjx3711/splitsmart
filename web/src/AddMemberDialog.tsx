@@ -5,15 +5,16 @@
  * ghost with a name (and optional nickname) and add them in one step.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { api, displayName, type Friend } from "./api.ts";
+import { api, displayName } from "./api.ts";
+import type { RelatedPerson } from "./db/queries.ts";
 import { Avatar, avatarFromRow } from "./Avatar.tsx";
 import { HelpTip } from "./HelpTip.tsx";
 import { Modal } from "./Modal.tsx";
-import { useFriends } from "./localData.ts";
+import { useRelatedPeople } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
 import { ingestAddedMember } from "./sync/localFirst.ts";
 
-function matchesFriend(friend: Friend, query: string): boolean {
+function matchesFriend(friend: RelatedPerson, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return (
@@ -37,7 +38,7 @@ export function AddMemberDialog({
   onAdded: () => void | Promise<void>;
 }) {
   const { db } = useSync();
-  const friends = useFriends()?.friends ?? [];
+  const friends = useRelatedPeople()?.people ?? [];
   const [query, setQuery] = useState("");
   const [name, setName] = useState("");
   const [nickname, setNickname] = useState("");

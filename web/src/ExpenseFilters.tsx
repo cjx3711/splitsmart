@@ -21,7 +21,7 @@
  * else lives in a modal so the seven-control wrap does not eat the list.
  */
 import { useEffect, useState } from "react";
-import { displayName, type ExpenseQuery, type Friend, type Group } from "./api.ts";
+import { displayName, type ExpenseQuery, type Group } from "./api.ts";
 import { categoryPath, CategoryPicker, useCategories } from "./categories.tsx";
 import { useAuth } from "./App.tsx";
 import { Modal } from "./Modal.tsx";
@@ -52,7 +52,7 @@ export function ExpenseFilters({
   /** Offer a group picker. Omit on a group's own screen. */
   groups?: Group[];
   /** Offer a "with this person" picker. Omit on a friend's own screen. */
-  people?: Friend[];
+  people?: Array<{ id: string; name: string; nickname?: string | null }>;
   /**
    * The scope the screen itself imposes, for the download only.
    *

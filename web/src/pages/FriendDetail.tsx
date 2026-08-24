@@ -18,7 +18,7 @@
  * Read from the mirror and written through the outbox, so both dialogs work with
  * no network. Only the guest-link panel is online-only.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useParams, Link } from "react-router-dom";
 import { displayName, api, type ExpenseQuery, type GroupMember } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
@@ -35,8 +35,8 @@ import { useAuth } from "../App.tsx";
 import {
   useFriend,
   useFriendExpenses,
-  useFriends,
   useGroupMembers,
+  useRelatedPeople,
   useSharedGroups,
 } from "../localData.ts";
 import { GroupTypeIcon, groupTypeLabel } from "../groupTypes.tsx";
@@ -64,18 +64,30 @@ export function FriendDetail() {
   const formatMoney = useFormatMoney();
   const { engine, syncNow, db } = useSync();
 
+  useEffect(() => {
+    setFilters({});
+    setShowSettledGroups(false);
+    setOpenDialog(null);
+  }, [id]);
+
   const loaded = useFriend(id);
-  const expenses = useFriendExpenses(id, filters)?.expenses ?? [];
-  const allFriends = useFriends()?.friends ?? [];
-  const sharedGroups = useSharedGroups(id)?.groups ?? [];
+  const expensePage = useFriendExpenses(id, filters);
+  const allFriends = useRelatedPeople()?.people ?? [];
+  const sharedPage = useSharedGroups(id);
   const breakdownGroupIds = loaded?.friend.breakdown.map((entry) => entry.groupId) ?? [];
   const membersByGroup =
     useGroupMembers(breakdownGroupIds) ?? new Map<string, GroupMember[]>();
 
-  if (loaded === undefined || !user) return <Skeleton kind="friend" />;
+  // The whole page waits on the person. Expenses and shared groups can resolve
+  // at different speeds; showing one friend's bills under another's name is
+  // how a click-through looks broken. Filter changes only skeleton the list.
+  if (loaded === undefined || sharedPage === undefined || !user) {
+    return <Skeleton kind="friend" />;
+  }
   if (loaded === null) return <p className="empty">This person is not on this device.</p>;
 
   const friend = loaded.friend;
+  const sharedGroups = sharedPage.groups;
 
   const name = displayName(friend);
   const people = [
@@ -421,17 +433,21 @@ export function FriendDetail() {
             csvScope={{ friendId: friend.id }}
             csvFilename={`splitsmart-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
           />
-          <ExpenseList
-            expenses={expenses}
-            currentUserId={user.id}
-            nameOf={nameOf}
-            showGroup
-            empty={
-              Object.keys(filters).length > 0
-                ? "Nothing shared with them matches those filters."
-                : `Nothing split with ${name} yet.`
-            }
-          />
+          {expensePage === undefined ? (
+            <Skeleton kind="expenseList" />
+          ) : (
+            <ExpenseList
+              expenses={expensePage.expenses}
+              currentUserId={user.id}
+              nameOf={nameOf}
+              showGroup
+              empty={
+                Object.keys(filters).length > 0
+                  ? "Nothing shared with them matches those filters."
+                  : `Nothing split with ${name} yet.`
+              }
+            />
+          )}
         </div>
       </div>
     </>

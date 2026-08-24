@@ -6,8 +6,8 @@
  * has reached the server.
  */
 import { useParams } from "react-router-dom";
-import { displayName } from "../api.ts";
 import { SeriesView } from "../SeriesView.tsx";
+import { makeLookup } from "../ExpenseList.tsx";
 import {
   ResumeRepeatingButton,
   ResumeSeriesDialog,
@@ -16,14 +16,13 @@ import {
   useStopSeries,
 } from "../stopSeries.tsx";
 import { useAuth } from "../App.tsx";
-import { useFriends, useSeries } from "../localData.ts";
+import { useSeries } from "../localData.ts";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function Series() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const series = useSeries(id);
-  const friends = useFriends()?.friends ?? [];
   const stop = useStopSeries(series?.templateId);
 
   if (series === undefined || !user) return <Skeleton kind="series" />;
@@ -42,11 +41,7 @@ export function Series() {
         { label: "Series" },
       ];
 
-  const nameOf = (userId: string) => {
-    if (userId === user.id) return "You";
-    const friend = friends.find((f) => f.id === userId);
-    return friend ? displayName(friend) : `User ${userId}`;
-  };
+  const nameOf = makeLookup(series.people, user.id);
 
   return (
     <>

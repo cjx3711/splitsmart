@@ -18,7 +18,7 @@ import { type ExpenseDetail } from "./api.ts";
 import { ExpenseDialog, expensePeople } from "./ExpenseDialog.tsx";
 import type { ExpenseFormInit } from "./ExpenseForm.tsx";
 import { useAuth } from "./App.tsx";
-import { useFriends, useGroups, useGroupView } from "./localData.ts";
+import { useGroups, useGroupView, useRelatedPeople } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
 import { useOnline } from "./OnlineOnly.tsx";
 import { useCurrencies } from "./money.tsx";
@@ -42,7 +42,7 @@ export function EditExpenseDialog({
 
   const [groupId, setGroupId] = useState<string | null>(expense.group_id);
 
-  const friends = useFriends()?.friends ?? [];
+  const friends = useRelatedPeople()?.people ?? [];
   const groups = useGroups()?.groups ?? [];
   const groupView = useGroupView(groupId ?? undefined);
 

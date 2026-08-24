@@ -33,6 +33,7 @@
  * without a browser.
  */
 import Dexie, { type EntityTable } from "dexie";
+import { clearFriendRecency } from "./friendRecencyCache.ts";
 import type {
   SyncCategory,
   SyncComment,
@@ -175,6 +176,12 @@ export interface MetaValues {
   expenseShape: number;
   /** The cached profile, so a reload with no network renders the app. */
   profile: SyncUser;
+  /**
+   * Bumped when the per-user localStorage recency map changes (friends and
+   * groups), so Dexie live queries that sort the rail re-run without opening
+   * the expense store.
+   */
+  friendRecencyRev: number;
 }
 
 export type MetaKey = keyof MetaValues;
@@ -238,6 +245,7 @@ export function openLocalDb(userId: string): LocalDb {
 
 /** Drops the mirror for one account. Close the live Dexie first. */
 export async function deleteLocalDb(userId: string): Promise<void> {
+  clearFriendRecency(userId);
   await Dexie.delete(localDbName(userId));
 }
 

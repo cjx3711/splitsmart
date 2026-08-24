@@ -22,7 +22,7 @@
 import { useEffect, useState } from "react";
 import { ExpenseDialog, expensePeople } from "./ExpenseDialog.tsx";
 import { useAuth } from "./App.tsx";
-import { useFriends, useGroups, useGroupView } from "./localData.ts";
+import { useGroups, useGroupView, useRelatedPeople } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
 import { useOnline } from "./OnlineOnly.tsx";
 import { ulid } from "../../src/domain/ulid.ts";
@@ -51,7 +51,7 @@ export function AddExpenseDialog({
 
   // Live queries against the mirror, so opening the dialog costs no request at
   // all - which also means it opens instantly and works offline.
-  const friends = useFriends()?.friends ?? [];
+  const friends = useRelatedPeople()?.people ?? [];
   const groups = useGroups()?.groups ?? [];
   const groupView = useGroupView(groupId ?? undefined);
 

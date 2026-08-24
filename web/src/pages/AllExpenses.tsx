@@ -1,8 +1,8 @@
 /**
  * Every expense you're a participant of, group and one-on-one alike.
  *
- * Names come from the friends list because an expense can involve people from
- * several groups at once and there is no single member roster to read from.
+ * Names come from the related-people roster (no balances) because an expense
+ * can involve people from several groups at once.
  *
  * Read from the offline mirror, and filtered over ALL of it rather than over a
  * fetched page - the cap that used to make local filtering dishonest is gone
@@ -13,7 +13,7 @@ import { type ExpenseQuery } from "../api.ts";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
 import { useAuth } from "../App.tsx";
-import { useExpenses, useFriends, useGroups, useMirrorReady } from "../localData.ts";
+import { useExpenses, useGroups, useMirrorReady, useRelatedPeople } from "../localData.ts";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function AllExpenses() {
@@ -21,7 +21,7 @@ export function AllExpenses() {
   const [filters, setFilters] = useState<ExpenseQuery>({});
 
   const expenses = useExpenses(filters)?.expenses ?? null;
-  const friends = useFriends()?.friends ?? [];
+  const friends = useRelatedPeople()?.people ?? [];
   const groups = useGroups()?.groups ?? [];
   const ready = useMirrorReady();
 

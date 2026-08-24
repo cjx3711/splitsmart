@@ -29,7 +29,8 @@ import type {
   SyncGroupMember,
   SyncUser,
 } from "./local.ts";
-import { friendshipKey, memberKey, setMeta } from "./local.ts";
+import { friendshipKey, getMeta, memberKey, setMeta } from "./local.ts";
+import { rememberFriendRecency } from "./rememberFriendRecency.ts";
 import { remapPayloadUser } from "./remap.ts";
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,9 @@ export async function putExpenses(db: LocalDb, expenses: SyncExpense[]): Promise
   }));
 
   await db.expenses.bulkPut(rows);
+
+  const selfId = (await getMeta(db, "profile"))?.id;
+  if (selfId) await rememberFriendRecency(db, selfId, rows);
 }
 
 /**
@@ -202,6 +206,7 @@ export async function putReferenceData(
  * quarantined op the user cannot act on is noise.
  */
 export async function forgetExpense(db: LocalDb, expenseId: string): Promise<void> {
+  const existing = await db.expenses.get(expenseId);
   await db.transaction("rw", db.expenses, db.comments, db.outbox, async () => {
     await db.expenses.delete(expenseId);
 
@@ -214,6 +219,11 @@ export async function forgetExpense(db: LocalDb, expenseId: string): Promise<voi
       queued.filter((op) => ids.has(op.id)).map((op) => op.seq!),
     );
   });
+
+  const selfId = (await getMeta(db, "profile"))?.id;
+  if (selfId && existing) {
+    await rememberFriendRecency(db, selfId, [{ ...existing, deletedAt: existing.deletedAt ?? "gone" }]);
+  }
 }
 
 /**

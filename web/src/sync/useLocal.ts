@@ -10,10 +10,15 @@
  * `undefined` means the query has not resolved yet - the same convention
  * `useLiveQuery` uses - and every caller distinguishes that from an empty result,
  * because "loading" and "you have no expenses" are very different screens.
+ *
+ * STALE RESULTS ARE DISCARDED. See `takeFresh` in fresh.ts: a snapshot whose
+ * token is not this render's deps is treated as unresolved, so navigating from
+ * one friend to another cannot paint the new expenses under the old name.
  */
 import { useLiveQuery } from "dexie-react-hooks";
 import { useLocalDb } from "./SyncProvider.tsx";
 import type { LocalDb } from "../db/local.ts";
+import { queryToken, takeFresh } from "./fresh.ts";
 
 /**
  * Runs `query` against the mirror and re-runs it whenever the tables it touched
@@ -28,12 +33,15 @@ export function useLocal<T>(
   deps: unknown[] = [],
 ): T | undefined {
   const db = useLocalDb();
+  const token = queryToken(deps);
 
-  return useLiveQuery(
+  const snapshot = useLiveQuery(
     async () => {
       if (!db) return undefined;
-      return query(db);
+      return { token, value: await query(db) };
     },
-    [db, ...deps],
+    [db, token],
   );
+
+  return takeFresh(snapshot, token);
 }

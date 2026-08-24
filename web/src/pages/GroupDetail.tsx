@@ -12,7 +12,7 @@
  * expense list can start higher. Narrow screens stack them, with balances still
  * above the expenses.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { displayName, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
@@ -49,16 +49,26 @@ export function GroupDetail() {
   const formatMoney = useFormatMoney();
   const { engine } = useSync();
 
+  useEffect(() => {
+    setFilters({});
+    setOpenDialog(null);
+  }, [id]);
+
   // Live queries: a sync landing, or a queued write, re-renders this screen
   // without anything having to invalidate anything.
   const view = useGroupView(id);
-  const expenses = useGroupExpenses(id, filters)?.expenses ?? [];
-  const settle = useSettleSuggestions(id)?.suggestions ?? [];
+  const expensePage = useGroupExpenses(id, filters);
+  const settlePage = useSettleSuggestions(id);
 
-  if (view === undefined || !user) return <Skeleton kind="group" />;
+  // Identity and balances wait together. Expenses can arrive a tick later;
+  // those skeleton on their own so a filter change does not blank the roster.
+  if (view === undefined || settlePage === undefined || !user) {
+    return <Skeleton kind="group" />;
+  }
   if (view === null) return <p className="empty">This group is not on this device.</p>;
 
   const { group, members, balances, role } = view;
+  const settle = settlePage.suggestions;
   const nameOf = makeLookup(members, user.id);
   const people = members.map((m) => ({
     id: m.id,
@@ -298,16 +308,20 @@ export function GroupDetail() {
         csvScope={{ groupId: group.id }}
         csvFilename={`splitsmart-${group.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
       />
-      <ExpenseList
-        expenses={expenses}
-        currentUserId={user.id}
-        nameOf={nameOf}
-        empty={
-          Object.keys(filters).length > 0
-            ? "Nothing in this group matches those filters."
-            : "Nothing yet."
-        }
-      />
+      {expensePage === undefined ? (
+        <Skeleton kind="expenseList" />
+      ) : (
+        <ExpenseList
+          expenses={expensePage.expenses}
+          currentUserId={user.id}
+          nameOf={nameOf}
+          empty={
+            Object.keys(filters).length > 0
+              ? "Nothing in this group matches those filters."
+              : "Nothing yet."
+          }
+        />
+      )}
 
       <h2>Guest links</h2>
       <LinkPanel

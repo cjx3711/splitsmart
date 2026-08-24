@@ -56,6 +56,11 @@ import type {
 } from "../api.ts";
 import type { LocalDb, LocalExpense, SyncUser } from "./local.ts";
 import { getMeta } from "./local.ts";
+import {
+  cacheFromExpenses,
+  loadFriendRecency,
+  saveFriendRecency,
+} from "./friendRecencyCache.ts";
 
 // ---------------------------------------------------------------------------
 // Filters
@@ -299,29 +304,6 @@ function toAmounts(totals: Map<string, number>): CurrencyAmount[] {
     .sort((a, b) => a.currencyCode.localeCompare(b.currencyCode));
 }
 
-/** Net position between the caller and everybody else. Positive = you are owed. */
-function pairwise(moves: Movement[], selfId: string): Map<string, CurrencyAmount[]> {
-  const byUser = new Map<string, Map<string, number>>();
-
-  const add = (otherId: string, currency: string, amount: number) => {
-    const totals = byUser.get(otherId) ?? new Map<string, number>();
-    totals.set(currency, (totals.get(currency) ?? 0) + amount);
-    byUser.set(otherId, totals);
-  };
-
-  for (const move of moves) {
-    if (move.fromUserId === selfId) add(move.toUserId, move.currencyCode, -move.amountMinor);
-    else if (move.toUserId === selfId) add(move.fromUserId, move.currencyCode, move.amountMinor);
-  }
-
-  const result = new Map<string, CurrencyAmount[]>();
-  for (const [otherId, totals] of byUser) {
-    const amounts = toAmounts(totals);
-    if (amounts.length > 0) result.set(otherId, amounts);
-  }
-  return result;
-}
-
 /**
  * The same figures split out by the group each debt arose in.
  *
@@ -407,7 +389,11 @@ function groupBalances(moves: Movement[], groupId: string): Array<{ userId: stri
  * server has no row for a derived friend, so the client cannot replicate one; it
  * recomputes from the memberships and shares it already holds.
  */
-async function relatedUserIds(db: LocalDb, selfId: string): Promise<Set<string>> {
+export async function relatedUserIds(
+  db: LocalDb,
+  selfId: string,
+  expenses?: LocalExpense[],
+): Promise<Set<string>> {
   const ids = new Set<string>();
 
   for (const friendship of await db.friendships.toArray()) {
@@ -425,7 +411,7 @@ async function relatedUserIds(db: LocalDb, selfId: string): Promise<Set<string>>
     if (member.userId !== selfId) ids.add(member.userId);
   }
 
-  for (const expense of await db.expenses.toArray()) {
+  for (const expense of expenses ?? (await db.expenses.toArray())) {
     if (!expense.shares.some((s) => s.userId === selfId)) continue;
     for (const share of expense.shares) {
       if (share.userId !== selfId) ids.add(share.userId);
@@ -433,6 +419,70 @@ async function relatedUserIds(db: LocalDb, selfId: string): Promise<Set<string>>
   }
 
   return ids;
+}
+
+/**
+ * People the caller can see, without balances.
+ *
+ * The rail, pickers and name lookups only need who someone is and how recently
+ * you shared a bill. `localFriends` is the wrong source for that: it re-derives
+ * every pairwise net from the whole ledger, which on a large import is seconds
+ * of work the sidebar does not use.
+ */
+export type RelatedPerson = {
+  id: string;
+  name: string;
+  nickname: string | null;
+  email: string | null;
+  icon_letters: Friend["icon_letters"];
+  icon_emoji: Friend["icon_emoji"];
+  icon_hue: Friend["icon_hue"];
+  icon_pattern: Friend["icon_pattern"];
+  is_ghost: 0 | 1;
+};
+
+export async function localRelatedPeople(
+  db: LocalDb,
+  selfId: string,
+): Promise<{ people: RelatedPerson[]; lastByGroup: Record<string, string> }> {
+  // Subscribe to the rev so a recency write re-renders the rail without
+  // this query opening the expense store.
+  await getMeta(db, "friendRecencyRev");
+
+  let cache = loadFriendRecency(selfId);
+  if (!cache) {
+    const expenses = await db.expenses.toArray();
+    cache = cacheFromExpenses(expenses, selfId, await relatedUserIds(db, selfId, expenses));
+    saveFriendRecency(selfId, cache);
+  }
+
+  const ids = await relatedUserIds(db, selfId, []);
+  for (const id of cache.related) ids.add(id);
+  for (const id of Object.keys(cache.last)) ids.add(id);
+  if (ids.size === 0) return { people: [], lastByGroup: cache.lastByGroup };
+
+  const lastByUser = new Map(Object.entries(cache.last));
+  const users = (await db.users.bulkGet([...ids])).filter(
+    (u): u is SyncUser => u !== undefined && u.deletedAt === null,
+  );
+
+  const people = users
+    .sort((a, b) =>
+      compareByLastExpense(a.id, b.id, lastByUser, displayName(a), displayName(b)),
+    )
+    .map((user) => ({
+      id: user.id,
+      name: user.name,
+      nickname: user.nickname,
+      email: user.email,
+      icon_letters: user.iconLetters,
+      icon_emoji: user.iconEmoji,
+      icon_hue: user.iconHue,
+      icon_pattern: user.iconPattern,
+      is_ghost: user.isGhost ? (1 as const) : (0 as const),
+    }));
+
+  return { people, lastByGroup: cache.lastByGroup };
 }
 
 // ---------------------------------------------------------------------------
@@ -472,15 +522,10 @@ export async function localGroups(
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(toApiGroup);
 
-  const moves = movements(await liveExpenses(db));
-  const totals = new Map<string, number>();
-  for (const balances of pairwise(moves, selfId).values()) {
-    for (const b of balances) {
-      totals.set(b.currencyCode, (totals.get(b.currencyCode) ?? 0) + b.amountMinor);
-    }
-  }
-
-  return { groups, totalBalance: toAmounts(totals) };
+  // Membership only. A combined total here used to re-derive every expense
+  // just to populate a field no screen reads — the dashboard owns those
+  // figures, from `localFriends`. Empty keeps the API-shaped return.
+  return { groups, totalBalance: [] };
 }
 
 function toApiGroup(group: { id: string; name: string; groupType: string; defaultCurrency: string; simplifyByDefault?: boolean }): Group {
@@ -888,6 +933,7 @@ export async function localSeries(
   /** Why new bills are not coming. Null while the schedule is still live. */
   stoppedReason: "deleted" | "ended" | null;
   bills: ExpenseSummary[];
+  people: SyncUser[];
 } | null> {
   const seed = await db.expenses.get(expenseId);
   if (!seed) return null;
@@ -931,6 +977,7 @@ export async function localSeries(
     nextRepeat: stoppedReason ? null : (template?.nextRepeat ?? null),
     stoppedReason,
     bills: await toSummaries(db, rows),
+    people: await peopleOn(db, rows),
   };
 }
 
@@ -945,16 +992,44 @@ async function commentCounts(db: LocalDb, expenseIds: string[]): Promise<Map<str
 }
 
 /**
+ * People named on these bills, for titles and avatars.
+ *
+ * Prefers the live `users` row so a nickname change shows up immediately, then
+ * the snapshot nested on the expense — that snapshot exists precisely so a
+ * bill can name someone the friends list has not finished computing yet.
+ */
+async function peopleOn(
+  db: LocalDb,
+  rows: LocalExpense[],
+): Promise<SyncUser[]> {
+  const ids = [...new Set(rows.flatMap((r) => r.shares.map((s) => s.userId)))];
+  if (ids.length === 0) return [];
+
+  const live = await db.users.bulkGet(ids);
+  const snap = new Map(rows.flatMap((r) => (r.people ?? []).map((p) => [p.id, p] as const)));
+  return ids
+    .map((id, i) => live[i] ?? snap.get(id))
+    .filter((u): u is SyncUser => u !== undefined);
+}
+
+/**
  * One expense in full.
  *
  * Returns a tombstone rather than null when `deletedAt` is set, which the server
  * route does not: the expense page has to be able to render the undo, and it is
  * the only screen that can. `deleted_at` travels so the page knows which it has.
+ *
+ * `people` is the roster this bill names. The friends list is the wrong source
+ * for that: it is a derived aggregation and is often still loading when this
+ * page first paints, which used to flash `User <ulid>` in the title.
  */
 export async function localExpense(
   db: LocalDb,
   id: string,
-): Promise<{ expense: ExpenseDetail & { deleted_at: string | null } } | null> {
+): Promise<{
+  expense: ExpenseDetail & { deleted_at: string | null };
+  people: SyncUser[];
+} | null> {
   const row = await db.expenses.get(id);
   if (!row) return null;
 
@@ -970,6 +1045,7 @@ export async function localExpense(
         ).length;
 
   return {
+    people: await peopleOn(db, [row]),
     expense: {
       id: row.id,
       description: row.description,

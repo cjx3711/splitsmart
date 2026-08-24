@@ -32,6 +32,7 @@ import {
   localGroupExpenses,
   localGroupMembers,
   localGroups,
+  localRelatedPeople,
   localSettleSuggestions,
   localSeries,
   localSharedGroups,
@@ -58,6 +59,14 @@ export function useGroups() {
 export function useFriends() {
   const { user } = useAuth();
   return useLocal((db) => (user ? localFriends(db, user.id) : Promise.resolve(undefined)), [
+    user?.id,
+  ]);
+}
+
+/** Names and recency only. The rail and pickers must not wait on balances. */
+export function useRelatedPeople() {
+  const { user } = useAuth();
+  return useLocal((db) => (user ? localRelatedPeople(db, user.id) : Promise.resolve(undefined)), [
     user?.id,
   ]);
 }

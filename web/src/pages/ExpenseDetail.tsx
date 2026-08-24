@@ -33,7 +33,7 @@ import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { SyncBadge } from "../SyncStatusBar.tsx";
 import { useAuth } from "../App.tsx";
-import { useExpense, useFriends } from "../localData.ts";
+import { useExpense } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { useLocal } from "../sync/useLocal.ts";
 import { avatarFromRow } from "../Avatar.tsx";
@@ -52,7 +52,6 @@ export function ExpenseDetail() {
   const [busy, setBusy] = useState(false);
 
   const loaded = useExpense(id);
-  const friends = useFriends()?.friends ?? [];
   const local = useLocalExpenseRow(id);
   const templateId = loaded?.expense
     ? (seriesTemplateId(
@@ -122,7 +121,7 @@ export function ExpenseDetail() {
     }
   }
 
-  const nameOf = makeLookup(friends, user.id);
+  const nameOf = makeLookup(loaded.people, user.id);
   const avatarFor = (userId: string) => {
     if (userId === user.id) {
       return {
@@ -135,8 +134,8 @@ export function ExpenseDetail() {
         iconPattern: user.iconPattern,
       };
     }
-    const friend = friends.find((f) => f.id === userId);
-    return friend ? avatarFromRow(friend) : { id: userId, name: nameOf(userId) };
+    const person = loaded.people.find((p) => p.id === userId);
+    return person ? avatarFromRow(person) : { id: userId, name: nameOf(userId) };
   };
   const isPayment = expense.is_payment === 1;
   const title = isPayment ? paymentTitle(expense.shares, nameOf) : expense.description;

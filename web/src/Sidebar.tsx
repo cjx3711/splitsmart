@@ -7,26 +7,23 @@
  * screens that still do an online-only write (adding a friend, creating a group)
  * and want the rail to catch up before the next sync tick.
  *
- * Friends are ordered by last shared expense (web/src/db/queries.ts); groups by
- * newest id. Counts live on the headings; "Show all" is a link, not a tally.
+ * Friends and groups are ordered by last expense, from the per-user
+ * localStorage recency map, not from a full balance pass. Counts live on the
+ * headings; "Show all" is a link, not a tally.
  */
 import { useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { LuSettings } from "react-icons/lu";
+import { compareByLastExpense } from "../../src/domain/friend-recency.ts";
 import { displayName } from "./api.ts";
 import { useAuth } from "./App.tsx";
-import { useFriends, useGroups } from "./localData.ts";
+import { useGroups, useRelatedPeople } from "./localData.ts";
 import { Avatar } from "./Avatar.tsx";
 import { GroupTypeIcon } from "./groupTypes.tsx";
 import { NavSkeleton } from "./Skeleton.tsx";
 
 const SIDEBAR_GROUP_LIMIT = 5;
 const SIDEBAR_FRIEND_LIMIT = 10;
-
-/** ULIDs sort in creation order, which is close enough to "latest" for groups. */
-function byNewestId<T extends { id: string }>(items: T[]): T[] {
-  return [...items].sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
-}
 
 function withCount(label: string, count: number): string {
   return count > 0 ? `${label} (${count})` : label;
@@ -36,9 +33,13 @@ export function Sidebar({ className }: { className: string }) {
   const { user } = useAuth();
   const [filter, setFilter] = useState("");
   const groupsQuery = useGroups();
-  const friendsQuery = useFriends();
+  const friendsQuery = useRelatedPeople();
   const groups = groupsQuery?.groups ?? [];
-  const friends = friendsQuery?.friends ?? [];
+  const friends = friendsQuery?.people ?? [];
+  const lastByGroup = useMemo(
+    () => new Map(Object.entries(friendsQuery?.lastByGroup ?? {})),
+    [friendsQuery?.lastByGroup],
+  );
   const groupsLoading = groupsQuery === undefined;
   const friendsLoading = friendsQuery === undefined;
 
@@ -52,9 +53,11 @@ export function Sidebar({ className }: { className: string }) {
     [friends, query],
   );
   const sidebarGroups = useMemo(() => {
-    const sorted = byNewestId(filteredGroups);
+    const sorted = [...filteredGroups].sort((a, b) =>
+      compareByLastExpense(a.id, b.id, lastByGroup, a.name, b.name),
+    );
     return query ? sorted : sorted.slice(0, SIDEBAR_GROUP_LIMIT);
-  }, [filteredGroups, query]);
+  }, [filteredGroups, lastByGroup, query]);
   const sidebarFriends = useMemo(() => {
     // Friends arrive from the mirror already ordered by last shared expense.
     return query ? filteredFriends : filteredFriends.slice(0, SIDEBAR_FRIEND_LIMIT);
