@@ -210,7 +210,7 @@ export function SettleUpForm({
       </div>
 
       <div>
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy || fromUserId === toUserId}>
           {busy
             ? "Recording…"
             : `Record ${nameOf(fromUserId)} → ${nameOf(toUserId)}`}

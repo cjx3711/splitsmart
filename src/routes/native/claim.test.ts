@@ -313,6 +313,31 @@ describe("minting links", () => {
     assert.equal(res.status, 400);
     assert.match((await json<{ error: string }>(res)).error, /own account/i);
   });
+
+  test("lists a friend link by friendId for the signed-in owner", async () => {
+    const ghost = await makeGhost("Pat");
+    await makeGroup("One-on-one", [ownerId, ghost]);
+
+    const minted = await json<{ url: string }>(
+      await as(ownerToken, "/api/v1/links", {
+        method: "POST",
+        body: JSON.stringify({ kind: "friend", userId: ghost }),
+      }),
+    );
+    assert.match(minted.url, /\/guest\/l\/.+/);
+
+    const listed = await json<{ links: Array<{ url: string | null }> }>(
+      await as(ownerToken, `/api/v1/links?friendId=${ghost}`),
+    );
+    assert.equal(listed.links.length, 1);
+    assert.equal(listed.links[0]!.url, minted.url);
+
+    assert.equal(
+      (await app.request(`/api/v1/links?friendId=${ghost}`)).status,
+      401,
+      "no session is unauthorized, not a missing friend",
+    );
+  });
 });
 
 describe("claim candidates", () => {

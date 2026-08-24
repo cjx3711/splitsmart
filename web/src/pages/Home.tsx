@@ -24,10 +24,7 @@ const IMPROVEMENTS = [
   "Currencies with no decimals don't show any, so 3000 JPY is 3000 JPY, not 3000.00",
   "Mixed balances show a live ≈ estimate, and you can convert them into one currency at today's rate",
   "A currency picker that puts the ones you frequently use at the top",
-  "Itemised bills, where each line has its own sharers and tax and tip get spread proportionally",
-  "Splitwise import, and your API key is used for the request and then dropped",
-  "Installable as a PWA, and the ledger stays on the device",
-  "A JSON API at /api/v1, with a bearer token from Settings",
+  "Free API for scripts or AI agents",
 ];
 
 /**
@@ -182,14 +179,15 @@ export function Home() {
                 rel="noreferrer"
                 className="mkt-inline">
                 GitHub
-              </a>
+              </a>{" "}
               if you want to self-host, though this instance is free for now.
             </p>
           </article>
           <article className="mkt-tile mkt-tile-d">
             <h2>Free API access</h2>
             <p>
-              The endpoints are in the{" "}
+              For your scripts or AI agents to manage expenses. The endpoints
+              are in the{" "}
               <Link to="/docs" className="mkt-inline">
                 API docs
               </Link>

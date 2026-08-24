@@ -112,8 +112,8 @@ export function Login() {
           name and password.
         </p>
         <p className="field-hint">
-          The link expires in 24 hours. Didn&apos;t get it? Wait a minute and
-          request another from this page.
+          The link expires in 24 hours. Didn&apos;t get it? Check your spam
+          folder, or wait a minute and request another from this page.
         </p>
         <button
           className="link"

@@ -28,7 +28,7 @@ export function EmailVerificationBanner() {
         "alreadyVerified" in result && result.alreadyVerified
           ? "Already verified. Refresh the page."
           : "delivered" in result && result.delivered
-            ? "Sent. Check your inbox."
+            ? "Sent. Check your inbox and spam folder."
             : // Mail isn't configured on this server; the link went to the
               // server log instead. Say so rather than implying an inbox.
               "Email isn't configured on this server. The link was written to the server log.",

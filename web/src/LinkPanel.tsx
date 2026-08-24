@@ -5,7 +5,7 @@
  * and the friend screen (one link for that person). See docs/GUEST.md.
  */
 import { useCallback, useEffect, useState } from "react";
-import { api, type AccessLink } from "./api.ts";
+import { api, ApiError, type AccessLink } from "./api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { NeedsConnection, useOnline } from "./OnlineOnly.tsx";
 import { HelpTip } from "./HelpTip.tsx";
@@ -61,13 +61,22 @@ export function LinkPanel({
     try {
       const result = await api.listLinks(query);
       setLinks(result.links);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load links");
+      const message =
+        err instanceof ApiError && err.status === 401
+          ? "Signed out on the server. Refresh the page or sign in again."
+          : err instanceof Error
+            ? err.message
+            : "Could not load links";
+      setError(message);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the query object is rebuilt each render; its identity is `key`
   }, [key]);
 
   useEffect(() => {
+    setLinks(null);
+    setError(null);
     void load();
   }, [load]);
 
@@ -115,7 +124,16 @@ export function LinkPanel({
         <p className="muted" style={{ margin: 0 }}>
           {intro}
         </p>
-        <Skeleton kind="links" rows={Math.max(slots.length, 1)} label="Loading links" />
+        {error ? (
+          <>
+            <p className="error">{error}</p>
+            <button type="button" className="secondary inline" onClick={() => void load()}>
+              Try again
+            </button>
+          </>
+        ) : (
+          <Skeleton kind="links" rows={Math.max(slots.length, 1)} label="Loading links" />
+        )}
       </div>
     );
   }

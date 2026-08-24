@@ -54,9 +54,9 @@ function ForgotPassword() {
           choose a new password.
         </p>
         <p className="field-hint">
-          The link expires in 24 hours. Didn&apos;t get it? Wait a minute and
-          request another, or check the server log if this box has no mail
-          provider.
+          The link expires in 24 hours. Didn&apos;t get it? Check your spam
+          folder, wait a minute and request another, or check the server log if
+          this box has no mail provider.
         </p>
         <button
           className="link"
