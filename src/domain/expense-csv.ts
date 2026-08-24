@@ -13,6 +13,7 @@
  * in its own column so the number is never ambiguous.
  */
 import type { DB } from "../db/index.ts";
+import { collectIdChunks } from "../db/chunk.ts";
 import { formatAmount } from "./money.ts";
 import { displayName } from "./person.ts";
 
@@ -130,53 +131,59 @@ export function csvDocument(rows: CsvExpenseRow[]): string {
 export async function buildExpenseCsv(database: DB, expenseIds: string[]): Promise<string> {
   if (expenseIds.length === 0) return csvDocument([]);
 
-  const expenses = await database
-    .selectFrom("expenses")
-    .leftJoin("categories", "categories.id", "expenses.category_id")
-    .leftJoin("groups", "groups.id", "expenses.group_id")
-    .select([
-      "expenses.id",
-      "expenses.description",
-      "expenses.details",
-      "expenses.cost_minor",
-      "expenses.currency_code",
-      "expenses.date",
-      "expenses.is_payment",
-      "expenses.repeat_interval",
-      "expenses.repeat_of",
-      "categories.name as category_name",
-      "groups.name as group_name",
-    ])
-    .where("expenses.id", "in", expenseIds)
-    .where("expenses.deleted_at", "is", null)
-    .orderBy("expenses.date", "desc")
-    .orderBy("expenses.id", "desc")
-    .execute();
+  const expenses = (
+    await collectIdChunks(expenseIds, (chunk) =>
+      database
+        .selectFrom("expenses")
+        .leftJoin("categories", "categories.id", "expenses.category_id")
+        .leftJoin("groups", "groups.id", "expenses.group_id")
+        .select([
+          "expenses.id",
+          "expenses.description",
+          "expenses.details",
+          "expenses.cost_minor",
+          "expenses.currency_code",
+          "expenses.date",
+          "expenses.is_payment",
+          "expenses.repeat_interval",
+          "expenses.repeat_of",
+          "categories.name as category_name",
+          "groups.name as group_name",
+        ])
+        .where("expenses.id", "in", chunk)
+        .where("expenses.deleted_at", "is", null)
+        .execute(),
+    )
+  ).sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : a.id > b.id ? -1 : a.id < b.id ? 1 : 0));
 
   if (expenses.length === 0) return csvDocument([]);
 
   const ids = expenses.map((e) => e.id);
 
   const [shares, currencies, comments] = await Promise.all([
-    database
-      .selectFrom("expense_users")
-      .innerJoin("users", "users.id", "expense_users.user_id")
-      .select([
-        "expense_users.expense_id",
-        "expense_users.paid_share_minor",
-        "expense_users.owed_share_minor",
-        "users.name",
-        "users.nickname",
-      ])
-      .where("expense_users.expense_id", "in", ids)
-      .execute(),
+    collectIdChunks(ids, (chunk) =>
+      database
+        .selectFrom("expense_users")
+        .innerJoin("users", "users.id", "expense_users.user_id")
+        .select([
+          "expense_users.expense_id",
+          "expense_users.paid_share_minor",
+          "expense_users.owed_share_minor",
+          "users.name",
+          "users.nickname",
+        ])
+        .where("expense_users.expense_id", "in", chunk)
+        .execute(),
+    ),
     database.selectFrom("currencies").select(["code", "decimal_places"]).execute(),
-    database
-      .selectFrom("comments")
-      .select(["expense_id"])
-      .where("expense_id", "in", ids)
-      .where("deleted_at", "is", null)
-      .execute(),
+    collectIdChunks(ids, (chunk) =>
+      database
+        .selectFrom("comments")
+        .select(["expense_id"])
+        .where("expense_id", "in", chunk)
+        .where("deleted_at", "is", null)
+        .execute(),
+    ),
   ]);
 
   const decimalsByCode = new Map(currencies.map((c) => [c.code, c.decimal_places]));

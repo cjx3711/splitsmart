@@ -19,6 +19,7 @@ import { Hono } from "hono";
 import { db } from "../../db/index.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
 import { buildExpenseCsv } from "../../domain/expense-csv.ts";
+import { buildExportZip } from "../../domain/export-archive.ts";
 import { expenseFilterWhere, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 
 /**
@@ -62,7 +63,17 @@ export const exportRoutes = new Hono<AppEnv>()
   const csv = await buildExpenseCsv(db, rows.map((r) => r.id));
 
   return csvResponse(c, csv, "splitsmart-expenses.csv");
-});
+})
+  /**
+   * Full-account ZIP of CSVs. Sibling of `/expenses.csv` so a person (or a
+   * script) can guess the URL. No filters: the point is everything they can
+   * see, not the current All-expenses bar.
+   */
+  .get("/export.zip", requireAuth, async (c) => {
+    const zip = await buildExportZip(db, c.get("user").id);
+    const day = new Date().toISOString().slice(0, 10);
+    return zipResponse(c, zip, `splitsmart-export-${day}.zip`);
+  });
 export function csvResponse(
   c: { body: (data: string, status?: 200, headers?: Record<string, string>) => Response },
   csv: string,
@@ -74,5 +85,18 @@ export function csvResponse(
     // A download is a point-in-time snapshot; caching it would hand back
     // yesterday's ledger on a reload.
     "Cache-Control": "no-store",
+  });
+}
+
+export function zipResponse(
+  c: { body: (data: Uint8Array, status?: 200, headers?: Record<string, string>) => Response },
+  zip: Uint8Array,
+  filename: string,
+): Response {
+  return c.body(zip, 200, {
+    "Content-Type": "application/zip",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Cache-Control": "no-store",
+    "Content-Length": String(zip.byteLength),
   });
 }
