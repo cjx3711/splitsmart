@@ -7,6 +7,10 @@
  * differs between call sites is only how the choices are labelled (a suggested
  * transfer in a group, "X owes you" between two people) and where the write
  * goes (outbox vs guest API).
+ *
+ * Group settle-up always offers the suggested transfers as presets, plus a
+ * path to type a different payment. Friend settle-up still skips the picker
+ * when only one currency is outstanding.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Modal } from "./Modal.tsx";
@@ -16,6 +20,7 @@ import type { CurrencyAmount } from "./api.ts";
 import type { Person } from "./PeoplePicker.tsx";
 
 export type SettleChoice = {
+  id: string;
   currencyCode: string;
   label: ReactNode;
   initial: {
@@ -25,6 +30,8 @@ export type SettleChoice = {
     currencyCode: string;
   };
 };
+
+const MANUAL_ID = "__manual__";
 
 export function friendSettleChoices(
   balances: CurrencyAmount[],
@@ -36,6 +43,7 @@ export function friendSettleChoices(
   return [...balances]
     .sort((a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor))
     .map((b) => ({
+      id: b.currencyCode,
       currencyCode: b.currencyCode,
       label: (
         <>
@@ -53,42 +61,31 @@ export function friendSettleChoices(
 }
 
 export function groupSettleChoices(
-  outstandingCurrencies: string[],
   settle: Array<{
     currencyCode: string;
     transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
   }>,
   nameOf: (id: string) => string,
-  people: Person[],
   formatMoney: (minor: number, currency: string) => string | null,
 ): SettleChoice[] {
-  return outstandingCurrencies.map((code) => {
-    const transfer = settle.find((s) => s.currencyCode === code)?.transfers[0];
-    return {
-      currencyCode: code,
-      label: transfer ? (
+  return settle.flatMap((s) =>
+    s.transfers.map((transfer, i) => ({
+      id: `${s.currencyCode}:${transfer.fromUserId}:${transfer.toUserId}:${i}`,
+      currencyCode: s.currencyCode,
+      label: (
         <>
           {nameOf(transfer.fromUserId)} → {nameOf(transfer.toUserId)}{" "}
-          <Amount minor={transfer.amountMinor} currency={code} />
+          <Amount minor={transfer.amountMinor} currency={s.currencyCode} />
         </>
-      ) : (
-        code
       ),
-      initial: transfer
-        ? {
-            fromUserId: transfer.fromUserId,
-            toUserId: transfer.toUserId,
-            amount: formatMoney(transfer.amountMinor, code) ?? "",
-            currencyCode: code,
-          }
-        : {
-            fromUserId: people[0]?.id ?? "",
-            toUserId: people[1]?.id ?? "",
-            amount: "",
-            currencyCode: code,
-          },
-    };
-  });
+      initial: {
+        fromUserId: transfer.fromUserId,
+        toUserId: transfer.toUserId,
+        amount: formatMoney(transfer.amountMinor, s.currencyCode) ?? "",
+        currencyCode: s.currencyCode,
+      },
+    })),
+  );
 }
 
 /**
@@ -123,6 +120,20 @@ export function paymentAsExpense(
   };
 }
 
+function choicesByCurrency(choices: SettleChoice[]): Array<{ currencyCode: string; items: SettleChoice[] }> {
+  const order: string[] = [];
+  const byCode = new Map<string, SettleChoice[]>();
+  for (const choice of choices) {
+    const list = byCode.get(choice.currencyCode);
+    if (list) list.push(choice);
+    else {
+      order.push(choice.currencyCode);
+      byCode.set(choice.currencyCode, [choice]);
+    }
+  }
+  return order.map((currencyCode) => ({ currencyCode, items: byCode.get(currencyCode)! }));
+}
+
 export function SettleUpDialog({
   open,
   title,
@@ -130,6 +141,7 @@ export function SettleUpDialog({
   currencies,
   preferredCurrency,
   choices,
+  allowManual = false,
   onClose,
   onSubmit,
 }: {
@@ -139,6 +151,8 @@ export function SettleUpDialog({
   currencies: string[];
   preferredCurrency?: string;
   choices: SettleChoice[];
+  /** Group settle-up: always show the suggested transfers, plus a typed path. */
+  allowManual?: boolean;
   onClose: () => void;
   onSubmit: (payment: SettlePayment) => Promise<void>;
 }) {
@@ -148,43 +162,84 @@ export function SettleUpDialog({
     if (open) setPicked(null);
   }, [open]);
 
-  const showPicker = choices.length > 1 && picked === null;
-  const active = picked
-    ? choices.find((c) => c.currencyCode === picked)
-    : choices.length <= 1
-      ? choices[0]
-      : undefined;
+  const showPicker = allowManual
+    ? picked === null && choices.length > 0
+    : choices.length > 1 && picked === null;
+  const active =
+    picked && picked !== MANUAL_ID
+      ? choices.find((c) => c.id === picked)
+      : !allowManual && choices.length <= 1
+        ? choices[0]
+        : undefined;
+  const canGoBack = picked !== null && (allowManual || choices.length > 1);
+  const grouped = choicesByCurrency(choices);
+  const showCurrencyHeadings = grouped.length > 1;
 
   return (
     <Modal open={open} title={title} onClose={onClose}>
       {showPicker ? (
         <div className="settle-currency-picker">
           <p className="muted" style={{ margin: 0 }}>
-            Which balance do you want to settle? A payment only clears that currency.
+            {allowManual
+              ? "Pick a suggested payment, or enter a different amount. A payment only clears that currency."
+              : "Which balance do you want to settle? A payment only clears that currency."}
           </p>
-          {choices.map((choice) => (
+          {allowManual
+            ? grouped.map((group) => (
+                <div key={group.currencyCode} className="settle-choice-group">
+                  {showCurrencyHeadings && <span className="eyebrow">{group.currencyCode}</span>}
+                  {group.items.map((choice) => (
+                    <button
+                      key={choice.id}
+                      type="button"
+                      className="secondary"
+                      onClick={() => setPicked(choice.id)}
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+              ))
+            : choices.map((choice) => (
+                <button
+                  key={choice.id}
+                  type="button"
+                  className="secondary"
+                  onClick={() => setPicked(choice.id)}
+                >
+                  {choice.label}
+                </button>
+              ))}
+          {allowManual && (
             <button
-              key={choice.currencyCode}
               type="button"
-              className="secondary"
-              onClick={() => setPicked(choice.currencyCode)}
+              className="secondary settle-manual"
+              onClick={() => setPicked(MANUAL_ID)}
             >
-              {choice.label}
+              Enter a different amount
             </button>
-          ))}
+          )}
         </div>
       ) : (
-        <SettleUpForm
-          className="stack"
-          people={people}
-          currencies={currencies}
-          preferredCurrency={preferredCurrency}
-          initial={active?.initial}
-          onSubmit={async (payment) => {
-            await onSubmit(payment);
-            onClose();
-          }}
-        />
+        <div className="stack">
+          {canGoBack && (
+            <button type="button" className="link settle-back" onClick={() => setPicked(null)}>
+              {allowManual ? "Choose a different payment" : "Choose a different currency"}
+            </button>
+          )}
+          <SettleUpForm
+            key={picked ?? active?.id ?? "form"}
+            className="stack"
+            people={people}
+            currencies={currencies}
+            preferredCurrency={preferredCurrency}
+            initial={active?.initial}
+            onSubmit={async (payment) => {
+              await onSubmit(payment);
+              onClose();
+            }}
+          />
+        </div>
       )}
     </Modal>
   );

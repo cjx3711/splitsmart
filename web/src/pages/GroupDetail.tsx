@@ -1,21 +1,22 @@
 /**
- * One group: balances, suggested settle-up, expenses, members, guest links.
+ * One group: balances, suggested settle-up, expenses, guest links.
  *
  * Everything on the left of the offline/online line in docs/OFFLINE.md is read
  * from the mirror and written through the outbox - the balances and the settle-up
  * suggestions are derived here with the same pure functions the server uses, not
- * fetched. Adding a member and minting a guest link stay online-only, and say so.
+ * fetched. Minting a guest link stays online-only, and says so. Adding, editing
+ * and removing members live on the Options page.
  *
- * On a wide screen the member balances, suggested settle-up, and convert sit
- * in a right-hand panel so the expense list can start higher. Narrow screens
- * stack them, with balances still above the expenses.
+ * On a wide screen the member balances (the full roster, including people at
+ * zero), suggested settle-up, and convert sit in a right-hand panel so the
+ * expense list can start higher. Narrow screens stack them, with balances still
+ * above the expenses.
  */
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, displayName, type GroupMember, type ExpenseQuery } from "../api.ts";
+import { displayName, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import { AddMemberDialog } from "../AddMemberDialog.tsx";
 import { Amount, useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
@@ -25,20 +26,17 @@ import {
   groupSettleChoices,
   paymentAsExpense,
 } from "../SettleUpDialog.tsx";
-import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { GroupTypeIcon, groupTypeLabel } from "../groupTypes.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
-import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
-import { markMemberLeft, patchPerson, restoreMember, revertPerson } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { HelpTip } from "../HelpTip.tsx";
-import { FriendListItem, friendHref, ledgerVerb } from "../FriendListItem.tsx";
+import { FriendListItem, friendHref, groupRosterBalances, ledgerVerb } from "../FriendListItem.tsx";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function GroupDetail() {
@@ -46,14 +44,10 @@ export function GroupDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | "convert" | null>(null);
-  const [addMemberOpen, setAddMemberOpen] = useState(false);
-  const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
-  const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
-  const [removingBusy, setRemovingBusy] = useState(false);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | null>(null);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
-  const { engine, syncNow, db } = useSync();
+  const { engine } = useSync();
 
   // Live queries: a sync landing, or a queued write, re-renders this screen
   // without anything having to invalidate anything.
@@ -89,7 +83,10 @@ export function GroupDetail() {
   ];
   const hasSettle = settle.some((s) => s.transfers.length > 0);
   const canConvert = outstandingCurrencies.length > 1;
-  const showAside = balances.length > 0 || hasSettle || canConvert;
+  const roster = groupRosterBalances(
+    members.map((m) => m.id),
+    balances,
+  );
   const convertTransfers = settle.flatMap((s) =>
     s.transfers.map((t) => ({
       currencyCode: s.currencyCode,
@@ -161,43 +158,14 @@ export function GroupDetail() {
         onClose={() => setOpenDialog(null)}
       />
 
-      <PersonIdentityDialog
-        open={openDialog === "identity"}
-        person={identityMember}
-        onClose={() => {
-          setOpenDialog(null);
-          setIdentityMember(null);
-        }}
-        onSave={async (id, payload) => {
-          if (!db) {
-            await api.updateFriend(id, payload);
-            syncNow();
-            return;
-          }
-          const previous = await patchPerson(db, id, payload);
-          try {
-            await api.updateFriend(id, payload);
-            syncNow();
-          } catch (err) {
-            if (previous) await revertPerson(db, previous);
-            throw err;
-          }
-        }}
-      />
-
       <SettleUpDialog
         open={openDialog === "settle"}
         title={`Settle up in ${group.name}`}
         people={people}
         currencies={currenciesInPlay}
         preferredCurrency={user.defaultCurrency}
-        choices={groupSettleChoices(
-          outstandingCurrencies,
-          settle,
-          nameOf,
-          people,
-          formatMoney,
-        )}
+        allowManual
+        choices={groupSettleChoices(settle, nameOf, formatMoney)}
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payment) => {
           // A payment is an ordinary expense with is_payment set: the payer
@@ -237,21 +205,20 @@ export function GroupDetail() {
         }}
       />
 
-      <div className={showAside ? "split-page" : undefined}>
-        {showAside && (
+      <div className="split-page">
           <aside className="split-aside">
             <h2 style={{ marginTop: 0 }}>Balances</h2>
-            {balances.length === 0 ? (
-              <p className="empty">Everyone is settled up.</p>
-            ) : (
               <div className="list">
-                {balances.map((entry) => (
+                {roster.map((entry) => (
                   <FriendListItem
                     key={entry.userId}
                     to={friendHref(entry.userId, user.id)}
                     avatar={avatarFor(entry.userId)}
                     title={nameOf(entry.userId)}
                   >
+                    {entry.balances.length === 0 ? (
+                      <span className="muted">settled up</span>
+                    ) : (
                     <div>
                       <div className="ledger">
                         {entry.balances.map((b) => (
@@ -269,12 +236,12 @@ export function GroupDetail() {
                         preferredCurrency={user.defaultCurrency}
                       />
                     </div>
+                    )}
                   </FriendListItem>
                 ))}
               </div>
-            )}
             <ConversionFootnote
-              sets={balances.map((e) => e.balances)}
+              sets={roster.map((e) => e.balances)}
               preferredCurrency={user.defaultCurrency}
             />
             {canConvert && (
@@ -320,9 +287,8 @@ export function GroupDetail() {
               </>
             )}
           </aside>
-        )}
 
-        <div className={showAside ? "split-body" : undefined}>
+        <div className="split-body">
       <h2 style={{ marginTop: 0 }}>Expenses</h2>
       {/* No group picker: this screen IS the group scope, and a filter cannot
           widen it. The CSV carries the same filters as the list. */}
@@ -342,116 +308,6 @@ export function GroupDetail() {
             : "Nothing yet."
         }
       />
-
-      <div className="section-head">
-        <h2>Members</h2>
-        <OnlineOnly what="Adding someone to a group">
-          <button type="button" className="link" onClick={() => setAddMemberOpen(true)}>
-            + Add member
-          </button>
-        </OnlineOnly>
-      </div>
-      <div className="list">
-        {members.map((m) => (
-          <FriendListItem
-            key={m.id}
-            to={friendHref(m.id, user.id)}
-            avatar={avatarFromRow(m)}
-            title={m.id === user.id ? "You" : displayName(m)}
-            subtitle={
-              <span className="muted">
-                {m.role}
-                {m.is_ghost === 1 && (
-                  <>
-                    {" "}
-                    <span className="tag muted">guest</span>
-                  </>
-                )}
-              </span>
-            }
-            actions={
-              m.is_ghost === 1 || (isOwner && m.id !== user.id) ? (
-                <>
-                  {m.is_ghost === 1 && (
-                    <OnlineOnly what="Editing a placeholder's name">
-                      <button
-                        className="link"
-                        onClick={() => {
-                          setIdentityMember(m);
-                          setOpenDialog("identity");
-                        }}
-                      >
-                        Edit
-                      </button>
-                    </OnlineOnly>
-                  )}
-                  {isOwner && m.id !== user.id && (
-                    <OnlineOnly what="Removing someone from a group">
-                      <button
-                        className="link"
-                        onClick={() => setRemovingMember(m)}
-                      >
-                        Remove
-                      </button>
-                    </OnlineOnly>
-                  )}
-                </>
-              ) : undefined
-            }
-          />
-        ))}
-      </div>
-
-      <OnlineOnly what="Adding someone to a group">
-        <AddMemberDialog
-          open={addMemberOpen}
-          onClose={() => setAddMemberOpen(false)}
-          groupId={group.id}
-          existingIds={members.map((m) => m.id)}
-          onAdded={syncNow}
-        />
-      </OnlineOnly>
-
-      <ConfirmDialog
-        open={removingMember !== null}
-        title={
-          removingMember
-            ? `Remove ${displayName(removingMember)} from ${group.name}?`
-            : "Remove member?"
-        }
-        confirmLabel="Remove member"
-        busyLabel="Removing…"
-        busy={removingBusy}
-        onClose={() => setRemovingMember(null)}
-        onConfirm={async () => {
-          if (!removingMember) return;
-          setRemovingBusy(true);
-          try {
-            if (!db) {
-              await api.removeGroupMember(group.id, removingMember.id);
-              syncNow();
-              setRemovingMember(null);
-              return;
-            }
-            const previous = await markMemberLeft(db, group.id, removingMember.id);
-            try {
-              await api.removeGroupMember(group.id, removingMember.id);
-              syncNow();
-              setRemovingMember(null);
-            } catch (err) {
-              if (previous) await restoreMember(db, previous);
-              throw err;
-            }
-          } finally {
-            setRemovingBusy(false);
-          }
-        }}
-      >
-        <p style={{ margin: 0 }}>
-          They will leave this group. Their guest link for this group is turned
-          off. Balances and past expenses are unchanged.
-        </p>
-      </ConfirmDialog>
 
       <h2>Guest links</h2>
       <LinkPanel

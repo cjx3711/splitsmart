@@ -1,6 +1,29 @@
 import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
+import type { CurrencyAmount } from "./api.ts";
 import { Avatar, type AvatarPerson } from "./Avatar.tsx";
+
+/**
+ * The group balances panel is a roster, not an outstanding-only ledger: every
+ * current member appears, including people at zero. Anyone who left but still
+ * has a non-zero position is appended so a leftover debt does not vanish.
+ */
+export function groupRosterBalances(
+  memberIds: string[],
+  balances: Array<{ userId: string; balances: CurrencyAmount[] }>,
+): Array<{ userId: string; balances: CurrencyAmount[] }> {
+  const byUser = new Map(balances.map((e) => [e.userId, e.balances]));
+  const seen = new Set<string>();
+  const rows: Array<{ userId: string; balances: CurrencyAmount[] }> = [];
+  for (const userId of memberIds) {
+    seen.add(userId);
+    rows.push({ userId, balances: byUser.get(userId) ?? [] });
+  }
+  for (const entry of balances) {
+    if (!seen.has(entry.userId)) rows.push(entry);
+  }
+  return rows;
+}
 
 /** Friend page for everyone except yourself, who has no `/friends/:id`. */
 export function friendHref(userId: string, currentUserId: string): string | undefined {

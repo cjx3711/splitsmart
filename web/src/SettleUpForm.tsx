@@ -9,8 +9,8 @@
  * dollars leaves both ledgers open; that follows from currencies never being
  * converted, and the form says so rather than letting people discover it.
  *
- * The optional convert-to-preferred toggle is display-only: the submitted
- * amountMinor and currencyCode stay in the debt's own currency.
+ * "Show in" is display-only: pick any currency to see today's ≈ estimate. The
+ * submitted amountMinor and currencyCode stay in the debt's own currency.
  */
 import { useState, type FormEvent } from "react";
 import { Amount, useCurrencies, useParseMoney } from "./money.tsx";
@@ -42,7 +42,7 @@ export function SettleUpForm({
   currencies: string[];
   /** Prefill, e.g. from the group's suggested settle-up. */
   initial?: { fromUserId: string; toUserId: string; amount: string; currencyCode: string };
-  /** Target for the display-only "show in …" conversion. */
+  /** Default for the display-only "show in …" conversion. */
   preferredCurrency?: string;
   onSubmit: (payment: SettlePayment) => Promise<void>;
   className?: string;
@@ -59,10 +59,11 @@ export function SettleUpForm({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showConverted, setShowConverted] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState(
+    preferredCurrency ?? initial?.currencyCode ?? currencies[0] ?? "USD",
+  );
 
-  const convertTarget =
-    preferredCurrency && preferredCurrency !== currency ? preferredCurrency : "";
+  const convertTarget = displayCurrency !== currency ? displayCurrency : "";
   const { rates, loading, error: ratesError } = useExchangeRates(
     convertTarget,
     convertTarget ? [currency] : [],
@@ -76,7 +77,7 @@ export function SettleUpForm({
     typedMinor = null;
   }
   const convertedMinor =
-    canConvert && showConverted && typedMinor !== null && rates
+    canConvert && typedMinor !== null && rates
       ? convertMinor(typedMinor, currency, convertTarget, rates, decimalsFor)
       : null;
 
@@ -156,23 +157,25 @@ export function SettleUpForm({
             autoFocus
             required
           />
-          {canConvert && (
-            <div className="convert-toggle-row">
-              <button
-                type="button"
-                className="secondary inline"
-                aria-pressed={showConverted}
-                onClick={() => setShowConverted((v) => !v)}
-              >
-                Show in {convertTarget}
-              </button>
-              {convertedMinor !== null && (
-                <p className="field-hint" style={{ margin: 0 }}>
-                  ≈ <Amount minor={convertedMinor} currency={convertTarget} /> at today's rate
-                </p>
-              )}
-            </div>
-          )}
+          <div className="convert-show-in">
+            <label htmlFor="settleShowIn">Show in</label>
+            <CurrencySelect id="settleShowIn" value={displayCurrency} onChange={setDisplayCurrency} />
+            {convertedMinor !== null && (
+              <p className="field-hint" style={{ margin: 0 }}>
+                ≈ <Amount minor={convertedMinor} currency={convertTarget} /> at today's rate
+              </p>
+            )}
+            {convertTarget && loading && (
+              <p className="field-hint" style={{ margin: 0 }}>
+                Fetching today's rate…
+              </p>
+            )}
+            {convertTarget && ratesError && (
+              <p className="field-hint" style={{ margin: 0 }}>
+                Couldn't load a rate for {displayCurrency}.
+              </p>
+            )}
+          </div>
         </div>
         <div>
           <label htmlFor="settleCurrency">Currency</label>

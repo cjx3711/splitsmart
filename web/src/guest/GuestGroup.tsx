@@ -6,8 +6,9 @@
  * not merely hidden; there is no route on the guest API that would serve them.
  * See docs/GUEST.md, "Guest chrome".
  *
- * On a wide screen the member balances, suggested settle-up, and convert sit
- * in a right-hand panel, matching the logged-in group page.
+ * On a wide screen the member balances (the full roster, including people at
+ * zero), suggested settle-up, and convert sit in a right-hand panel, matching
+ * the logged-in group page.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -20,7 +21,7 @@ import {
   groupSettleChoices,
 } from "../SettleUpDialog.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
-import { FriendListItem, ledgerVerb } from "../FriendListItem.tsx";
+import { FriendListItem, groupRosterBalances, ledgerVerb } from "../FriendListItem.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
@@ -98,7 +99,10 @@ export function GuestGroup() {
   ];
   const hasSettle = settle.some((s) => s.transfers.length > 0);
   const canConvert = outstandingCurrencies.length > 1;
-  const showAside = balances.length > 0 || hasSettle || canConvert;
+  const roster = groupRosterBalances(
+    members.map((m) => m.id),
+    balances,
+  );
   const convertTransfers = settle.flatMap((s) =>
     s.transfers.map((t) => ({
       currencyCode: s.currencyCode,
@@ -149,13 +153,8 @@ export function GuestGroup() {
         people={people}
         currencies={currenciesInPlay}
         preferredCurrency={me.defaultCurrency}
-        choices={groupSettleChoices(
-          outstandingCurrencies,
-          settle,
-          nameOf,
-          people,
-          formatMoney,
-        )}
+        allowManual
+        choices={groupSettleChoices(settle, nameOf, formatMoney)}
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payment) => {
           await guestApi.createPayment({ ...payment, groupId: group.id });
@@ -178,15 +177,11 @@ export function GuestGroup() {
         }}
       />
 
-      <div className={showAside ? "split-page" : undefined}>
-        {showAside && (
+      <div className="split-page">
           <aside className="split-aside">
             <h2 style={{ marginTop: 0 }}>Balances</h2>
-            {balances.length === 0 ? (
-              <p className="empty">Everyone is settled up.</p>
-            ) : (
               <div className="list">
-                {balances.map((entry) => {
+                {roster.map((entry) => {
                   const member = members.find((m) => m.id === entry.userId);
                   return (
                     <FriendListItem
@@ -198,6 +193,9 @@ export function GuestGroup() {
                       }
                       title={nameOf(entry.userId)}
                     >
+                      {entry.balances.length === 0 ? (
+                        <span className="muted">settled up</span>
+                      ) : (
                       <div>
                         <div className="ledger">
                           {entry.balances.map((b) => (
@@ -215,13 +213,13 @@ export function GuestGroup() {
                           preferredCurrency={me.defaultCurrency}
                         />
                       </div>
+                      )}
                     </FriendListItem>
                   );
                 })}
               </div>
-            )}
             <ConversionFootnote
-              sets={balances.map((e) => e.balances)}
+              sets={roster.map((e) => e.balances)}
               preferredCurrency={me.defaultCurrency}
             />
             {canConvert && (
@@ -265,9 +263,8 @@ export function GuestGroup() {
               </>
             )}
           </aside>
-        )}
 
-        <div className={showAside ? "split-body" : undefined}>
+        <div className="split-body">
       <h2 style={{ marginTop: 0 }}>Expenses</h2>
       <ExpenseList
         expenses={expenses}
@@ -275,33 +272,6 @@ export function GuestGroup() {
         nameOf={nameOf}
         personLinks={false}
       />
-
-      <h2 className="with-help">
-        Members
-        <HelpTip label="About members">
-          Only someone with an account can add or remove people here.
-        </HelpTip>
-      </h2>
-      <div className="list">
-        {members.map((m) => (
-          <FriendListItem
-            key={m.id}
-            avatar={avatarFromRow(m)}
-            title={m.id === me.id ? "You" : guestFullName(m)}
-            subtitle={
-              <span className="muted">
-                {m.role}
-                {m.is_ghost === 1 && (
-                  <>
-                    {" "}
-                    <span className="tag muted">guest</span>
-                  </>
-                )}
-              </span>
-            }
-          />
-        ))}
-      </div>
         </div>
       </div>
     </>

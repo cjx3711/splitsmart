@@ -1,24 +1,26 @@
 /**
- * Group options: name, type (the sidebar icon), simplify debts, add members.
+ * Group options: name, type (the sidebar icon), simplify debts, members.
  *
  * Any logged-in member can change these. Guest-link holders never reach this
- * page — the guest shell has no settings routes (docs/GUEST.md). Adding a
- * member stays online-only, same as the group page.
+ * page — the guest shell has no settings routes (docs/GUEST.md). Adding,
+ * editing a placeholder, and removing a member stay online-only.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
-import { api, displayName } from "../api.ts";
+import { api, displayName, type GroupMember } from "../api.ts";
 import { AddMemberDialog } from "../AddMemberDialog.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
+import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { FriendListItem, friendHref } from "../FriendListItem.tsx";
 import { GroupTypePicker, isGroupType, type GroupType } from "../groupTypes.tsx";
 import { HelpTip } from "../HelpTip.tsx";
 import { useAuth } from "../App.tsx";
 import { useGroupView } from "../localData.ts";
 import { NeedsConnection, OnlineOnly, useOnline } from "../OnlineOnly.tsx";
+import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
-import { patchGroup } from "../sync/localFirst.ts";
+import { markMemberLeft, patchGroup, patchPerson, restoreMember, revertPerson } from "../sync/localFirst.ts";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function GroupOptions() {
@@ -34,6 +36,9 @@ export function GroupOptions() {
   const [simplifyBusy, setSimplifyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
+  const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
+  const [removingBusy, setRemovingBusy] = useState(false);
 
   const group = view && view !== null ? view.group : null;
   const members = view && view !== null ? view.members : [];
@@ -50,6 +55,7 @@ export function GroupOptions() {
   const current = group;
   const dirty = name.trim() !== current.name || groupType !== current.group_type;
   const simplifyOn = current.simplify_by_default === 1;
+  const isOwner = view.role === "owner";
 
   async function saveIdentity(event: FormEvent) {
     event.preventDefault();
@@ -194,13 +200,103 @@ export function GroupOptions() {
                 )}
               </span>
             }
+            actions={
+              m.is_ghost === 1 || (isOwner && m.id !== user.id) ? (
+                <>
+                  {m.is_ghost === 1 && (
+                    <OnlineOnly what="Editing a placeholder's name">
+                      <button
+                        type="button"
+                        className="link"
+                        onClick={() => setIdentityMember(m)}
+                      >
+                        Edit
+                      </button>
+                    </OnlineOnly>
+                  )}
+                  {isOwner && m.id !== user.id && (
+                    <OnlineOnly what="Removing someone from a group">
+                      <button
+                        type="button"
+                        className="link"
+                        onClick={() => setRemovingMember(m)}
+                      >
+                        Remove
+                      </button>
+                    </OnlineOnly>
+                  )}
+                </>
+              ) : undefined
+            }
           />
         ))}
       </div>
       <p className="muted" style={{ marginTop: "0.6rem" }}>
         Anyone with an account in this group can add people. Guest-link holders cannot.
-        Removing someone stays with the owner, on the group page.
+        Only the owner can remove someone.
       </p>
+
+      <PersonIdentityDialog
+        open={identityMember !== null}
+        person={identityMember}
+        onClose={() => setIdentityMember(null)}
+        onSave={async (id, payload) => {
+          if (!db) {
+            await api.updateFriend(id, payload);
+            syncNow();
+            return;
+          }
+          const previous = await patchPerson(db, id, payload);
+          try {
+            await api.updateFriend(id, payload);
+            syncNow();
+          } catch (err) {
+            if (previous) await revertPerson(db, previous);
+            throw err;
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={removingMember !== null}
+        title={
+          removingMember
+            ? `Remove ${displayName(removingMember)} from ${group.name}?`
+            : "Remove member?"
+        }
+        confirmLabel="Remove member"
+        busyLabel="Removing…"
+        busy={removingBusy}
+        onClose={() => setRemovingMember(null)}
+        onConfirm={async () => {
+          if (!removingMember) return;
+          setRemovingBusy(true);
+          try {
+            if (!db) {
+              await api.removeGroupMember(group.id, removingMember.id);
+              syncNow();
+              setRemovingMember(null);
+              return;
+            }
+            const previous = await markMemberLeft(db, group.id, removingMember.id);
+            try {
+              await api.removeGroupMember(group.id, removingMember.id);
+              syncNow();
+              setRemovingMember(null);
+            } catch (err) {
+              if (previous) await restoreMember(db, previous);
+              throw err;
+            }
+          } finally {
+            setRemovingBusy(false);
+          }
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          They will leave this group. Their guest link for this group is turned
+          off. Balances and past expenses are unchanged.
+        </p>
+      </ConfirmDialog>
 
       <OnlineOnly what="Adding someone to a group">
         <AddMemberDialog

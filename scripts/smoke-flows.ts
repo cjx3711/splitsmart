@@ -412,6 +412,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
 
       await clickNamed(page, "Groups");
       await clickNamed(page, "Weekend in Tokyo");
+      await clickNamed(page, "Options");
       await page.getByRole("heading", { name: "Members" }).waitFor({ timeout: 10_000 });
       await page
         .locator(".list-item")
@@ -434,7 +435,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
         throw new Error(`expense participant link landed on ${fromExpense}`);
       }
 
-      return "Tokyo balances JJ, Tokyo member JJ, and Concert tickets participant John all opened /friends/:id.";
+      return "Tokyo balances JJ, Tokyo options member JJ, and Concert tickets participant John all opened /friends/:id.";
     },
   },
   {
