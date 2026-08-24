@@ -646,15 +646,17 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/comments">
-        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 200 }`}</Code>
+        <Code>{`{ "apiKey": "…", "offset": 0, "limit": 10 }`}</Code>
         <p>
-          Step 4, after expenses, because a comment references one. Cheap and safe
-          to call either way: when Splitwise nests comments on the expenses page
-          they are already in, and each expense is stamped once fetched so a
-          second run does not ask again. Returns <code>total</code> (how many
-          imported expenses the step will walk) so progress is exact once
-          expenses are in. Splitwise's automatic <em>System</em> comments are
-          imported too - they are the only edit history it will hand over.
+          Step 4, after expenses, because a comment references one. Only expenses
+          Splitwise reported a <code>comments_count</code> for (and did not nest
+          the thread on the list) are a request; the count is stamped as pending
+          metadata and removed once fetched, so a second run is a no-op.{" "}
+          <code>limit</code> is at most 10. <code>offset</code> is ignored: the
+          pending set shrinks as rows finish. Returns <code>total</code> (how
+          many imported expenses still need a fetch, including this page).
+          Splitwise&apos;s automatic <em>System</em> comments are imported too -
+          they are the only edit history it will hand over.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/import/rounding">

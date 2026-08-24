@@ -70,10 +70,10 @@ import { isUlid, ulid, ulidTime } from "./ulid.ts";
 import {
   metadataFromSplitwise,
   parseMetadata,
-  serializeMetadata,
   splitwiseIdOf,
   splitwiseIdSql,
-  type EntityMetadata,
+  splitwiseCommentsCountSql,
+  splitwiseCommentsSyncedAtSql,
 } from "./metadata.ts";
 import {
   adoptImportedGhostBySplitwiseId,
@@ -1434,54 +1434,59 @@ export async function continueImportedRepeats(
 // or silently importing no comments at all. So:
 //
 //   nested         imported alongside the expense, no extra request, no new step
-//   count only     `POST /api/v1/import/comments` walks the expenses that have a
-//                  count and fetches `get_comments` for each
+//   count only     expense import stamps `splitwise_comments_count` when the
+//                  count is > 0. `POST /api/v1/import/comments` fetches
+//                  `get_comments` only for those pending rows, then removes
+//                  the stamp. Expenses Splitwise said have none are never
+//                  a second request.
 //
 // Both paths converge on `importComment` below, so identity, authorship and
 // skip-don't-fudge behave identically whichever one runs.
 
-/** Bumped when previously skipped comments become importable. Missing is rev 1. */
-const COMMENTS_IMPORT_REV = 2;
+/** One wizard request is this many Splitwise `get_comments` calls, plus delays. */
+export const COMMENTS_PAGE_SIZE = 10;
 
-function commentsSyncedPatch(count: number): EntityMetadata {
-  return {
-    splitwise_comments_synced_at: new Date().toISOString(),
-    splitwise_comments_count: count,
-    splitwise_comments_import_rev: COMMENTS_IMPORT_REV,
-  };
-}
+const PENDING_COMMENT_KEYS = [
+  "splitwise_comments_count",
+  "splitwise_comments_synced_at",
+  "splitwise_comments_import_rev",
+] as const;
 
 export interface CommentsPageResult {
   offset: number;
-  /** Local expenses examined in this page. */
+  /** Pending expenses examined in this page. */
   scanned: number;
   /** Expenses we actually asked Splitwise about. */
   fetched: number;
   imported: number;
-  /** Expenses whose comments were already here, or that have none. */
+  /** Pending rows that turned out not to need a fetch (count was 0). */
   alreadyPresent: number;
   skipped: SkippedRow[];
   /**
-   * How many live imported expenses this step will walk. The wizard uses it as
-   * the comments-phase total so the bar is "3250 of 3250", not the preview's
-   * capped "~5000".
+   * How many imported expenses still have a pending comments stamp, including
+   * this page. The wizard snapshots the first page's value as the bar total.
    */
   total: number;
   nextOffset: number | null;
   done: boolean;
 }
 
+function pendingCommentsBase() {
+  return db
+    .selectFrom("expenses")
+    .where(splitwiseIdSql(), "is not", null)
+    .where("deleted_at", "is", null)
+    .where(splitwiseCommentsCountSql(), ">", 0)
+    .where(splitwiseCommentsSyncedAtSql(), "is", null);
+}
+
 /**
- * Imports comments for one page of already-imported expenses.
+ * Imports comments for one page of expenses that still have a pending count.
  *
- * Runs AFTER expenses, because `comments.expense_id` is a foreign key. Paged for
- * the same reason the expense step is: one request per page keeps a large
- * account from holding a single HTTP request open for minutes.
- *
- * Expenses are ordered by their local ULID so the offset is stable between calls,
- * and every expense that has already had its comments fetched is skipped on the
- * `splitwise_comments_synced_at` stamp, which makes a second run nearly free
- * rather than a re-fetch of the whole account.
+ * Runs AFTER expenses, because `comments.expense_id` is a foreign key. Only
+ * expenses stamped `splitwise_comments_count > 0` (and not already fetched)
+ * are a Splitwise request. Offset is ignored: finishing a row removes the
+ * stamp, so the next call's first N pending rows are the next page.
  */
 export async function importCommentsPage(
   client: SplitwiseClient,
@@ -1497,28 +1502,22 @@ export async function importCommentsPage(
   );
 
   const offset = params.offset ?? 0;
-  const limit = params.limit ?? 200;
+  const limit = params.limit ?? COMMENTS_PAGE_SIZE;
 
   const resolver = new PersonResolver(userId, swMe.id, owner.default_currency);
 
   const [candidates, totalRow] = await Promise.all([
-    db
-      .selectFrom("expenses")
+    pendingCommentsBase()
       .select(["id", "metadata", "description"])
-      .where(splitwiseIdSql(), "is not", null)
-      .where("deleted_at", "is", null)
       .orderBy("id")
       .limit(limit)
-      .offset(offset)
       .execute(),
-    db
-      .selectFrom("expenses")
+    pendingCommentsBase()
       .select((eb) => eb.fn.countAll<number>().as("n"))
-      .where(splitwiseIdSql(), "is not", null)
-      .where("deleted_at", "is", null)
       .executeTakeFirstOrThrow(),
   ]);
 
+  const total = Number(totalRow.n);
   const result: CommentsPageResult = {
     offset,
     scanned: candidates.length,
@@ -1526,28 +1525,23 @@ export async function importCommentsPage(
     imported: 0,
     alreadyPresent: 0,
     skipped: [],
-    total: Number(totalRow.n),
-    nextOffset: candidates.length === 0 ? null : offset + candidates.length,
-    done: candidates.length < limit,
+    total,
+    nextOffset: null,
+    done: true,
   };
 
   for (const expense of candidates) {
     const meta = parseMetadata(expense.metadata);
     const swId = splitwiseIdOf(expense.metadata);
-    if (swId === null) continue;
-
-    // Already fetched at the current rule revision. An older stamp (no rev, or
-    // a lower one) is re-fetched once so comments an earlier pass dropped —
-    // platform notes with `user: null` — can land. Then it stays cheap.
-    if (
-      typeof meta.splitwise_comments_synced_at === "string" &&
-      meta.splitwise_comments_import_rev === COMMENTS_IMPORT_REV
-    ) {
+    if (swId === null) {
+      await markImportSynced(expense.id, {}, PENDING_COMMENT_KEYS);
       result.alreadyPresent++;
       continue;
     }
-    // Splitwise itself said there are none.
-    if (meta.splitwise_comments_count === 0) {
+
+    const pending = meta.splitwise_comments_count;
+    if (typeof pending !== "number" || pending <= 0) {
+      await markImportSynced(expense.id, {}, PENDING_COMMENT_KEYS);
       result.alreadyPresent++;
       continue;
     }
@@ -1562,19 +1556,30 @@ export async function importCommentsPage(
         if (outcome.skipped) result.skipped.push(outcome.skipped);
       }
 
-      await markImportSynced(expense.id, commentsSyncedPatch(swComments.length));
+      await markImportSynced(expense.id, {}, PENDING_COMMENT_KEYS);
     } catch (err) {
-      // One unreachable expense must not abort the page; the next run retries it
-      // because nothing was stamped.
+      // Drop the stamp so a persistent failure cannot pin the wizard on one
+      // bill. The skip is reported; re-running expenses re-queues the count.
       result.skipped.push({
         splitwiseId: swId,
         description: expense.description,
         reason: err instanceof Error ? err.message : String(err),
       });
+      await markImportSynced(expense.id, {}, PENDING_COMMENT_KEYS);
     }
 
     await client.wait();
   }
+
+  const remaining = Number(
+    (
+      await pendingCommentsBase()
+        .select((eb) => eb.fn.countAll<number>().as("n"))
+        .executeTakeFirstOrThrow()
+    ).n,
+  );
+  result.done = remaining === 0;
+  result.nextOffset = remaining === 0 ? null : 0;
 
   return result;
 }
@@ -2163,8 +2168,9 @@ async function loadUsersBySplitwiseId(): Promise<Map<number, { id: string; name:
 /**
  * Imports the comments Splitwise nested on an expense, if it nested any.
  *
- * A count of zero is recorded so the paged step can skip the expense entirely
- * rather than spending a request to be told the same thing.
+ * A count greater than zero with no nested array is stamped pending so the
+ * paged step fetches only those. Zero or missing means nothing to fetch.
+ * Nested comments are imported here and any pending stamp is cleared.
  */
 async function importNestedComments(
   localExpenseId: string,
@@ -2175,9 +2181,7 @@ async function importNestedComments(
   const count = swExpense.comments_count;
 
   if (nested === undefined) {
-    // No nested array. Remember the count if we were given one, so the paged
-    // step knows which expenses are worth a request.
-    if (typeof count === "number") {
+    if (typeof count === "number" && count > 0) {
       await markImportSynced(localExpenseId, {
         splitwise_comments_count: count,
       });
@@ -2198,7 +2202,7 @@ async function importNestedComments(
     if (outcome.skipped) skippedComments.push(outcome.skipped);
   }
 
-  await markImportSynced(localExpenseId, commentsSyncedPatch(nested.length));
+  await markImportSynced(localExpenseId, {}, PENDING_COMMENT_KEYS);
 
   return { commentsImported, skippedComments };
 }

@@ -17,6 +17,8 @@
  * Extra keys are allowed. Do not put anything here that needs an index or a
  * JOIN; those stay as real columns. The unique expression indexes on
  * `$.splitwise_id` are the one exception, because re-import matching needs them.
+ * The comments step also filters on `$.splitwise_comments_count` (pending
+ * work); that is a one-shot import walk, not a hot path, and is not indexed.
  */
 import { sql, type RawBuilder } from "kysely";
 import { isRepeatInterval, type RepeatInterval } from "./recurring.ts";
@@ -37,9 +39,19 @@ export interface EntityMetadata {
    */
   import_rounding?: boolean;
   /**
-   * Comment-import rule revision. Bumped when previously skipped comments
-   * become importable so a later comments step re-fetches those expenses once.
+   * Pending Splitwise comment fetch. Stamped from `comments_count` when the
+   * expense list did not nest `comments[]`. Cleared once `get_comments` has
+   * run (or nested comments were imported), so a second comments step is a
+   * no-op. Presence with a value > 0 is the work queue; absence means done
+   * or never needed.
    */
+  splitwise_comments_count?: number;
+  /**
+   * Legacy completion stamp from an older comments importer. Still recognised
+   * so those rows are not re-fetched; new runs clear it alongside the count.
+   */
+  splitwise_comments_synced_at?: string;
+  /** Legacy comments-import rule revision. No longer written. */
   splitwise_comments_import_rev?: number;
   [key: string]: unknown;
 }
@@ -156,4 +168,19 @@ export function splitwiseRegistrationStatusOf(
 export function splitwiseIdSql(table?: string): RawBuilder<number | null> {
   const ref = table ? sql.raw(`${table}.metadata`) : sql.raw("metadata");
   return sql<number | null>`json_extract(${ref}, '$.splitwise_id')`;
+}
+
+/**
+ * Pending comment-import count. Queried by the comments step so expenses
+ * Splitwise said have no comments are never a `get_comments` round trip.
+ * Not indexed: import is a one-shot walk, not a hot path.
+ */
+export function splitwiseCommentsCountSql(table?: string): RawBuilder<number | null> {
+  const ref = table ? sql.raw(`${table}.metadata`) : sql.raw("metadata");
+  return sql<number | null>`json_extract(${ref}, '$.splitwise_comments_count')`;
+}
+
+export function splitwiseCommentsSyncedAtSql(table?: string): RawBuilder<string | null> {
+  const ref = table ? sql.raw(`${table}.metadata`) : sql.raw("metadata");
+  return sql<string | null>`json_extract(${ref}, '$.splitwise_comments_synced_at')`;
 }

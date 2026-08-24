@@ -80,10 +80,6 @@ function initialProgress(preview: ImportPreview): Progress {
     comments: {
       status: "pending",
       current: 0,
-      total: preview.counts.expenses,
-      // Until expenses finish we only have the preview floor, same as the
-      // expense count itself when Splitwise's walk hit the cap.
-      totalCapped: preview.counts.expensesCapped,
     },
     rounding: { status: "pending" },
   };
@@ -235,9 +231,9 @@ export function Import() {
         offset = page.done ? null : page.nextOffset;
       }
 
-      // Step 4. A no-op when the comments arrived nested above; a walk of one
-      // request per commented expense when they did not.
-      let commentsScanned = 0;
+      // Step 4. Only expenses Splitwise said have comments, 10 fetches per call.
+      let commentsFetched = 0;
+      let commentsTotal = 0;
       setProgress((prev) =>
         prev
           ? {
@@ -251,21 +247,16 @@ export function Import() {
               comments: {
                 status: "active",
                 current: 0,
-                // Exact once expenses are in. The first comments page confirms
-                // it with `total` (local imported expenses, which may be a
-                // handful fewer if some Splitwise rows were skipped).
-                total: seen,
-                totalCapped: false,
                 startedAt: Date.now(),
               },
             }
           : prev,
       );
 
-      let commentOffset: number | null = 0;
-      while (commentOffset !== null) {
-        const page = await api.importComments(key, commentOffset);
-        commentsScanned += page.scanned;
+      for (;;) {
+        const page = await api.importComments(key);
+        if (commentsFetched === 0) commentsTotal = page.total;
+        commentsFetched += page.fetched;
         result.commentsImported += page.imported;
         result.skipped.push(...page.skipped);
 
@@ -275,8 +266,8 @@ export function Import() {
                 ...prev,
                 comments: {
                   status: "active",
-                  current: commentsScanned,
-                  total: page.total,
+                  current: commentsFetched,
+                  total: commentsTotal,
                   totalCapped: false,
                   startedAt: prev.comments.startedAt,
                 },
@@ -284,7 +275,7 @@ export function Import() {
             : prev,
         );
 
-        commentOffset = page.done ? null : page.nextOffset;
+        if (page.done) break;
       }
 
       setProgress((prev) =>
@@ -293,8 +284,8 @@ export function Import() {
               ...prev,
               comments: {
                 status: "done",
-                current: commentsScanned,
-                total: commentsScanned,
+                current: commentsFetched,
+                total: commentsTotal,
                 totalCapped: false,
               },
               rounding: { status: "active", startedAt: Date.now() },

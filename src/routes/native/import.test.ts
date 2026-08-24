@@ -945,17 +945,61 @@ describe("comments", () => {
     assert.deepEqual(events, [], "one summary entry per run, not one per comment");
   });
 
-  test("the paged step fetches the comments Splitwise did not nest", async () => {
+  test("a count with no nested array is stamped pending, zeros are not", async () => {
+    const ramen = await db
+      .selectFrom("expenses")
+      .select("metadata")
+      .where(splitwiseIdSql(), "=", 4002)
+      .executeTakeFirstOrThrow();
+    assert.equal(parseMetadata(ramen.metadata).splitwise_comments_count, 3);
+
+    const rent = await db
+      .selectFrom("expenses")
+      .select("metadata")
+      .where(splitwiseIdSql(), "=", 4001)
+      .executeTakeFirstOrThrow();
+    assert.equal(
+      parseMetadata(rent.metadata).splitwise_comments_count,
+      undefined,
+      "nested comments were imported with the expense; nothing is pending",
+    );
+
+    const rounded = await db
+      .selectFrom("expenses")
+      .select("metadata")
+      .where(splitwiseIdSql(), "=", 4006)
+      .executeTakeFirstOrThrow();
+    assert.equal(
+      parseMetadata(rounded.metadata).splitwise_comments_count,
+      undefined,
+      "no comments_count from Splitwise means no pending fetch",
+    );
+  });
+
+  test("the paged step fetches only expenses with a pending count", async () => {
+    const requestsBefore = seen.filter((r) => r.path.endsWith("/get_comments")).length;
     const { status, body } = await post("/import/comments", { apiKey: API_KEY });
     assert.equal(status, 200);
     assert.equal(body.imported, 2, "Dave's note plus the authorless platform comment");
-    assert.equal(body.total, 5, "the step walks every live imported expense, not the preview cap");
+    assert.equal(body.total, 1, "only the count-only expense is pending");
+    assert.equal(body.fetched, 1);
+    assert.equal(body.done, true);
+    assert.equal(
+      seen.filter((r) => r.path.endsWith("/get_comments")).length - requestsBefore,
+      1,
+      "expenses without a pending count must not be a get_comments call",
+    );
 
     const ramen = await db
       .selectFrom("expenses")
-      .select("id")
+      .select(["id", "metadata"])
       .where(splitwiseIdSql(), "=", 4002)
       .executeTakeFirstOrThrow();
+    assert.equal(
+      parseMetadata(ramen.metadata).splitwise_comments_count,
+      undefined,
+      "the pending stamp is removed once comments are retrieved",
+    );
 
     const comments = await db
       .selectFrom("comments")
@@ -988,7 +1032,9 @@ describe("comments", () => {
 
     const { body } = await post("/import/comments", { apiKey: API_KEY });
     assert.equal(body.imported, 0);
-    assert.ok(body.alreadyPresent > 0, "already-synced expenses are skipped on their stamp");
+    assert.equal(body.fetched, 0);
+    assert.equal(body.total, 0, "no pending stamp remains");
+    assert.equal(body.done, true);
 
     const after = await db.selectFrom("comments").select("id").execute();
     assert.equal(after.length, before.length);

@@ -21,7 +21,7 @@
  *   POST /api/v1/import/friends   step 1
  *   POST /api/v1/import/groups    step 2
  *   POST /api/v1/import/expenses  step 3, one page per call
- *   POST /api/v1/import/comments         step 4, one page of expenses per call
+ *   POST /api/v1/import/comments         step 4, pending commented expenses, 10 per call
  *   POST /api/v1/import/rounding         step 5, settle leftover cents vs Splitwise groups, then friends
  *   POST /api/v1/import/continue-recurring  resume stopped imported series
  *   POST /api/v1/import/run              all five server-side, for small accounts
@@ -43,6 +43,7 @@ import {
   continueImportedRepeats,
   localFootprint,
   reconcileImportedBalances,
+  COMMENTS_PAGE_SIZE,
   type CommentsPageResult,
   type ExpensePageResult,
   type PausedImportedSeries,
@@ -96,20 +97,19 @@ const expensePageSchema = keySchema.extend({
 });
 
 /**
- * Step 4: comments, for the expenses already imported.
+ * Step 4: comments, for imported expenses Splitwise said have some.
  *
  * A separate step because `comments.expense_id` is a foreign key, so this cannot
- * run before step 3. It is a no-op when Splitwise nested the comments on the
- * expense payload (they were imported with the expense and each row is stamped as
- * synced), which is why the wizard can always call it and never has to know which
- * shape this Splitwise deployment speaks.
+ * run before step 3. Expense import stamps a pending `comments_count` when the
+ * list did not nest the thread; this step fetches those and removes the stamp.
+ * Expenses with a count of 0 are never a Splitwise request. Offset is accepted
+ * but ignored: finishing a row pops it from the pending set.
  */
 const commentPageSchema = keySchema.extend({
   offset: z.number().int().min(0).default(0),
-  // May be one Splitwise request per expense (when comments were not nested
-  // on the expenses page), with a courtesy delay between them. 200 keeps the
-  // wizard round-trips few; already-stamped rows skip the upstream call.
-  limit: z.number().int().min(1).max(200).default(200),
+  // One Splitwise request per pending expense, with a courtesy delay. 10 keeps
+  // a wizard round-trip well inside a normal HTTP timeout.
+  limit: z.number().int().min(1).max(COMMENTS_PAGE_SIZE).default(COMMENTS_PAGE_SIZE),
 });
 
 /**
@@ -275,16 +275,18 @@ export const importRoutes = new Hono<AppEnv>()
     // Splitwise already nested them; only walked when it did not.
     const comments = { imported: commentsImported, skipped: [] as SkippedRow[], complete: true };
     if (complete) {
-      let commentOffset: number | null = 0;
-      for (let page = 0; page < maxPages && commentOffset !== null; page++) {
+      for (let page = 0; page < maxPages; page++) {
         const result: CommentsPageResult = await importCommentsPage(client, auth.id, {
-          offset: commentOffset,
+          limit: COMMENTS_PAGE_SIZE,
         });
         comments.imported += result.imported;
         comments.skipped.push(...result.skipped);
-        commentOffset = result.done ? null : result.nextOffset;
+        if (result.done) {
+          comments.complete = true;
+          break;
+        }
+        comments.complete = false;
       }
-      comments.complete = commentOffset === null;
     } else {
       // Expenses are not all in yet, so walking comments would miss the ones
       // hanging off bills this run has not fetched.

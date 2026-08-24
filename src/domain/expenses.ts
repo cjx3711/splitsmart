@@ -820,6 +820,7 @@ export function importStamp(): string {
 export async function markImportSynced(
   expenseId: string,
   patch: EntityMetadata = {},
+  unset: readonly string[] = [],
 ): Promise<string> {
   const stamp = importStamp();
 
@@ -832,12 +833,17 @@ export async function markImportSynced(
 
     if (!row) throw new ExpenseError(`Expense ${expenseId} not found`);
 
+    const meta: EntityMetadata = {
+      ...parseMetadata(row.metadata),
+      ...patch,
+    };
+    for (const key of unset) delete meta[key];
+
     await trx
       .updateTable("expenses")
       .set({
         metadata: serializeMetadata({
-          ...parseMetadata(row.metadata),
-          ...patch,
+          ...meta,
           splitwise_synced_at: stamp,
         }),
         updated_at: stamp,

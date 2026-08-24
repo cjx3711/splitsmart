@@ -469,10 +469,10 @@ export const api = {
     ),
 
   /**
-   * Step 4. Safe to call even when Splitwise nested the comments on the expense
-   * payload: those are already in and stamped, so this walks past them.
+   * Step 4. Fetches comments for expenses stamped with a pending count; those
+   * Splitwise said have none are never a request. Call until `done`.
    */
-  importComments: (apiKey: string, offset = 0, limit = 200) =>
+  importComments: (apiKey: string, offset = 0, limit = 10) =>
     call(
       client.import.comments.$post,
       client.import.comments.$post({ json: { apiKey, offset, limit } }),

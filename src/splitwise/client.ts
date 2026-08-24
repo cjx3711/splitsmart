@@ -121,8 +121,9 @@ export interface SplitwiseExpense {
   repayments?: SplitwiseRepayment[];
   /**
    * Present on `get_expenses` even when `comments[]` is not, which is exactly
-   * why the importer reads it: an expense whose count is 0 never needs a second
-   * request, and one with a count but no nested array does.
+   * why the importer reads it: an expense whose count is 0 is never a second
+   * request, and one with a count but no nested array is stamped pending until
+   * `getComments` runs.
    */
   comments_count?: number | null;
   /**
