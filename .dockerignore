@@ -1,0 +1,59 @@
+# Build context exclusions. The Dockerfile's build stage does `COPY . .`, so
+# anything not listed here is uploaded to the daemon and lands in a build
+# layer. Two of those things must never be there: the SQLite ledger under
+# data/, and the .env files holding SESSION_SECRET and mail credentials.
+#
+# The final image is multi-stage and only copies dist/, web/dist/ and
+# migrations/, so today none of this reaches the shipped image - but the build
+# layers and the local builder cache still hold whatever the context carried,
+# and a future single-stage build or a CI job pushing to a public registry
+# would publish it. Keep the context clean instead of relying on that.
+#
+# Do NOT add scripts/ here: tsconfig.json compiles scripts/**/*.ts, so
+# `yarn build:api` needs it.
+
+# --- Secrets ---
+.env*
+!.env.example
+!.env.prod.example
+!.env.deploy.example
+# Local telemetry, injected by deploy.sh into web/public/telemetry.js on the
+# host *before* docker build, so the build never needs this file itself.
+.telemetry.js
+*.pem
+*.key
+id_rsa*
+
+# --- The ledger. Never in an image layer. ---
+data/
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+# Raw Splitwise export snapshots: personal financial data.
+splitwise-export/
+
+# --- Dependencies and build output ---
+# node_modules must be excluded for correctness as well as size: `COPY . .`
+# runs after `yarn install`, so a host tree would overwrite the freshly
+# installed one and drop darwin-arm64 better-sqlite3 bindings into a
+# linux/amd64 image.
+node_modules/
+dist/
+web/dist/
+
+# --- Test artifacts and images ---
+smoke/runs/
+smoke/baselines/
+# Image tars written by scripts/deploy/deploy.sh; without this, each build's
+# context would carry the previous build's image.
+**/*.tar
+
+# --- Local noise ---
+.git/
+.gitignore
+.claude/
+.cursor/
+.DS_Store
+**/*.log
+**/*.swp
