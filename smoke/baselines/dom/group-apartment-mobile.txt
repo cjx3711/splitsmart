@@ -19,69 +19,20 @@
   - button "Options"
   - button "Settle up"
   - button "Add Expense"
-  - heading "Balances" [level=2]
-  - text: You get back 3696.21USD
-  - link "JJ owes 3696.21USD":
-    - /url: /app/friends/<ULID>
-  - heading "Suggested settle-up About suggested settle-up" [level=2]:
-    - text: Suggested settle-up
-    - button "About suggested settle-up": "?"
-  - text: USD
-  - list:
-    - listitem: JJ → You 3696.21USD
+  - complementary:
+    - heading "Balances" [level=2]
+    - text: You get back 3696.21USD
+    - link "JJ owes 3696.21USD":
+      - /url: /app/friends/<ULID>
+    - heading "Suggested settle-up About suggested settle-up" [level=2]:
+      - text: Suggested settle-up
+      - button "About suggested settle-up": "?"
+    - text: USD
+    - list:
+      - listitem: JJ → You 3696.21USD
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
-  - combobox "Category":
-    - option "Any category" [selected]
-    - option "Rent"
-    - option "Mortgage"
-    - option "Electricity"
-    - option "Heat/gas"
-    - option "Water"
-    - option "TV/Phone/Internet"
-    - option "Parking"
-    - option "Insurance"
-    - option "Other"
-    - option "Groceries"
-    - option "Dining out"
-    - option "Household supplies"
-    - option "Car"
-    - option "Furniture"
-    - option "Maintenance"
-    - option "General"
-    - option "Games"
-    - option "Movies"
-    - option "Music"
-    - option "Other"
-    - option "Sports"
-    - option "Other"
-    - option "Other"
-    - option "Pets"
-    - option "Services"
-    - option "Bus/train"
-    - option "Gas/fuel"
-    - option "Other"
-    - option "Plane"
-    - option "Taxi"
-    - option "Trash"
-    - option "Liquor"
-    - option "Electronics"
-    - option "Clothing"
-    - option "Gifts"
-    - option "Medical expenses"
-    - option "Other"
-    - option "Taxes"
-    - option "Bicycle"
-    - option "Hotel"
-    - option "Cleaning"
-    - option "Education"
-    - option "Childcare"
-  - textbox "From"
-  - textbox "To"
-  - combobox "Kind":
-    - option "Expenses and payments" [selected]
-    - option "Expenses only"
-    - option "Settle-ups only"
+  - button "Filters"
   - button "Download CSV"
   - link "You paid JJ <DATE> sent 50.00USD":
     - text: You paid
@@ -92,13 +43,7 @@
   - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
   - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
   - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
-  - link "Rent <DATE> · Rent · You paid repeats lent 900.00USD 1800.00USD"
-  - heading "Members" [level=2]
-  - button "+ Add member"
-  - text: You owner · has an account
-  - link "JJ member · has an account":
-    - /url: /app/friends/<ULID>
-  - button "Remove"
+  - link "Rent <DATE> · Rent · You paid series first bill lent 900.00USD 1800.00USD"
   - heading "Guest links" [level=2]
   - paragraph: Guest links expire after 3 months. Anyone holding one can see and edit this group's expenses, so share them carefully. Turn one off or replace it anytime - if a link is compromised, revoke it and create a new one.
   - strong:

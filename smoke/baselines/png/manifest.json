@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-23T18:46:07.926Z",
+  "capturedAt": "2026-08-24T12:16:28.570Z",
   "base": "http://localhost:5644",
   "playwrightVersion": "1.62.1",
   "params": {
@@ -45,6 +45,20 @@
       "id": "login-mobile",
       "viewport": "mobile",
       "path": "/app",
+      "click": [],
+      "auth": "none"
+    },
+    {
+      "id": "login-reset",
+      "viewport": "desktop",
+      "path": "/app/reset",
+      "click": [],
+      "auth": "none"
+    },
+    {
+      "id": "login-reset-mobile",
+      "viewport": "mobile",
+      "path": "/app/reset",
       "click": [],
       "auth": "none"
     },
@@ -182,7 +196,7 @@
       "path": "/app/groups",
       "click": [
         "Apartment 4B",
-        "Rent~repeats"
+        "Rent~first bill"
       ],
       "auth": "user:user"
     },
@@ -192,7 +206,7 @@
       "path": "/app/groups",
       "click": [
         "Apartment 4B",
-        "Rent~repeats"
+        "Rent~first bill"
       ],
       "auth": "user:user"
     },
@@ -202,7 +216,7 @@
       "path": "/app/groups",
       "click": [
         "Apartment 4B",
-        "Rent~repeats",
+        "Rent~first bill",
         "View all bills in this series"
       ],
       "auth": "user:user"
@@ -213,7 +227,7 @@
       "path": "/app/groups",
       "click": [
         "Apartment 4B",
-        "Rent~repeats",
+        "Rent~first bill",
         "View all bills in this series"
       ],
       "auth": "user:user"
@@ -224,7 +238,7 @@
       "path": "/app/groups",
       "click": [
         "Apartment 4B",
-        "Rent~repeats",
+        "Rent~first bill",
         "Stop repeating"
       ],
       "auth": "user:user"
@@ -235,7 +249,7 @@
       "path": "/app/groups",
       "click": [
         "Apartment 4B",
-        "Rent~repeats",
+        "Rent~first bill",
         "Stop repeating"
       ],
       "auth": "user:user"

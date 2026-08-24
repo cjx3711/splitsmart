@@ -29,7 +29,7 @@
     - button "About this series": "?"
   - button "Stop repeating"
   - heading "Bills" [level=2]
-  - link "Rent <DATE> · Rent · You paid repeats lent 900.00USD 1800.00USD"
+  - link "Rent <DATE> · Rent · You paid series first bill lent 900.00USD 1800.00USD"
   - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
   - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"
   - link "Rent <DATE> · Rent · You paid series lent 900.00USD 1800.00USD"

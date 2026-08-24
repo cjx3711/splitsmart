@@ -38,11 +38,11 @@
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "JJ":
-    - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
+    - /url: /app/friends/<ULID>
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Ah Beng":
     - /url: /app/friends/<ULID>
@@ -63,14 +63,14 @@
 - main:
   - heading "Friends" [level=1]
   - button "+ Add friend"
-  - link "JJ jj@example.com -1200JPY 3836.21USD shared":
-    - /url: /app/friends/<ULID>
   - link "Aisyah aisyah@example.com settled up":
     - /url: /app/friends/<ULID>
   - button "Remove Aisyah": ✕
   - link "Mel mel@example.com -71.10USD":
     - /url: /app/friends/<ULID>
   - button "Remove Mel": ✕
+  - link "JJ jj@example.com -1200JPY 3836.21USD shared":
+    - /url: /app/friends/<ULID>
   - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
     - /url: /app/friends/<ULID>
   - button "Remove Ah Beng": ✕

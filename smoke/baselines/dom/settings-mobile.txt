@@ -18,6 +18,30 @@
   - text: Nickname
   - textbox "Nickname":
     - /placeholder: Optional. Shown in lists instead of the full name.
+  - text: Profile image
+  - button "About the profile image": "?"
+  - button "Randomise"
+  - button "Default" [disabled]
+  - slider "Base gradient angle"
+  - button "Base"
+  - button "Gradient"
+  - text: Base
+  - slider "Band 1"
+  - button "Band 1 colour"
+  - button "Remove band 1": ×
+  - slider "Band 2"
+  - button "Band 2 colour"
+  - button "Remove band 2": ×
+  - slider "Band 3"
+  - button "Band 3 colour"
+  - button "Remove band 3": ×
+  - slider "Band 4"
+  - button "Band 4 colour"
+  - button "Remove band 4": ×
+  - slider "Band 5"
+  - button "Band 5 colour"
+  - button "Remove band 5": ×
+  - button "Add band"
   - text: Icon letters
   - button "About icon letters": "?"
   - textbox "Icon letters":
@@ -57,21 +81,6 @@
     - button "Use 💙": 💙
     - text: Or paste any emoji
     - textbox "Or paste any emoji"
-  - group "Icon colour":
-    - text: Icon colour
-    - button "Auto" [pressed]
-    - button "Hue 12"
-    - button "Hue 32"
-    - button "Hue 48"
-    - button "Hue 72"
-    - button "Hue 145"
-    - button "Hue 168"
-    - button "Hue 188"
-    - button "Hue 205"
-    - button "Hue 230"
-    - button "Hue 262"
-    - button "Hue 292"
-    - button "Hue 328"
   - button "Save name and icon"
   - heading "Preferred currency About preferred currency" [level=2]:
     - text: Preferred currency
@@ -83,6 +92,10 @@
     - button "About importing from Splitwise": "?"
   - link "Start an import":
     - /url: /app/import
+  - heading "Admin About admin" [level=2]:
+    - text: Admin
+    - button "About admin": "?"
+  - button "Open admin"
   - heading "Delete all data" [level=2]
   - paragraph: Permanently remove this account's groups, friends, expenses and guest links so you can import from Splitwise again. Your login is not deleted.
   - button "Delete all my data"
@@ -90,7 +103,7 @@
     - text: API tokens
     - button "About API tokens": "?"
   - text: New token name
-  - textbox "New token name": splitwise-to-toshl
+  - textbox "New token name": API client
   - button "Create token"
   - heading "This device About local data" [level=2]:
     - text: This device

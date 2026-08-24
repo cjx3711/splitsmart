@@ -3,20 +3,23 @@
     - /url: /app
     - img "SplitSmart"
     - text: SplitSmart
+  - navigation:
+    - link "About":
+      - /url: /about
+    - link "Changelog":
+      - /url: /changelog
+    - link "API":
+      - /url: /docs
 - main:
   - img "SplitSmart"
   - text: SplitSmart
-  - heading "Log in" [level=1]
+  - heading "Reset password" [level=1]
+  - paragraph: We'll send a link to choose a new one.
   - text: Email
   - textbox "Email"
-  - text: Password
-  - textbox "Password"
-  - button "Show password": Show
-  - button "Log in"
-  - link "Forgot password?":
-    - /url: /app/reset
-  - button "Create an account"
-  - paragraph: Sent a guest link? Open that link instead; it needs no account.
+  - button "Send reset link"
+  - link "Back to log in":
+    - /url: /app/login
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

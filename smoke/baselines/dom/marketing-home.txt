@@ -13,35 +13,32 @@
   - link "Log in":
     - /url: /app/login
 - main:
-  - paragraph: Open source · Self-hosted · Free
+  - paragraph: Open source / Self-hostable
   - heading "Keep track of who paid for dinner." [level=1]
   - paragraph: SplitSmart is a Splitwise replacement you can run yourself, or use here if you're willing to trust a random person on the internet with who paid for dinner. Groups, friends, one-off bills, 100+ currencies, and it still works on a plane with no signal. You don't need an account to settle a single trip. Someone can just send you a link.
   - link "Create an account":
     - /url: /app/login?register
   - link "Log in":
     - /url: /app/login
-  - paragraph: Or open a link someone sends you and pick your name. No signup at all.
+  - paragraph: Or open a link someone sends you and start managing splits. No signup at all.
   - region "Highlights":
     - article:
-      - heading "Works with no signal" [level=2]
-      - paragraph: Install it on your phone and add the dinner while you're still at the table, airplane mode and all. It writes to the device and syncs once you're back online.
+      - heading "Offline support" [level=2]
+      - paragraph: It writes to the device and syncs once you're back online.
     - article:
-      - heading "No account for a one-off trip" [level=2]
-      - paragraph: "Send someone a guest link and they are in: no email, no password, nothing to install. The link is the credential, so you can expire it or switch it off whenever you like. If they later want an account, it folds their history straight into it."
+      - heading "No forced accounts" [level=2]
+      - paragraph: Send someone a guest link and they get edit access. Your friends can create an account if they want to keep using it.
     - article:
-      - heading "Open source and free" [level=2]
+      - heading "Open source" [level=2]
       - paragraph:
         - text: The code is on
         - link "GitHub":
           - /url: https://github.com/cjx3711/splitsmart
-        - text: ", and this instance is free for now. Read the"
-        - link "about page":
-          - /url: /about
-        - text: before you trust it with anything you can't afford to lose.
+        - text: if you want to self-host, though this instance is free for now.
     - article:
-      - heading "The API isn't paywalled" [level=2]
+      - heading "Free API access" [level=2]
       - paragraph:
-        - text: Bearer tokens for the native API, and it also speaks the basic Splitwise API shapes, so whatever you already pointed at Splitwise has a good chance of just working. The endpoints are in the
+        - text: The endpoints are in the
         - link "API docs":
           - /url: /docs
         - text: .
@@ -59,23 +56,31 @@
       - tab "A bill"
       - tab "Every expense"
       - tab "Opened from a link"
-  - heading "What's in it" [level=2]
-  - paragraph: The same jobs Splitwise does, minus the upsell that shows up while you're adding a taxi.
-  - list:
-    - listitem: Groups, friends, and one-off expenses that belong to neither
-    - listitem: As many expenses a day as you want, because that's a strange thing to ration
-    - listitem: "Six split types: equal, exact, percent, shares, adjustment, itemised"
-    - listitem: Itemised bills, where each line has its own sharers and tax and tip get spread proportionally
-    - listitem: Settle up, with suggested transfers if the group wants to simplify
-    - listitem: 100+ currencies, each its own ledger. Nothing is converted, and JPY isn't treated as cents
-    - listitem: A currency picker that puts the ones you actually use at the top
-    - listitem: An activity feed for the groups and expenses you're on
-    - listitem: Splitwise import, and your API key is used for the request and then dropped
-    - listitem: Installable as a PWA, and the ledger stays on the device
-    - listitem: A native JSON API, plus compatibility with the basic Splitwise API shapes
+  - region "What's in it":
+    - heading "What's in it" [level=2]
+    - paragraph: The same jobs Splitwise does, minus the upsell that shows up while you're adding a bill. Plus a whole bunch of small fixes to things that have irritated me for years.
+    - heading "Same as Splitwise" [level=3]
+    - list:
+      - listitem: Groups, friends, and one-off expenses
+      - listitem: "Six split types: equal, exact, percent, shares, adjustment, itemised"
+      - listitem: Settle up, with suggested transfers if the group wants to simplify
+      - listitem: An activity feed for the groups and expenses you're on
+      - listitem: Offline support
+      - listitem: 100+ currencies
+    - heading "Improvements" [level=3]
+    - list:
+      - listitem: As many expenses a day as you want
+      - listitem: Clicking just outside the add-expense box doesn't dump the draft
+      - listitem: Currencies with no decimals don't show any, so 3000 JPY is 3000 JPY, not 3000.00
+      - listitem: Mixed balances show a live ≈ estimate, and you can convert them into one currency at <RELDATE>'s rate
+      - listitem: A currency picker that puts the ones you frequently use at the top
+      - listitem: Itemised bills, where each line has its own sharers and tax and tip get spread proportionally
+      - listitem: Splitwise import, and your API key is used for the request and then dropped
+      - listitem: Installable as a PWA, and the ledger stays on the device
+      - listitem: A JSON API at /api/v1, with a bearer token from Settings
   - region "What we don't have":
     - heading "What we don't have" [level=2]
-    - paragraph: Splitwise has a company, two phone apps, and a payments product. This is a ledger. The column on the right is the honest one.
+    - paragraph: Splitwise is a company, has two phone apps, and a payments product. This is a toy app I built in 2 weeks.
     - table:
       - rowgroup:
         - row "Feature Splitwise SplitSmart":
@@ -83,67 +88,63 @@
           - columnheader "Splitwise"
           - columnheader "SplitSmart"
       - rowgroup:
-        - row "Native iOS and Android apps Yes A website. You can put it on the home screen.":
+        - row "Native iOS and Android apps Yes Just a the webapp. You can put it on the home screen.":
           - rowheader "Native iOS and Android apps"
           - cell "Yes"
-          - cell "A website. You can put it on the home screen."
-        - row "Splitwise Pay, Pay by Bank Yes, US We are not a bank.":
+          - cell "Just a the webapp. You can put it on the home screen."
+        - row "Splitwise Pay, Pay by Bank Yes, US only Nope":
           - rowheader "Splitwise Pay, Pay by Bank"
-          - cell "Yes, US"
-          - cell "We are not a bank."
-        - row "PayPal, Venmo, Paytm Yes Record that you paid. The money still moves wherever you already send it.":
+          - cell "Yes, US only"
+          - cell "Nope"
+        - row "PayPal, Venmo, Paytm Yes Nope":
           - rowheader "PayPal, Venmo, Paytm"
           - cell "Yes"
-          - cell "Record that you paid. The money still moves wherever you already send it."
-        - row "Push notifications Yes None. Open the page.":
+          - cell "Nope"
+        - row "Push notifications Yes None":
           - rowheader "Push notifications"
           - cell "Yes"
-          - cell "None. Open the page."
+          - cell "None"
         - row "Email when someone adds a bill Yes They can tell you. Or you can look.":
           - rowheader "Email when someone adds a bill"
           - cell "Yes"
           - cell "They can tell you. Or you can look."
-        - row "Monthly email reports Yes No newsletter of who owes whom.":
+        - row "Monthly email reports Yes Nope":
           - rowheader "Monthly email reports"
           - cell "Yes"
-          - cell "No newsletter of who owes whom."
-        - row "Receipt scanning Pro Type the number. Storing other people's photos is a product I don't want to run.":
+          - cell "Nope"
+        - row "Receipt scanning Pro Nope, but maybe in the future with a MCP":
           - rowheader "Receipt scanning"
           - cell "Pro"
-          - cell "Type the number. Storing other people's photos is a product I don't want to run."
-        - row "Charts and graphs Pro It's a ledger, not Mint.":
+          - cell "Nope, but maybe in the future with a MCP"
+        - row "Charts and graphs Pro Maybe in the future.":
           - rowheader "Charts and graphs"
           - cell "Pro"
-          - cell "It's a ledger, not Mint."
-        - row "Saved default splits Pro Set it each time.":
+          - cell "Maybe in the future."
+        - row "Saved default splits Pro Nope":
           - rowheader "Saved default splits"
           - cell "Pro"
-          - cell "Set it each time."
+          - cell "Nope"
         - row "Import from a credit card Pro, US Type it.":
           - rowheader "Import from a credit card"
           - cell "Pro, US"
           - cell "Type it."
-        - row "Comments on expenses Yes The group chat still exists.":
-          - rowheader "Comments on expenses"
-          - cell "Yes"
-          - cell "The group chat still exists."
-        - row "Export to CSV Yes Not yet.":
-          - rowheader "Export to CSV"
-          - cell "Yes"
-          - cell "Not yet."
-        - row "7+ languages Yes English. Your browser can translate the page.":
+        - row "7+ languages Yes English + browser translation.":
           - rowheader "7+ languages"
           - cell "Yes"
-          - cell "English. Your browser can translate the page."
-        - row "Avatars and group cover photos Yes Names.":
+          - cell "English + browser translation."
+        - row "Avatars and group cover photos Yes No images":
           - rowheader "Avatars and group cover photos"
           - cell "Yes"
-          - cell "Names."
+          - cell "No images"
+        - row "Actual security team Yes Just one dude and his AI agent":
+          - rowheader "Actual security team"
+          - cell "Yes"
+          - cell "Just one dude and his AI agent"
         - row "Someone to email when it breaks Yes A GitHub issue, if I see it.":
           - rowheader "Someone to email when it breaks"
           - cell "Yes"
           - cell "A GitHub issue, if I see it."
-    - paragraph: If any of those are the reason you use Splitwise, stay there. That is a real product with a team. This writes down who paid for dinner.
+    - paragraph: If any of those are the reason you use Splitwise this ain't for you.
   - heading "That's the whole pitch." [level=2]
   - paragraph:
     - text: The longer version of why this exists is on the

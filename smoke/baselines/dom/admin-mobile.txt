@@ -6,6 +6,11 @@
     - text: SplitSmart
   - button "Add Expense"
 - main:
+  - navigation "Admin":
+    - link "Usage":
+      - /url: /app/admin
+    - link "Backups":
+      - /url: /app/admin/backups
   - heading "Usage About the usage panel" [level=1]:
     - text: Usage
     - button "About the usage panel": "?"
@@ -19,11 +24,6 @@
     - /url: /app/admin/users/<ULID>?as_of=<DATE>
   - strong: Nur Aisyah
   - text: aisyah@example.com 0 created · 2 groups · 5 friends
-  - img "Expenses added over 30 days"
-  - link "View":
-    - /url: /app/admin/users/<ULID>?as_of=<DATE>
-  - strong: Lee Jin Jie
-  - text: jj@example.com 1 created · 3 groups · 3 friends
   - img "Expenses added over 30 days"
   - link "View":
     - /url: /app/admin/users/<ULID>?as_of=<DATE>
@@ -49,6 +49,11 @@
     - /url: /app/admin/users/<ULID>?as_of=<DATE>
   - strong: Test User
   - text: test@example.com 10 created · 10 groups · 15 friends
+  - img "Expenses added over 30 days"
+  - link "View":
+    - /url: /app/admin/users/<ULID>?as_of=<DATE>
+  - strong: Lee Jin Jie
+  - text: jj@example.com 1 created · 3 groups · 3 friends
   - img "Expenses added over 30 days"
   - link "View":
     - /url: /app/admin/users/<ULID>?as_of=<DATE>

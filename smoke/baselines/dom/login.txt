@@ -18,7 +18,10 @@
   - textbox "Email"
   - text: Password
   - textbox "Password"
+  - button "Show password": Show
   - button "Log in"
+  - link "Forgot password?":
+    - /url: /app/reset
   - button "Create an account"
   - paragraph: Sent a guest link? Open that link instead; it needs no account.
 - contentinfo:

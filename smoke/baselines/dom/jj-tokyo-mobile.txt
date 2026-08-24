@@ -19,75 +19,31 @@
   - button "Options"
   - button "Settle up"
   - button "Add Expense"
-  - heading "Balances" [level=2]
-  - link "Test User gets back 1200JPY":
-    - /url: /app/friends/<ULID>
-  - text: You get back 6000JPY
-  - link "Ah Beng owes 3600JPY":
-    - /url: /app/friends/<ULID>
-  - link "Hana owes 3600JPY":
-    - /url: /app/friends/<ULID>
-  - heading "Suggested settle-up About suggested settle-up" [level=2]:
-    - text: Suggested settle-up
-    - button "About suggested settle-up": "?"
-  - text: JPY
-  - list:
-    - listitem: Ah Beng → You 3600JPY
-    - listitem: Hana → You 2400JPY
-    - listitem: Hana → Test User 1200JPY
+  - complementary:
+    - heading "Balances" [level=2]
+    - link "Test User gets back 1200JPY":
+      - /url: /app/friends/<ULID>
+    - text: You get back 6000JPY
+    - link "Ah Beng owes 3600JPY":
+      - /url: /app/friends/<ULID>
+    - link "Hana owes 3600JPY":
+      - /url: /app/friends/<ULID>
+    - paragraph:
+      - text: "* Converted to USD using"
+      - link "Rates By Exchange Rate API":
+        - /url: https://www.exchangerate-api.com
+      - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+    - heading "Suggested settle-up About suggested settle-up" [level=2]:
+      - text: Suggested settle-up
+      - button "About suggested settle-up": "?"
+    - text: JPY
+    - list:
+      - listitem: Ah Beng → You 3600JPY
+      - listitem: Hana → You 2400JPY
+      - listitem: Hana → Test User 1200JPY
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
-  - combobox "Category":
-    - option "Any category" [selected]
-    - option "Rent"
-    - option "Mortgage"
-    - option "Electricity"
-    - option "Heat/gas"
-    - option "Water"
-    - option "TV/Phone/Internet"
-    - option "Parking"
-    - option "Insurance"
-    - option "Other"
-    - option "Groceries"
-    - option "Dining out"
-    - option "Household supplies"
-    - option "Car"
-    - option "Furniture"
-    - option "Maintenance"
-    - option "General"
-    - option "Games"
-    - option "Movies"
-    - option "Music"
-    - option "Other"
-    - option "Sports"
-    - option "Other"
-    - option "Other"
-    - option "Pets"
-    - option "Services"
-    - option "Bus/train"
-    - option "Gas/fuel"
-    - option "Other"
-    - option "Plane"
-    - option "Taxi"
-    - option "Trash"
-    - option "Liquor"
-    - option "Electronics"
-    - option "Clothing"
-    - option "Gifts"
-    - option "Medical expenses"
-    - option "Other"
-    - option "Taxes"
-    - option "Bicycle"
-    - option "Hotel"
-    - option "Cleaning"
-    - option "Education"
-    - option "Childcare"
-  - textbox "From"
-  - textbox "To"
-  - combobox "Kind":
-    - option "Expenses and payments" [selected]
-    - option "Expenses only"
-    - option "Settle-ups only"
+  - button "Filters"
   - button "Download CSV"
   - link "TeamLab tickets <DATE> · Life · You paid lent 7200JPY 9600JPY"
   - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments borrowed 1200JPY 4800JPY":
@@ -95,16 +51,6 @@
     - link "Test User":
       - /url: /app/friends/<ULID>
     - text: paid · 2 comments borrowed 1200JPY 4800JPY
-  - heading "Members" [level=2]
-  - button "+ Add member"
-  - link "Test User owner · has an account":
-    - /url: /app/friends/<ULID>
-  - text: You member · has an account
-  - link "Ah Beng member · has an account":
-    - /url: /app/friends/<ULID>
-  - link "Hana member · guest":
-    - /url: /app/friends/<ULID>
-  - button "Edit"
   - heading "Guest links" [level=2]
   - paragraph: Only the group owner can create or turn off guest links.
   - strong:

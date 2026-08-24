@@ -22,21 +22,14 @@
       - /url: https://www.exchangerate-api.com
     - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
   - heading "You owe" [level=2]
-  - link "Test User you owe 3836.21USD -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
+  - link "Test User you owe 3836.21USD owes you 1200JPY -3696.21USD ·Apartment 4B -140.00USD ·Ski Trip 2026 1200JPY ·Weekend in Tokyo":
     - /url: /app/friends/<ULID>
-    - text: Test User you owe 3836.21USD
+    - text: Test User you owe 3836.21USD owes you 1200JPY
     - list:
-      - listitem: "-3696.21USD in Apartment 4B"
-      - listitem: "-140.00USD in Ski Trip 2026"
-      - listitem: 1200JPY in Weekend in Tokyo
+      - listitem: "-3696.21USD ·Apartment 4B"
+      - listitem: "-140.00USD ·Ski Trip 2026"
+      - listitem: 1200JPY ·Weekend in Tokyo
   - heading "You are owed" [level=2]
-  - link "Test User owes you 1200JPY -3696.21USD in Apartment 4B -140.00USD in Ski Trip 2026 1200JPY in Weekend in Tokyo":
-    - /url: /app/friends/<ULID>
-    - text: Test User owes you 1200JPY
-    - list:
-      - listitem: "-3696.21USD in Apartment 4B"
-      - listitem: "-140.00USD in Ski Trip 2026"
-      - listitem: 1200JPY in Weekend in Tokyo
   - link "Ah Beng owes you 2400JPY":
     - /url: /app/friends/<ULID>
   - link "Hana owes you 2400JPY":

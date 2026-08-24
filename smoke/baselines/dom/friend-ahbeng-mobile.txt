@@ -18,79 +18,26 @@
   - paragraph: Tan Ah Beng · ahbeng@example.com
   - button "Settle up"
   - button "Add Expense"
-  - text: Between you
-  - button "About this balance": "?"
-  - text: Ah Beng owes you 1200JPY Ah Beng owes you 149.25USD
-  - button "Convert balance"
-  - link "Ski Trip 2026 140.00USD":
-    - /url: /app/groups/<ULID>
-  - link "Weekend in Tokyo 1200JPY":
-    - /url: /app/groups/<ULID>
-  - text: One-on-one 9.25USD
-  - button "Show settled up groups"
-  - paragraph:
-    - text: "* Converted to USD using"
-    - link "Rates By Exchange Rate API":
-      - /url: https://www.exchangerate-api.com
-    - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
-  - heading "Shared groups" [level=2]
-  - link "Ski Trip 2026 Trip 140.00USD":
-    - /url: /app/groups/<ULID>
-  - link "Weekend in Tokyo Trip 1200JPY":
-    - /url: /app/groups/<ULID>
+  - complementary:
+    - text: Between you
+    - button "About this balance": "?"
+    - text: Ah Beng owes you 1200JPY Ah Beng owes you 149.25USD
+    - button "Convert balance"
+    - paragraph:
+      - text: "* Converted to USD using"
+      - link "Rates By Exchange Rate API":
+        - /url: https://www.exchangerate-api.com
+      - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+    - heading "Shared groups" [level=2]
+    - link "Ski Trip 2026 Trip 140.00USD":
+      - /url: /app/groups/<ULID>
+    - link "Weekend in Tokyo Trip 1200JPY":
+      - /url: /app/groups/<ULID>
+    - text: One-on-one 9.25USD
+    - button "Show settled up groups"
   - heading "Shared expenses" [level=2]
   - searchbox "Search descriptions"
-  - combobox "Category":
-    - option "Any category" [selected]
-    - option "Rent"
-    - option "Mortgage"
-    - option "Electricity"
-    - option "Heat/gas"
-    - option "Water"
-    - option "TV/Phone/Internet"
-    - option "Parking"
-    - option "Insurance"
-    - option "Other"
-    - option "Groceries"
-    - option "Dining out"
-    - option "Household supplies"
-    - option "Car"
-    - option "Furniture"
-    - option "Maintenance"
-    - option "General"
-    - option "Games"
-    - option "Movies"
-    - option "Music"
-    - option "Other"
-    - option "Sports"
-    - option "Other"
-    - option "Other"
-    - option "Pets"
-    - option "Services"
-    - option "Bus/train"
-    - option "Gas/fuel"
-    - option "Other"
-    - option "Plane"
-    - option "Taxi"
-    - option "Trash"
-    - option "Liquor"
-    - option "Electronics"
-    - option "Clothing"
-    - option "Gifts"
-    - option "Medical expenses"
-    - option "Other"
-    - option "Taxes"
-    - option "Bicycle"
-    - option "Hotel"
-    - option "Cleaning"
-    - option "Education"
-    - option "Childcare"
-  - textbox "From"
-  - textbox "To"
-  - combobox "Kind":
-    - option "Expenses and payments" [selected]
-    - option "Expenses only"
-    - option "Settle-ups only"
+  - button "Filters"
   - button "Download CSV"
   - link "Coffee catch-up <DATE> · Dining out · You paid lent 9.25USD 18.50USD"
   - link "TeamLab tickets <DATE> · Weekend in Tokyo · Life · JJ paid borrowed 2400JPY 9600JPY":
