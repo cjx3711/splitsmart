@@ -15,7 +15,7 @@
  * Shared data with another live real account is a refusal, not a partial
  * delete. Removing Alice's import must not take Bob's balances with it.
  */
-import { transaction } from "../db/index.ts";
+import { transaction, type DB } from "../db/index.ts";
 import { collectIdChunks, forEachIdChunk } from "../db/chunk.ts";
 import { logChange, type SyncLogEntry } from "./sync-log.ts";
 
@@ -47,97 +47,26 @@ export interface WipeResult {
   };
 }
 
+export type SharingPerson = { id: string; name: string; email: string | null };
+
+/**
+ * Live real accounts that share this ledger: group members, expense
+ * participants, explicit friends, or anyone in a group with a placeholder
+ * that only exists here. Wipe refuses when this is non-empty; deleting the
+ * account converts the row to a ghost instead.
+ */
+export async function listSharingRealAccounts(trx: DB, userId: string): Promise<SharingPerson[]> {
+  const scope = await collectWipeScope(trx, userId);
+  return scope.others;
+}
+
 export async function wipeUserLedger(userId: string): Promise<WipeResult> {
   return transaction(async (trx) => {
-    const memberGroupIds = await ids(
-      trx.selectFrom("group_members").select("group_id as id").where("user_id", "=", userId),
-    );
-    const createdGroupIds = await ids(
-      trx.selectFrom("groups").select("id").where("created_by", "=", userId),
-    );
-    const groupIds = unique([...memberGroupIds, ...createdGroupIds]);
-
-    const participatedExpenseIds = await ids(
-      trx.selectFrom("expense_users").select("expense_id as id").where("user_id", "=", userId),
-    );
-    const createdExpenseIds = await ids(
-      trx.selectFrom("expenses").select("id").where("created_by", "=", userId),
-    );
-    const groupExpenseIds = await collectIdChunks(groupIds, (chunk) =>
-      ids(trx.selectFrom("expenses").select("id").where("group_id", "in", chunk)),
-    );
-    const expenseIds = unique([...participatedExpenseIds, ...createdExpenseIds, ...groupExpenseIds]);
-
-    const groupMemberIds = await collectIdChunks(groupIds, (chunk) =>
-      ids(trx.selectFrom("group_members").select("user_id as id").where("group_id", "in", chunk)),
-    );
-    const participantIds = await collectIdChunks(expenseIds, (chunk) =>
-      ids(trx.selectFrom("expense_users").select("user_id as id").where("expense_id", "in", chunk)),
-    );
-    const friendIds = unique([
-      ...(await ids(
-        trx.selectFrom("friendships").select("user_b_id as id").where("user_a_id", "=", userId),
-      )),
-      ...(await ids(
-        trx.selectFrom("friendships").select("user_a_id as id").where("user_b_id", "=", userId),
-      )),
-    ]);
-    const mergedGhostIds = await ids(
-      trx.selectFrom("users").select("id").where("merged_into_user_id", "=", userId),
-    );
-
-    const relatedUserIds = unique([
-      ...groupMemberIds,
-      ...participantIds,
-      ...friendIds,
-      ...mergedGhostIds,
-    ]).filter((id) => id !== userId);
-
-    const others = await collectIdChunks(relatedUserIds, (chunk) =>
-      trx
-        .selectFrom("users")
-        .select(["id", "name", "email"])
-        .where("id", "in", chunk)
-        .where("is_ghost", "=", 0)
-        .where("deleted_at", "is", null)
-        .execute(),
+    const { groupIds, expenseIds, ghostIds, friendships, others } = await collectWipeScope(
+      trx,
+      userId,
     );
     if (others.length > 0) throw new WipeBlockedError(others);
-
-    const ghostIds = (
-      await collectIdChunks(relatedUserIds, (chunk) =>
-        trx.selectFrom("users").select("id").where("id", "in", chunk).where("is_ghost", "=", 1).execute(),
-      )
-    ).map((r) => r.id);
-
-    if (ghostIds.length > 0) {
-      const extraReal = await trx
-        .selectFrom("group_members")
-        .innerJoin("users", "users.id", "group_members.user_id")
-        .select(["users.id", "users.name", "users.email"])
-        .where("group_members.user_id", "!=", userId)
-        .where("users.is_ghost", "=", 0)
-        .where("users.deleted_at", "is", null)
-        .where("group_members.left_at", "is", null)
-        .where((eb) =>
-          eb(
-            "group_members.group_id",
-            "in",
-            eb
-              .selectFrom("group_members as gm")
-              .select("gm.group_id")
-              .where("gm.user_id", "in", ghostIds),
-          ),
-        )
-        .execute();
-      if (extraReal.length > 0) throw new WipeBlockedError(extraReal);
-    }
-
-    const friendships = await trx
-      .selectFrom("friendships")
-      .select(["user_a_id", "user_b_id"])
-      .where((eb) => eb.or([eb("user_a_id", "=", userId), eb("user_b_id", "=", userId)]))
-      .execute();
 
     const logEntries: SyncLogEntry[] = [
       ...expenseIds.map((id) => ({
@@ -228,6 +157,115 @@ export async function wipeUserLedger(userId: string): Promise<WipeResult> {
       },
     };
   });
+}
+
+interface WipeScope {
+  groupIds: string[];
+  expenseIds: string[];
+  ghostIds: string[];
+  friendships: Array<{ user_a_id: string; user_b_id: string }>;
+  others: SharingPerson[];
+}
+
+async function collectWipeScope(trx: DB, userId: string): Promise<WipeScope> {
+  const memberGroupIds = await ids(
+    trx.selectFrom("group_members").select("group_id as id").where("user_id", "=", userId),
+  );
+  const createdGroupIds = await ids(
+    trx.selectFrom("groups").select("id").where("created_by", "=", userId),
+  );
+  const groupIds = unique([...memberGroupIds, ...createdGroupIds]);
+
+  const participatedExpenseIds = await ids(
+    trx.selectFrom("expense_users").select("expense_id as id").where("user_id", "=", userId),
+  );
+  const createdExpenseIds = await ids(
+    trx.selectFrom("expenses").select("id").where("created_by", "=", userId),
+  );
+  const groupExpenseIds = await collectIdChunks(groupIds, (chunk) =>
+    ids(trx.selectFrom("expenses").select("id").where("group_id", "in", chunk)),
+  );
+  const expenseIds = unique([...participatedExpenseIds, ...createdExpenseIds, ...groupExpenseIds]);
+
+  const groupMemberIds = await collectIdChunks(groupIds, (chunk) =>
+    ids(trx.selectFrom("group_members").select("user_id as id").where("group_id", "in", chunk)),
+  );
+  const participantIds = await collectIdChunks(expenseIds, (chunk) =>
+    ids(trx.selectFrom("expense_users").select("user_id as id").where("expense_id", "in", chunk)),
+  );
+  const friendIds = unique([
+    ...(await ids(
+      trx.selectFrom("friendships").select("user_b_id as id").where("user_a_id", "=", userId),
+    )),
+    ...(await ids(
+      trx.selectFrom("friendships").select("user_a_id as id").where("user_b_id", "=", userId),
+    )),
+  ]);
+  const mergedGhostIds = await ids(
+    trx.selectFrom("users").select("id").where("merged_into_user_id", "=", userId),
+  );
+
+  const relatedUserIds = unique([
+    ...groupMemberIds,
+    ...participantIds,
+    ...friendIds,
+    ...mergedGhostIds,
+  ]).filter((id) => id !== userId);
+
+  const others = await collectIdChunks(relatedUserIds, (chunk) =>
+    trx
+      .selectFrom("users")
+      .select(["id", "name", "email"])
+      .where("id", "in", chunk)
+      .where("is_ghost", "=", 0)
+      .where("deleted_at", "is", null)
+      .execute(),
+  );
+
+  const ghostIds = (
+    await collectIdChunks(relatedUserIds, (chunk) =>
+      trx.selectFrom("users").select("id").where("id", "in", chunk).where("is_ghost", "=", 1).execute(),
+    )
+  ).map((r) => r.id);
+
+  let extraReal: SharingPerson[] = [];
+  if (ghostIds.length > 0) {
+    extraReal = await trx
+      .selectFrom("group_members")
+      .innerJoin("users", "users.id", "group_members.user_id")
+      .select(["users.id", "users.name", "users.email"])
+      .where("group_members.user_id", "!=", userId)
+      .where("users.is_ghost", "=", 0)
+      .where("users.deleted_at", "is", null)
+      .where("group_members.left_at", "is", null)
+      .where((eb) =>
+        eb(
+          "group_members.group_id",
+          "in",
+          eb
+            .selectFrom("group_members as gm")
+            .select("gm.group_id")
+            .where("gm.user_id", "in", ghostIds),
+        ),
+      )
+      .execute();
+  }
+
+  const friendships = await trx
+    .selectFrom("friendships")
+    .select(["user_a_id", "user_b_id"])
+    .where((eb) => eb.or([eb("user_a_id", "=", userId), eb("user_b_id", "=", userId)]))
+    .execute();
+
+  const seen = new Set<string>();
+  const sharing: SharingPerson[] = [];
+  for (const person of [...others, ...extraReal]) {
+    if (seen.has(person.id)) continue;
+    seen.add(person.id);
+    sharing.push(person);
+  }
+
+  return { groupIds, expenseIds, ghostIds, friendships, others: sharing };
 }
 
 async function ids(query: { execute(): Promise<Array<{ id: string | null }>> }): Promise<string[]> {

@@ -46,6 +46,7 @@ import {
   identityPatchSchema,
 } from "./person-schema.ts";
 import { adoptConfirmedImportedGhostByEmail } from "../../domain/splitwise-identity.ts";
+import { deleteAccount, DELETE_ACCOUNT_CONFIRMATION } from "../../domain/delete-account.ts";
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -617,6 +618,22 @@ export const authRoutes = new Hono<AppEnv>()
     }),
   });
 })
+  /**
+   * Close the account. Confirmation is in the body so a stray POST cannot do
+   * this. If another real account still shares groups or expenses, the row
+   * becomes a ghost rather than taking their balances with it. Otherwise the
+   * ledger is wiped and the login is retired.
+   */
+  .post(
+  "/delete",
+  requireAuth,
+  zValidator("json", z.object({ confirm: z.literal(DELETE_ACCOUNT_CONFIRMATION) })),
+  async (c) => {
+    const result = await deleteAccount(c.get("user").id);
+    deleteCookie(c, SESSION_COOKIE, { path: "/" });
+    return c.json(result);
+  },
+)
 // --- API tokens -------------------------------------------------------------
   .get("/tokens", requireAuth, async (c) => {
   const auth = c.get("user");
