@@ -47,16 +47,13 @@
       - listitem: /Weekend in Tokyo
   - heading "Weekend in Tokyo" [level=1]
   - paragraph: Trip · default JPY · 4 members
+  - button "Options"
   - button "Settle up"
   - button "Add Expense"
-  - checkbox "Simplify debts About simplify debts Friend balances show the raw who-owes-whom from each bill."
-  - text: Simplify debts
-  - button "About simplify debts": "?"
-  - text: Friend balances show the raw who-owes-whom from each bill.
   - heading "Balances" [level=2]
   - link "Test User gets back 1200JPY":
     - /url: /app/friends/<ULID>
-  - text: You gets back 6000JPY
+  - text: You get back 6000JPY
   - link "Ah Beng owes 3600JPY":
     - /url: /app/friends/<ULID>
   - link "Hana owes 3600JPY":
@@ -130,6 +127,7 @@
       - /url: /app/friends/<ULID>
     - text: paid · 2 comments borrowed 1200JPY 4800JPY
   - heading "Members" [level=2]
+  - button "+ Add member"
   - link "Test User owner · has an account":
     - /url: /app/friends/<ULID>
   - text: You member · has an account

@@ -7,6 +7,7 @@ import { api, type AdminBackupsResponse, type BackupRunSummary } from "../api.ts
 import { HelpTip } from "../HelpTip.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { AdminNav } from "./AdminNav.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 const POLL_INTERVAL_MS = 10_000;
 const RELATIVE_TICK_MS = 30_000;
@@ -211,6 +212,10 @@ export function AdminBackups() {
       )}
       {notice && <p className="notice">{notice}</p>}
 
+      {!data && !error ? (
+        <Skeleton kind="adminBackups" />
+      ) : (
+      <>
       <div className="admin-backup-cards">
         <div className="admin-backup-card">
           <h2>Last success</h2>
@@ -312,6 +317,8 @@ export function AdminBackups() {
         <p className="muted">
           Showing {runs.length} of {stats.total} recorded runs, newest first.
         </p>
+      )}
+      </>
       )}
     </>
   );

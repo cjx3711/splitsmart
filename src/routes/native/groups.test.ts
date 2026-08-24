@@ -180,3 +180,35 @@ describe("simplify debts setting", () => {
     assert.equal(res.status, 403);
   });
 });
+
+describe("group options", () => {
+  test("a member can rename the group and change its type", async () => {
+    const res = await as(memberToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "The Flat", groupType: "other" }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      group: { name: string; group_type: string; simplify_by_default: number };
+    };
+    assert.equal(body.group.name, "The Flat");
+    assert.equal(body.group.group_type, "other");
+
+    // A name/type patch must not reset simplify just because it was omitted.
+    const after = await db
+      .selectFrom("groups")
+      .select("simplify_by_default")
+      .where("id", "=", groupId)
+      .executeTakeFirstOrThrow();
+    assert.equal(after.simplify_by_default, 1);
+  });
+
+  test("a stranger cannot rename it", async () => {
+    const strangerToken = (await createApiToken(strangerId, "test")).token;
+    const res = await as(strangerToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Hijacked" }),
+    });
+    assert.equal(res.status, 403);
+  });
+});

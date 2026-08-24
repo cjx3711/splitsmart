@@ -13,6 +13,7 @@ import { Avatar } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 const VERBS: Record<string, string> = {
   "expense.created": "added",
@@ -86,7 +87,6 @@ export function Activity() {
   }
 
   if (error) return <p className="error">{error}</p>;
-  if (!entries) return <p className="muted">Loading…</p>;
 
   return (
     <>
@@ -94,7 +94,9 @@ export function Activity() {
         <h1>Recent activity</h1>
       </div>
 
-      {entries.length === 0 ? (
+      {!entries ? (
+        <Skeleton kind="activity" />
+      ) : entries.length === 0 ? (
         <p className="empty">Nothing has happened yet.</p>
       ) : (
         <div className="list">

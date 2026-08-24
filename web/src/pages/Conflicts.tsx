@@ -22,6 +22,7 @@ import { Amount } from "../money.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { useLocal } from "../sync/useLocal.ts";
 import type { LocalExpense, OutboxOp } from "../db/local.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 interface Entry {
   op: OutboxOp;
@@ -38,15 +39,15 @@ export function Conflicts() {
     );
   });
 
-  if (entries === undefined) return <p className="muted">Loading…</p>;
-
   return (
     <>
       <div className="page-head">
         <h1>Unsaved changes</h1>
       </div>
 
-      {entries.length === 0 ? (
+      {entries === undefined ? (
+        <Skeleton kind="list" rows={3} />
+      ) : entries.length === 0 ? (
         <p className="empty">
           Everything has been saved. Changes that the server cannot accept show up here
           rather than disappearing.

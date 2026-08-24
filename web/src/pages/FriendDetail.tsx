@@ -50,6 +50,7 @@ import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { HelpTip } from "../HelpTip.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
@@ -71,7 +72,7 @@ export function FriendDetail() {
   const membersByGroup =
     useGroupMembers(breakdownGroupIds) ?? new Map<string, GroupMember[]>();
 
-  if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
+  if (loaded === undefined || !user) return <Skeleton kind="friend" />;
   if (loaded === null) return <p className="empty">This person is not on this device.</p>;
 
   const friend = loaded.friend;

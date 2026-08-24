@@ -22,7 +22,8 @@ import { expenseCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
 import { avatarFromRow } from "../Avatar.tsx";
-import { FriendListItem } from "../FriendListItem.tsx";
+import { FriendListItem, oweVerb } from "../FriendListItem.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function GuestExpense() {
   const { id } = useParams<{ id: string }>();
@@ -78,7 +79,7 @@ export function GuestExpense() {
   }
 
   if (error) return <p className="error">{error}</p>;
-  if (!expense || !initial) return <p className="muted">Loading…</p>;
+  if (!expense || !initial) return <Skeleton kind="expense" />;
 
   const nameOf = makeLookup(people, me.id);
   const avatarFor = (userId: string) => {
@@ -162,7 +163,8 @@ export function GuestExpense() {
                     </div>
                   )}
                   <div>
-                    owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
+                    {oweVerb(share.user_id === me.id)}
+                    <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
                   </div>
                 </div>
               </FriendListItem>

@@ -9,6 +9,7 @@ import { HelpTip } from "../HelpTip.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { UsageChart } from "../UsageChart.tsx";
 import { AdminNav } from "./AdminNav.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function Admin() {
   const online = useOnline();
@@ -107,7 +108,7 @@ export function Admin() {
       {error && <p className="error">{error}</p>}
 
       {!users ? (
-        <p className="muted">Loading…</p>
+        <Skeleton kind="admin" />
       ) : users.length === 0 ? (
         <p className="muted">No accounts match.</p>
       ) : (

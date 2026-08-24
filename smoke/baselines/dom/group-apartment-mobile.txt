@@ -16,14 +16,11 @@
       - listitem: /Apartment 4B
   - heading "Apartment 4B" [level=1]
   - paragraph: Home · default USD · 2 members
+  - button "Options"
   - button "Settle up"
   - button "Add Expense"
-  - checkbox "Simplify debts About simplify debts Friend balances in this group are simplified." [checked]
-  - text: Simplify debts
-  - button "About simplify debts": "?"
-  - text: Friend balances in this group are simplified.
   - heading "Balances" [level=2]
-  - text: You gets back 3696.21USD
+  - text: You get back 3696.21USD
   - link "JJ owes 3696.21USD":
     - /url: /app/friends/<ULID>
   - heading "Suggested settle-up About suggested settle-up" [level=2]:

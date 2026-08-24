@@ -7,6 +7,16 @@ export function friendHref(userId: string, currentUserId: string): string | unde
   return userId === currentUserId ? undefined : `/friends/${userId}`;
 }
 
+/** "owes" / "gets back" next to a name. First person when the row is you. */
+export function ledgerVerb(isYou: boolean, amountMinor: number): string {
+  if (amountMinor >= 0) return isYou ? "get back " : "gets back ";
+  return isYou ? "owe " : "owes ";
+}
+
+export function oweVerb(isYou: boolean): string {
+  return isYou ? "owe " : "owes ";
+}
+
 /**
  * One person in a list: avatar, name, optional subtitle, optional right slot.
  *

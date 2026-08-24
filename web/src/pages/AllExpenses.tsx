@@ -14,6 +14,7 @@ import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
 import { useAuth } from "../App.tsx";
 import { useExpenses, useFriends, useGroups, useMirrorReady } from "../localData.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function AllExpenses() {
   const { user } = useAuth();
@@ -24,7 +25,7 @@ export function AllExpenses() {
   const groups = useGroups()?.groups ?? [];
   const ready = useMirrorReady();
 
-  if (!user) return <p className="muted">Loading…</p>;
+  if (!user) return <Skeleton kind="expenses" />;
 
   const nameOf = makeLookup(friends, user.id);
   const filtering = Object.keys(filters).length > 0;
@@ -44,7 +45,7 @@ export function AllExpenses() {
       />
 
       {expenses === null ? (
-        <p className="muted">Loading…</p>
+        <Skeleton kind="expenseList" />
       ) : (
         <ExpenseList
           expenses={expenses}

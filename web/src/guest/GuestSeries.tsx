@@ -16,6 +16,7 @@ import {
   seriesTemplateId,
   type RepeatInterval,
 } from "../../../src/domain/recurring.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 interface SeriesPayload {
   templateId: string;
@@ -98,7 +99,7 @@ export function GuestSeries() {
 
   if (error) return <p className="error">{error}</p>;
   if (missing) return <p className="empty">This expense is not part of a repeating series.</p>;
-  if (!view) return <p className="muted">Loading…</p>;
+  if (!view) return <Skeleton kind="series" />;
 
   const nameOf = (userId: string) => {
     if (userId === me.id) return "You";

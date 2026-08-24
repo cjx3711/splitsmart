@@ -4,6 +4,7 @@ import { api, ApiError } from "../api.ts";
 import { useAuth } from "../App.tsx";
 import { Logo } from "../Logo.tsx";
 import { PasswordField } from "../PasswordField.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 type State =
   | { kind: "working" }
@@ -96,7 +97,14 @@ export function Verify() {
     }
   }
 
-  if (state.kind === "working") return <p className="muted">Confirming your email…</p>;
+  if (state.kind === "working") {
+    return (
+      <div className="auth stack">
+        <Logo size={30} />
+        <Skeleton kind="auth" label="Confirming your email" />
+      </div>
+    );
+  }
 
   if (state.kind === "signup") {
     return (

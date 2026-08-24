@@ -82,7 +82,7 @@
   - paragraph: 92.43USD
   - paragraph: Includes the laundry detergent
   - heading "Who paid, who owes" [level=2]
-  - text: You paid 92.43USD owes 46.22USD
+  - text: You paid 92.43USD owe 46.22USD
   - link "JJ owes 46.21USD":
     - /url: /app/friends/<ULID>
   - heading "Comments" [level=2]

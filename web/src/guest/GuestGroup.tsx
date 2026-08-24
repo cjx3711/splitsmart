@@ -20,7 +20,7 @@ import {
   groupSettleChoices,
 } from "../SettleUpDialog.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
-import { FriendListItem } from "../FriendListItem.tsx";
+import { FriendListItem, ledgerVerb } from "../FriendListItem.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
@@ -29,6 +29,7 @@ import { groupCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestMember } from "./guestApi.ts";
 import { HelpTip } from "../HelpTip.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function GuestGroup() {
   const { id } = useParams<{ id: string }>();
@@ -77,7 +78,7 @@ export function GuestGroup() {
   }, [load]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!group) return <p className="muted">Loading…</p>;
+  if (!group) return <Skeleton kind="group" />;
 
   const nameOf = makeLookup(members, me.id);
   const people = members.map((m) => ({
@@ -204,7 +205,7 @@ export function GuestGroup() {
                               key={b.currencyCode}
                               className={b.amountMinor >= 0 ? "positive" : "negative"}
                             >
-                              {b.amountMinor >= 0 ? "gets back " : "owes "}
+                              {ledgerVerb(entry.userId === me.id, b.amountMinor)}
                               <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
                             </div>
                           ))}

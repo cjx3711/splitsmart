@@ -37,7 +37,8 @@ import { useExpense, useFriends } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { useLocal } from "../sync/useLocal.ts";
 import { avatarFromRow } from "../Avatar.tsx";
-import { FriendListItem, friendHref } from "../FriendListItem.tsx";
+import { FriendListItem, friendHref, oweVerb } from "../FriendListItem.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function ExpenseDetail() {
   const { id } = useParams<{ id: string }>();
@@ -63,7 +64,7 @@ export function ExpenseDetail() {
     : undefined;
   const stop = useStopSeries(templateId);
 
-  if (loaded === undefined || !user) return <p className="muted">Loading…</p>;
+  if (loaded === undefined || !user) return <Skeleton kind="expense" />;
   if (loaded === null) return <p className="empty">This expense is not on this device.</p>;
 
   const expense = loaded.expense;
@@ -250,7 +251,8 @@ export function ExpenseDetail() {
                         </div>
                       )}
                       <div>
-                        owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
+                        {oweVerb(share.user_id === user.id)}
+                        <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
                       </div>
                     </div>
                   </FriendListItem>

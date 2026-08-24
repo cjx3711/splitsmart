@@ -169,7 +169,25 @@ export const groupRoutes = new Hono<AppEnv>()
     role: membership.role,
   });
 })
-  .patch("/:id", zValidator("json", z.object({ simplifyByDefault: z.boolean() })), async (c) => {
+  .patch(
+  "/:id",
+  zValidator(
+    "json",
+    z
+      .object({
+        name: z.string().trim().min(1).max(200).optional(),
+        groupType: z.enum(GROUP_TYPES).optional(),
+        simplifyByDefault: z.boolean().optional(),
+      })
+      .refine(
+        (body) =>
+          body.name !== undefined ||
+          body.groupType !== undefined ||
+          body.simplifyByDefault !== undefined,
+        { message: "Nothing to update" },
+      ),
+  ),
+  async (c) => {
   const auth = c.get("user");
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
@@ -178,13 +196,17 @@ export const groupRoutes = new Hono<AppEnv>()
     return c.json({ error: "Not a member of this group" }, 403);
   }
 
-  const { simplifyByDefault } = c.req.valid("json");
+  const { name, groupType, simplifyByDefault } = c.req.valid("json");
 
   const group = await transaction(async (trx) => {
     const updated = await trx
       .updateTable("groups")
       .set({
-        simplify_by_default: simplifyByDefault ? 1 : 0,
+        ...(name !== undefined ? { name } : {}),
+        ...(groupType !== undefined ? { group_type: groupType } : {}),
+        ...(simplifyByDefault !== undefined
+          ? { simplify_by_default: simplifyByDefault ? 1 : 0 }
+          : {}),
         updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
       })
       .where("id", "=", groupId)

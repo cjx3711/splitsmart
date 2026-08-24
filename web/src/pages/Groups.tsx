@@ -9,6 +9,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { useGroups, useMirrorReady } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function Groups() {
   const data = useGroups();
@@ -27,7 +28,7 @@ export function Groups() {
       </div>
 
       {data === undefined ? (
-        <p className="muted">Loading…</p>
+        <Skeleton kind="list" rows={5} />
       ) : data.groups.length === 0 ? (
         <p className="empty">
           {ready ? (

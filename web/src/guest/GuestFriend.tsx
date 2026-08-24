@@ -22,6 +22,7 @@ import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { ConvertBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function GuestFriend() {
   const { session } = useGuest();
@@ -63,7 +64,7 @@ export function GuestFriend() {
   }, [load]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!counterpart) return <p className="muted">Loading…</p>;
+  if (!counterpart) return <Skeleton kind="friend" />;
 
   const name = guestFullName(counterpart);
   const pair = [

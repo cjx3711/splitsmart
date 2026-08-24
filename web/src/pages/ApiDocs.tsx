@@ -208,18 +208,22 @@ export function ApiDocs() {
         </p>
       </Endpoint>
       <Endpoint method="PATCH" path="/api/v1/groups/:id">
-        <Code>{`{ "simplifyByDefault": true }`}</Code>
+        <Code>{`{ "name": "Kyushu 2025", "groupType": "trip",
+  "simplifyByDefault": true }`}</Code>
         <p>
-          Any member. Turns Splitwise-style simplify-debts on or off for this
-          group&apos;s contribution to friend totals. Nets on this page do not
-          change. New groups and imported Splitwise groups default on.
+          Any member. Fields are optional; omit one to leave it alone.{" "}
+          <code>simplifyByDefault</code> turns Splitwise-style simplify-debts on
+          or off for this group&apos;s contribution to friend totals. Nets on
+          the group page do not change. New groups and imported Splitwise groups
+          default on.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/groups/:id/members">
         <Code>{`{ "userId": "01ARZ…" }  or  { "name": "Jordan" }`}</Code>
         <p>
-          Adds an existing person, or creates a new placeholder. Opening a link
-          does not create members; someone with an account puts them there.
+          Any member with an account. Adds an existing person, or creates a new
+          placeholder. Opening a guest link does not create members, and a
+          guest-link holder cannot add people.
         </p>
       </Endpoint>
       <Endpoint method="DELETE" path="/api/v1/groups/:id/members/:userId">

@@ -119,16 +119,19 @@ export async function revertPerson(db: LocalDb, previous: SyncUser): Promise<voi
   });
 }
 
-export async function setGroupSimplify(
+export async function patchGroup(
   db: LocalDb,
   groupId: string,
-  on: boolean,
-): Promise<boolean | undefined> {
+  patch: { name?: string; groupType?: string; simplifyByDefault?: boolean },
+): Promise<SyncGroup | undefined> {
   const group = await db.groups.get(groupId);
   if (!group) return undefined;
-  const was = group.simplifyByDefault !== false;
-  await db.groups.update(groupId, { simplifyByDefault: on });
-  return was;
+  await db.groups.update(groupId, {
+    ...(patch.name !== undefined ? { name: patch.name } : {}),
+    ...(patch.groupType !== undefined ? { groupType: patch.groupType } : {}),
+    ...(patch.simplifyByDefault !== undefined ? { simplifyByDefault: patch.simplifyByDefault } : {}),
+  });
+  return group;
 }
 
 export async function markMemberLeft(

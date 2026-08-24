@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth, useSidebarRefresh } from "../App.tsx";
-import { GROUP_TYPE_LABELS, GROUP_TYPES, type GroupType } from "../groupTypes.tsx";
+import { GroupTypePicker, type GroupType } from "../groupTypes.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { HelpTip } from "../HelpTip.tsx";
@@ -57,32 +57,20 @@ export function NewGroup() {
       ) : (
       <form onSubmit={handleSubmit} className="card stack">
         {error && <p className="error">{error}</p>}
-        <div className="form-grid">
-          <div>
-            <label htmlFor="groupName">Name</label>
-            <input
-              id="groupName"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Trip to Tokyo"
-              autoFocus
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="groupType">Type</label>
-            <select
-              id="groupType"
-              value={groupType}
-              onChange={(e) => setGroupType(e.target.value as GroupType)}
-            >
-              {GROUP_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {GROUP_TYPE_LABELS[type]}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div>
+          <label htmlFor="groupName">Name</label>
+          <input
+            id="groupName"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Trip to Tokyo"
+            autoFocus
+            required
+          />
+        </div>
+        <div>
+          <label id="groupTypeLabel">Type and icon</label>
+          <GroupTypePicker value={groupType} onChange={setGroupType} disabled={busy} />
         </div>
         <label className="setting-toggle">
           <input
@@ -95,8 +83,8 @@ export function NewGroup() {
               Simplify debts
               <HelpTip label="About simplify debts">
                 When on, friend totals for this group collapse cycles through other people, the same
-                way Splitwise does. Each bill still shows who paid. You can change this later on the
-                group page.
+                way Splitwise does. Each bill still shows who paid. You can change this later in
+                group options.
               </HelpTip>
             </span>
             <span className="muted" style={{ display: "block", marginTop: "0.15rem" }}>

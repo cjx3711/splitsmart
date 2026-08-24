@@ -5,6 +5,7 @@ import { Logo } from "../Logo.tsx";
 import { PasswordField } from "../PasswordField.tsx";
 import { useAuth } from "../App.tsx";
 import { readLastUserId } from "../lastUser.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 /** In-app paths only: `next` is a query string, so this is an open-redirect check. */
 function inAppPath(next: string | null): string {
@@ -64,7 +65,13 @@ export function Login() {
   if (user) return <Navigate to={inAppPath(next)} replace />;
   // A returning visitor's profile is still loading from the mirror. Don't
   // flash the form; Navigate above fires as soon as the cached user appears.
-  if (loading && readLastUserId()) return <p className="muted">Loading…</p>;
+  if (loading && readLastUserId()) {
+    return (
+      <div className="auth stack">
+        <Skeleton kind="auth" />
+      </div>
+    );
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

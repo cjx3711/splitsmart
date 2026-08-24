@@ -4,6 +4,7 @@ import { api, ApiError } from "../api.ts";
 import { Logo } from "../Logo.tsx";
 import { PasswordField } from "../PasswordField.tsx";
 import { useAuth } from "../App.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 /** In-app paths only: `next` is a query string, so this is an open-redirect check. */
 function inAppPath(next: string | null): string {
@@ -153,7 +154,14 @@ function ChoosePassword({ token }: { token: string }) {
     }
   }
 
-  if (state.kind === "working") return <p className="muted">Checking that link…</p>;
+  if (state.kind === "working") {
+    return (
+      <div className="auth stack">
+        <Logo size={30} />
+        <Skeleton kind="auth" label="Checking that link" />
+      </div>
+    );
+  }
 
   if (state.kind === "failed") {
     return (

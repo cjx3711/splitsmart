@@ -19,6 +19,7 @@ import { Dashboard } from "./pages/Dashboard.tsx";
 import { Groups } from "./pages/Groups.tsx";
 import { NewGroup } from "./pages/NewGroup.tsx";
 import { GroupDetail } from "./pages/GroupDetail.tsx";
+import { GroupOptions } from "./pages/GroupOptions.tsx";
 import { Friends } from "./pages/Friends.tsx";
 import { NewFriend } from "./pages/NewFriend.tsx";
 import { FriendDetail } from "./pages/FriendDetail.tsx";
@@ -38,6 +39,7 @@ import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 import { Footer } from "./Footer.tsx";
 import { api } from "./api.ts";
+import { Skeleton } from "./Skeleton.tsx";
 
 /**
  * The session, as every screen has always read it.
@@ -113,6 +115,7 @@ function Shell() {
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/groups" element={<Protected><Groups /></Protected>} />
       <Route path="/groups/new" element={<Protected><NewGroup /></Protected>} />
+      <Route path="/groups/:id/options" element={<Protected><GroupOptions /></Protected>} />
       <Route path="/groups/:id" element={<Protected><GroupDetail /></Protected>} />
       <Route path="/friends" element={<Protected><Friends /></Protected>} />
       <Route path="/friends/new" element={<Protected><NewFriend /></Protected>} />
@@ -197,7 +200,7 @@ function Shell() {
 function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <Skeleton kind="page" />;
   if (!user) {
     // Carry where they were going, so logging in lands them there rather than
     // on the dashboard. Guest claim links depend on this.
@@ -236,7 +239,7 @@ function AdminGate({ children }: { children: ReactNode }) {
     };
   }, [user, loading, setUser]);
 
-  if (loading || !checked) return <p className="muted">Loading…</p>;
+  if (loading || !checked) return <Skeleton kind="page" />;
   if (!user?.isAdmin) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

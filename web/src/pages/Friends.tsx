@@ -18,6 +18,7 @@ import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { dropFriendPair, restoreFriendPair } from "../sync/localFirst.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function Friends() {
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export function Friends() {
       {error && <p className="error" style={{ marginBottom: "1rem" }}>{error}</p>}
 
       {friends === null ? (
-        <p className="muted">Loading…</p>
+        <Skeleton kind="people" />
       ) : friends.length === 0 ? (
         <p className="empty">
           {ready ? (

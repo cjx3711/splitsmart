@@ -8,6 +8,7 @@ import { HelpTip } from "../HelpTip.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { UsageChart } from "../UsageChart.tsx";
 import { AdminNav } from "./AdminNav.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 const COUNT_LABELS: Array<{ key: keyof UsageCounts; label: string }> = [
   { key: "expensesCreated", label: "Expenses created" },
@@ -128,7 +129,7 @@ export function AdminUser() {
         </>
       )}
 
-      {!user && !notFound && !error && <p className="muted">Loading…</p>}
+      {!user && !notFound && !error && <Skeleton kind="adminUser" />}
     </>
   );
 }

@@ -9,6 +9,7 @@ import { api, type AccessLink } from "./api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { NeedsConnection, useOnline } from "./OnlineOnly.tsx";
 import { HelpTip } from "./HelpTip.tsx";
+import { Skeleton } from "./Skeleton.tsx";
 
 export function CopyLinkButton({ url, label = "Copy link" }: { url: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -108,7 +109,16 @@ export function LinkPanel({
     setPending(null);
   }
 
-  if (links === null) return <p className="muted">Loading links…</p>;
+  if (links === null) {
+    return (
+      <div className="card stack">
+        <p className="muted" style={{ margin: 0 }}>
+          {intro}
+        </p>
+        <Skeleton kind="links" rows={Math.max(slots.length, 1)} label="Loading links" />
+      </div>
+    );
+  }
 
   const pendingSlot = pending?.slot ?? null;
 

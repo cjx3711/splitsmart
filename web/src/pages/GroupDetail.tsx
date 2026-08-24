@@ -11,7 +11,7 @@
  * stack them, with balances still above the expenses.
  */
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, displayName, type GroupMember, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
@@ -26,22 +26,24 @@ import {
   paymentAsExpense,
 } from "../SettleUpDialog.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
-import { groupTypeLabel } from "../groupTypes.tsx";
+import { GroupTypeIcon, groupTypeLabel } from "../groupTypes.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
-import { OnlineOnly, useOnline } from "../OnlineOnly.tsx";
+import { OnlineOnly } from "../OnlineOnly.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
-import { markMemberLeft, patchPerson, restoreMember, revertPerson, setGroupSimplify } from "../sync/localFirst.ts";
+import { markMemberLeft, patchPerson, restoreMember, revertPerson } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { HelpTip } from "../HelpTip.tsx";
-import { FriendListItem, friendHref } from "../FriendListItem.tsx";
+import { FriendListItem, friendHref, ledgerVerb } from "../FriendListItem.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | "convert" | null>(null);
@@ -49,11 +51,9 @@ export function GroupDetail() {
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
   const [removingBusy, setRemovingBusy] = useState(false);
-  const [simplifyBusy, setSimplifyBusy] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
   const { engine, syncNow, db } = useSync();
-  const online = useOnline();
 
   // Live queries: a sync landing, or a queued write, re-renders this screen
   // without anything having to invalidate anything.
@@ -61,7 +61,7 @@ export function GroupDetail() {
   const expenses = useGroupExpenses(id, filters)?.expenses ?? [];
   const settle = useSettleSuggestions(id)?.suggestions ?? [];
 
-  if (view === undefined || !user) return <p className="muted">Loading…</p>;
+  if (view === undefined || !user) return <Skeleton kind="group" />;
   if (view === null) return <p className="empty">This group is not on this device.</p>;
 
   const { group, members, balances, role } = view;
@@ -129,65 +129,29 @@ export function GroupDetail() {
       <Breadcrumbs trail={[{ label: "Groups", to: "/groups" }, { label: group.name }]} />
 
       <div className="page-head">
-        <div>
-          <h1>{group.name}</h1>
-          <p className="muted" style={{ margin: 0 }}>
-            {groupTypeLabel(group.group_type)} · default {group.default_currency} · {members.length}{" "}
-            {members.length === 1 ? "member" : "members"}
-          </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <GroupTypeIcon type={group.group_type} className="group-page-icon" />
+          <div>
+            <h1>{group.name}</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              {groupTypeLabel(group.group_type)} · default {group.default_currency} · {members.length}{" "}
+              {members.length === 1 ? "member" : "members"}
+            </p>
+          </div>
         </div>
         <div className="page-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => navigate(`/groups/${group.id}/options`)}
+          >
+            Options
+          </button>
           <button className="secondary" onClick={() => setOpenDialog("settle")}>
             Settle up
           </button>
           <button onClick={() => setOpenDialog("expense")}>Add Expense</button>
         </div>
-      </div>
-
-      <div className="card">
-        <label className="setting-toggle">
-          <input
-            type="checkbox"
-            checked={group.simplify_by_default === 1}
-            disabled={simplifyBusy || !online}
-            onChange={(event) => {
-              const on = event.target.checked;
-              const was = group.simplify_by_default === 1;
-              if (!db) return;
-              setSimplifyBusy(true);
-              // The box is a liveQuery of the mirror. PATCH then syncNow can
-              // join a pull that started before this write, so the checked
-              // state would stay put until a later tick. Write the mirror
-              // first; revert if the server refuses.
-              void (async () => {
-                await setGroupSimplify(db, group.id, on);
-                try {
-                  await api.updateGroup(group.id, { simplifyByDefault: on });
-                  syncNow();
-                } catch {
-                  await setGroupSimplify(db, group.id, was);
-                } finally {
-                  setSimplifyBusy(false);
-                }
-              })();
-            }}
-          />
-            <span>
-              <span className="with-help">
-                Simplify debts
-                <HelpTip label="About simplify debts">
-                  When on, friend totals for this group match Splitwise: cycles through other people
-                  collapse. Your net in the group does not change, and each bill still shows who
-                  paid. Imported groups keep the Splitwise setting.
-                </HelpTip>
-              </span>
-              <span className="muted" style={{ display: "block", marginTop: "0.15rem" }}>
-                {group.simplify_by_default === 1
-                  ? "Friend balances in this group are simplified."
-                  : "Friend balances show the raw who-owes-whom from each bill."}
-              </span>
-            </span>
-          </label>
       </div>
 
       <AddExpenseDialog
@@ -295,7 +259,7 @@ export function GroupDetail() {
                             key={b.currencyCode}
                             className={b.amountMinor >= 0 ? "positive" : "negative"}
                           >
-                            {b.amountMinor >= 0 ? "gets back " : "owes "}
+                            {ledgerVerb(entry.userId === user.id, b.amountMinor)}
                             <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
                           </div>
                         ))}
@@ -381,13 +345,11 @@ export function GroupDetail() {
 
       <div className="section-head">
         <h2>Members</h2>
-        {isOwner && (
-          <OnlineOnly what="Adding someone to a group">
-            <button type="button" className="link" onClick={() => setAddMemberOpen(true)}>
-              + Add member
-            </button>
-          </OnlineOnly>
-        )}
+        <OnlineOnly what="Adding someone to a group">
+          <button type="button" className="link" onClick={() => setAddMemberOpen(true)}>
+            + Add member
+          </button>
+        </OnlineOnly>
       </div>
       <div className="list">
         {members.map((m) => (
@@ -440,17 +402,15 @@ export function GroupDetail() {
         ))}
       </div>
 
-      {isOwner && (
-        <OnlineOnly what="Adding someone to a group">
-          <AddMemberDialog
-            open={addMemberOpen}
-            onClose={() => setAddMemberOpen(false)}
-            groupId={group.id}
-            existingIds={members.map((m) => m.id)}
-            onAdded={syncNow}
-          />
-        </OnlineOnly>
-      )}
+      <OnlineOnly what="Adding someone to a group">
+        <AddMemberDialog
+          open={addMemberOpen}
+          onClose={() => setAddMemberOpen(false)}
+          groupId={group.id}
+          existingIds={members.map((m) => m.id)}
+          onAdded={syncNow}
+        />
+      </OnlineOnly>
 
       <ConfirmDialog
         open={removingMember !== null}

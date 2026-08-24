@@ -27,6 +27,7 @@ import { Avatar } from "./Avatar.tsx";
 import { useComments } from "./localData.ts";
 import { useSync } from "./sync/SyncProvider.tsx";
 import { ulid } from "../../src/domain/ulid.ts";
+import { Skeleton } from "./Skeleton.tsx";
 
 export interface CommentThreadApi {
   list: (expenseId: string) => Promise<{ comments: Comment[] }>;
@@ -132,7 +133,7 @@ export function CommentThread({
       {error && <p className="error">{error}</p>}
 
       {comments === null ? (
-        <p className="muted">Loading…</p>
+        <Skeleton kind="comments" />
       ) : comments.length === 0 ? (
         <p className="empty">Nothing said about this one yet.</p>
       ) : (

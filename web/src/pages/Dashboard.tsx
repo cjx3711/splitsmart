@@ -19,6 +19,7 @@ import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
 import { friendDashboardColumn, useExchangeRates } from "../exchangeRates.ts";
 import { HelpTip } from "../HelpTip.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function Dashboard() {
   const { user } = useAuth();
@@ -31,7 +32,41 @@ export function Dashboard() {
   const fxSymbols = friends?.flatMap((f) => f.balances.map((b) => b.currencyCode)) ?? [];
   const { rates } = useExchangeRates(user?.defaultCurrency ?? "", fxSymbols);
 
-  if (!friends || !user) return <p className="muted">Loading…</p>;
+  if (!user) return <Skeleton kind="page" />;
+
+  const head = (
+    <div className="page-head">
+      <h1 className="with-help">
+        Dashboard
+        <HelpTip label="About these totals">
+          Every currency is a separate ledger. A combined figure, when shown, is an estimate.
+          Friend totals use simplify-debts inside groups that have it on, matching Splitwise.
+          One-on-one expenses stay between the two of you.
+        </HelpTip>
+      </h1>
+      <div className="page-actions">
+        <OnlineOnly what="Creating a group">
+          <Link to="/groups/new">
+            <button className="secondary inline">New group</button>
+          </Link>
+        </OnlineOnly>
+        <OnlineOnly what="Adding a friend">
+          <Link to="/friends/new">
+            <button className="inline">Add a friend</button>
+          </Link>
+        </OnlineOnly>
+      </div>
+    </div>
+  );
+
+  if (!friends) {
+    return (
+      <>
+        {head}
+        <Skeleton kind="dashboard" />
+      </>
+    );
+  }
 
   const columnOf = (person: Friend) =>
     friendDashboardColumn(person.balances, user.defaultCurrency, rates, decimalsFor);
@@ -51,28 +86,7 @@ export function Dashboard() {
 
   return (
     <>
-      <div className="page-head">
-        <h1 className="with-help">
-          Dashboard
-          <HelpTip label="About these totals">
-            Every currency is a separate ledger. A combined figure, when shown, is an estimate.
-            Friend totals use simplify-debts inside groups that have it on, matching Splitwise.
-            One-on-one expenses stay between the two of you.
-          </HelpTip>
-        </h1>
-        <div className="page-actions">
-          <OnlineOnly what="Creating a group">
-            <Link to="/groups/new">
-              <button className="secondary inline">New group</button>
-            </Link>
-          </OnlineOnly>
-          <OnlineOnly what="Adding a friend">
-            <Link to="/friends/new">
-              <button className="inline">Add a friend</button>
-            </Link>
-          </OnlineOnly>
-        </div>
-      </div>
+      {head}
 
       <div className="summary">
         <div>

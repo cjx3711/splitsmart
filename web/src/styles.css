@@ -2004,6 +2004,50 @@ button.icon:hover:not(:disabled) {
   }
 }
 
+.group-type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.group-type-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: auto;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.group-type-choice:hover:not(:disabled) {
+  color: var(--text);
+  filter: none;
+}
+
+.group-type-choice.is-active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.group-type-choice-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.group-page-icon {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--muted);
+}
+
 /* --- split editor --------------------------------------------------------- */
 
 /* The six ways to divide an expense. See web/src/SplitEditor.tsx.
@@ -3917,4 +3961,90 @@ button.guest-pick.selected {
   .admin-backup-cards {
     grid-template-columns: 1fr;
   }
+}
+
+/* --- skeleton loaders -----------------------------------------------------
+ *
+ * Bones sit inside the real layout classes so a loading screen already has
+ * the page's shape. The sheen sweeps left to right, like a ledger column
+ * being filled in, tinted with the accent rather than a generic grey pulse.
+ */
+.sk-page {
+  min-height: 8rem;
+}
+
+.sk {
+  display: block;
+  flex: none;
+  overflow: hidden;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--text) 12%, var(--surface-2));
+  background-image: linear-gradient(
+    105deg,
+    transparent 28%,
+    color-mix(in srgb, var(--accent) 38%, transparent) 46%,
+    color-mix(in srgb, var(--text) 28%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 38%, transparent) 54%,
+    transparent 72%
+  );
+  background-size: 240% 100%;
+  background-repeat: no-repeat;
+  animation: sk-sheen 1.5s ease-in-out infinite;
+  animation-delay: calc(var(--sk-i, 0) * 70ms);
+}
+
+@keyframes sk-sheen {
+  from {
+    background-position: 135% 0;
+  }
+  to {
+    background-position: -135% 0;
+  }
+}
+
+.sk-lines {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.sk-figures {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.sk-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.sk-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0.6rem 0;
+}
+
+.sk-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0;
+}
+
+.sk-page .summary .sk-lines {
+  margin-top: 0.15rem;
+}
+
+.sk-page .admin-counts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }

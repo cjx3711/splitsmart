@@ -21,6 +21,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, displayName, type ClaimCandidates, type ClaimPreview } from "../api.ts";
 import { Avatar } from "../Avatar.tsx";
 import { useAuth, useSidebarRefresh } from "../App.tsx";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function Claim() {
   const [params] = useSearchParams();
@@ -79,7 +80,13 @@ export function Claim() {
     };
   }, [chosen, linkToken]);
 
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) {
+    return (
+      <div className="auth stack">
+        <Skeleton kind="auth" />
+      </div>
+    );
+  }
 
   if (!linkToken) {
     return (
@@ -119,7 +126,13 @@ export function Claim() {
     );
   }
 
-  if (!candidates) return <p className="muted">Checking that link…</p>;
+  if (!candidates) {
+    return (
+      <div className="auth stack">
+        <Skeleton kind="auth" label="Checking that link" />
+      </div>
+    );
+  }
 
   if (candidates.status === "already_member") {
     return (

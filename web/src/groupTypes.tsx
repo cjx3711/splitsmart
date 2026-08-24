@@ -16,10 +16,11 @@ import type { IconType } from "react-icons";
 import {
   GROUP_TYPE_LABELS,
   GROUP_TYPES,
+  isGroupType,
   type GroupType,
 } from "../../src/domain/group-types.ts";
 
-export { GROUP_TYPES, GROUP_TYPE_LABELS, type GroupType };
+export { GROUP_TYPES, GROUP_TYPE_LABELS, isGroupType, type GroupType };
 
 const GROUP_TYPE_ICONS: Record<GroupType, IconType> = {
   trip: LuPlane,
@@ -42,6 +43,35 @@ export function groupTypeLabel(type: string): string {
 export function GroupTypeIcon({ type, className }: { type: string; className?: string }) {
   const Icon = isGroupTypeIcon(type) ? GROUP_TYPE_ICONS[type] : GROUP_TYPE_ICONS.other;
   return <Icon className={className} aria-hidden />;
+}
+
+/** Type is the group's icon. Same picker on create and on options. */
+export function GroupTypePicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: GroupType;
+  onChange: (type: GroupType) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="group-type-picker" role="group" aria-label="Group type">
+      {GROUP_TYPES.map((type) => (
+        <button
+          key={type}
+          type="button"
+          className={`group-type-choice${value === type ? " is-active" : ""}`}
+          aria-pressed={value === type}
+          disabled={disabled}
+          onClick={() => onChange(type)}
+        >
+          <GroupTypeIcon type={type} className="group-type-choice-icon" />
+          {GROUP_TYPE_LABELS[type]}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function isGroupTypeIcon(type: string): type is GroupType {

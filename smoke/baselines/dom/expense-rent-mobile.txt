@@ -34,7 +34,7 @@
   - paragraph:
     - button "Stop repeating"
   - heading "Who paid, who owes" [level=2]
-  - text: You paid 1800.00USD owes 900.00USD
+  - text: You paid 1800.00USD owe 900.00USD
   - link "JJ owes 900.00USD":
     - /url: /app/friends/<ULID>
   - heading "Comments" [level=2]

@@ -18,6 +18,7 @@ import { useAuth } from "./App.tsx";
 import { useFriends, useGroups } from "./localData.ts";
 import { Avatar } from "./Avatar.tsx";
 import { GroupTypeIcon } from "./groupTypes.tsx";
+import { NavSkeleton } from "./Skeleton.tsx";
 
 const SIDEBAR_GROUP_LIMIT = 5;
 const SIDEBAR_FRIEND_LIMIT = 10;
@@ -34,8 +35,12 @@ function withCount(label: string, count: number): string {
 export function Sidebar({ className }: { className: string }) {
   const { user } = useAuth();
   const [filter, setFilter] = useState("");
-  const groups = useGroups()?.groups ?? [];
-  const friends = useFriends()?.friends ?? [];
+  const groupsQuery = useGroups();
+  const friendsQuery = useFriends();
+  const groups = groupsQuery?.groups ?? [];
+  const friends = friendsQuery?.friends ?? [];
+  const groupsLoading = groupsQuery === undefined;
+  const friendsLoading = friendsQuery === undefined;
 
   const query = filter.trim().toLowerCase();
   const filteredGroups = useMemo(
@@ -123,7 +128,9 @@ export function Sidebar({ className }: { className: string }) {
             + add
           </NavLink>
         </div>
-        {sidebarGroups.length === 0 ? (
+        {groupsLoading ? (
+          <NavSkeleton rows={4} />
+        ) : sidebarGroups.length === 0 ? (
           <p className="nav-empty">{groups.length === 0 ? "No groups yet." : "No matches."}</p>
         ) : (
           sidebarGroups.map((g) => (
@@ -149,7 +156,9 @@ export function Sidebar({ className }: { className: string }) {
             + add
           </NavLink>
         </div>
-        {sidebarFriends.length === 0 ? (
+        {friendsLoading ? (
+          <NavSkeleton rows={5} />
+        ) : sidebarFriends.length === 0 ? (
           <p className="nav-empty">{friends.length === 0 ? "No friends yet." : "No matches."}</p>
         ) : (
           sidebarFriends.map((f) => (

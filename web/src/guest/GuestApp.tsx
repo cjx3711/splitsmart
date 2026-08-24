@@ -28,6 +28,7 @@ import {
   GuestPickerError,
   type GuestSession,
 } from "./guestApi.ts";
+import { Skeleton } from "../Skeleton.tsx";
 import {
   clearGuestLink,
   readActingAs,
@@ -137,7 +138,7 @@ function Landing() {
 
   return (
     <Standalone>
-      <p className="muted">Opening…</p>
+      <Skeleton kind="auth" label="Opening" />
     </Standalone>
   );
 }
@@ -185,7 +186,7 @@ function Shell() {
   if (state.status === "loading") {
     return (
       <Standalone>
-        <p className="muted">Loading…</p>
+        <Skeleton kind="auth" />
       </Standalone>
     );
   }

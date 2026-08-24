@@ -17,6 +17,7 @@ import {
 } from "../stopSeries.tsx";
 import { useAuth } from "../App.tsx";
 import { useFriends, useSeries } from "../localData.ts";
+import { Skeleton } from "../Skeleton.tsx";
 
 export function Series() {
   const { id } = useParams<{ id: string }>();
@@ -25,7 +26,7 @@ export function Series() {
   const friends = useFriends()?.friends ?? [];
   const stop = useStopSeries(series?.templateId);
 
-  if (series === undefined || !user) return <p className="muted">Loading…</p>;
+  if (series === undefined || !user) return <Skeleton kind="series" />;
   if (series === null) return <p className="empty">This expense is not part of a repeating series.</p>;
 
   const trail = series.groupId
