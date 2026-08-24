@@ -426,7 +426,8 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       }
 
       await clickNamed(page, "All expenses");
-      await clickNamed(page, { text: "Concert tickets", near: "One-on-one" });
+      // Ungrouped; the row does not say "One-on-one" — that label is dashboard-only.
+      await clickNamed(page, "Concert tickets");
       await page.getByRole("heading", { name: "Who paid, who owes" }).waitFor({ timeout: 10_000 });
       await page.locator(".list-item").filter({ hasText: "John" }).filter({ hasText: "owes" }).click();
       await page.getByRole("heading", { name: "John", exact: true }).waitFor({ timeout: 10_000 });

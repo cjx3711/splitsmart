@@ -121,12 +121,20 @@ export async function signIn(page: Page, account: Account, base: string): Promis
   await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 15_000 });
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Click by accessible name, falling back to exact visible text.
  *
  * Expense rows have role=link but an accessible name that includes the date
- * and "paid", so a substring match on "Rent" would also hit "Trader Joe's run".
- * Exact role name first, exact text second.
+ * and "paid", so a substring match on "Rent" would also hit another bill. Exact
+ * role name first, then the same name with an optional " (N)" count suffix
+ * (sidebar "Groups (10)"), then exact text.
+ *
+ * `{ text, near }` clicks a control in the same `.list-item` as `near`. The
+ * control may be the row (an expense) or a child link (admin "View").
  */
 export async function clickNamed(
   page: Page,
@@ -135,18 +143,27 @@ export async function clickNamed(
   // On mobile the sidebar is `display: none` unless the menu is open. A hidden
   // rail link still matches getByRole, and clicking it times out. Visible only.
   if (typeof name !== "string") {
-    await page
+    const sameControl = page
       .locator('[role="link"], button')
       .filter({ hasText: name.text })
-      .filter({ hasText: name.near })
+      .filter({ hasText: name.near });
+    const row = page.locator(".list-item").filter({ hasText: name.near });
+    const inRow = row
+      .getByRole("link", { name: name.text })
+      .or(row.getByRole("button", { name: name.text }));
+    await sameControl
+      .or(inRow)
       .filter({ visible: true })
       .first()
       .click({ timeout: 15_000 });
     return;
   }
+  const withCount = new RegExp(`^${escapeRegExp(name)}(?: \\(\\d+\\))?$`);
   const target = page
     .getByRole("link", { name, exact: true })
     .or(page.getByRole("button", { name, exact: true }))
+    .or(page.getByRole("link", { name: withCount }))
+    .or(page.getByRole("button", { name: withCount }))
     .or(page.getByText(name, { exact: true }));
   await target.filter({ visible: true }).first().click({ timeout: 15_000 });
 }

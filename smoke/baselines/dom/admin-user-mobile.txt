@@ -1,0 +1,48 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+    - text: SplitSmart
+  - button "Add Expense"
+- main:
+  - navigation "Admin":
+    - link "Usage":
+      - /url: /app/admin
+    - link "Backups":
+      - /url: /app/admin/backups
+  - paragraph:
+    - link "Usage":
+      - /url: /app/admin?as_of=<DATE>
+  - heading "Lee Jin Jie About usage counts" [level=1]:
+    - text: Lee Jin Jie
+    - button "About usage counts": "?"
+  - text: jj@example.com As of
+  - textbox "As of date": <DATE>
+  - heading "Expenses added (30 days)" [level=2]
+  - img "Expenses added over 30 days"
+  - heading "Counts" [level=2]
+  - text: Expenses created
+  - strong: "1"
+  - text: Expenses on
+  - strong: "9"
+  - text: Groups
+  - strong: "3"
+  - text: Friends
+  - strong: "3"
+  - text: Recurring series
+  - strong: "1"
+  - text: Guest links
+  - strong: "0"
+  - text: Ghost placeholders
+  - strong: "1"
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "Changelog":
+    - /url: /changelog
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart
