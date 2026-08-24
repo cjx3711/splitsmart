@@ -3,6 +3,33 @@ import { HomeGallery } from "../HomeGallery.tsx";
 import { Avatar } from "../Avatar.tsx";
 import { useHasLocalAccount } from "../lastUser.ts";
 
+/** Core Splitwise jobs this app also does. The other column is the point. */
+const SAME_AS_SPLITWISE = [
+  "Groups, friends, and one-off expenses",
+  "Six split types: equal, exact, percent, shares, adjustment, itemised",
+  "Settle up, with suggested transfers if the group wants to simplify",
+  "An activity feed for the groups and expenses you're on",
+  "Offline support",
+  "100+ currencies",
+];
+
+/**
+ * The reasons to switch, mostly small and specific. Display ≈ estimates and
+ * convert-balance write real payments; the ledger still does not invent a
+ * combined total on its own.
+ */
+const IMPROVEMENTS = [
+  "As many expenses a day as you want",
+  "Clicking just outside the add-expense box doesn't dump the draft",
+  "Currencies with no decimals don't show any, so 3000 JPY is 3000 JPY, not 3000.00",
+  "Mixed balances show a live ≈ estimate, and you can convert them into one currency at today's rate",
+  "A currency picker that puts the ones you frequently use at the top",
+  "Itemised bills, where each line has its own sharers and tax and tip get spread proportionally",
+  "Splitwise import, and your API key is used for the request and then dropped",
+  "Installable as a PWA, and the ledger stays on the device",
+  "A native JSON API, plus compatibility with the basic Splitwise API shapes",
+];
+
 /**
  * Things Splitwise markets that this app does not do. Sourced from their
  * homepage, Pro page, and app-store feature lists. The right-hand column is
@@ -12,22 +39,22 @@ const MISSING: { feature: string; them: string; us: string }[] = [
   {
     feature: "Native iOS and Android apps",
     them: "Yes",
-    us: "A website. You can put it on the home screen.",
+    us: "Just a the webapp. You can put it on the home screen.",
   },
   {
     feature: "Splitwise Pay, Pay by Bank",
-    them: "Yes, US",
-    us: "We are not a bank.",
+    them: "Yes, US only",
+    us: "Nope",
   },
   {
     feature: "PayPal, Venmo, Paytm",
     them: "Yes",
-    us: "Record that you paid. The money still moves wherever you already send it.",
+    us: "Nope",
   },
   {
     feature: "Push notifications",
     them: "Yes",
-    us: "None. Open the page.",
+    us: "None",
   },
   {
     feature: "Email when someone adds a bill",
@@ -37,22 +64,22 @@ const MISSING: { feature: string; them: string; us: string }[] = [
   {
     feature: "Monthly email reports",
     them: "Yes",
-    us: "No newsletter of who owes whom.",
+    us: "Nope",
   },
   {
     feature: "Receipt scanning",
     them: "Pro",
-    us: "Type the number. Storing other people's photos is a product I don't want to run.",
+    us: "Nope, but maybe in the future with a MCP",
   },
   {
     feature: "Charts and graphs",
     them: "Pro",
-    us: "It's a ledger, not Mint.",
+    us: "Maybe in the future.",
   },
   {
     feature: "Saved default splits",
     them: "Pro",
-    us: "Set it each time.",
+    us: "Nope",
   },
   {
     feature: "Import from a credit card",
@@ -60,24 +87,19 @@ const MISSING: { feature: string; them: string; us: string }[] = [
     us: "Type it.",
   },
   {
-    feature: "Comments on expenses",
-    them: "Yes",
-    us: "The group chat still exists.",
-  },
-  {
-    feature: "Export to CSV",
-    them: "Yes",
-    us: "Not yet.",
-  },
-  {
     feature: "7+ languages",
     them: "Yes",
-    us: "English. Your browser can translate the page.",
+    us: "English + browser translation.",
   },
   {
     feature: "Avatars and group cover photos",
     them: "Yes",
-    us: "Names.",
+    us: "No images",
+  },
+  {
+    feature: "Actual security team",
+    them: "Yes",
+    us: "Just one dude and his AI agent",
   },
   {
     feature: "Someone to email when it breaks",
@@ -98,15 +120,15 @@ export function Home() {
     <div className="mkt">
       <section className="mkt-hero">
         <div className="mkt-hero-copy">
-          <p className="mkt-kicker">Open source · Self-hosted · Free</p>
+          <p className="mkt-kicker">Open source / Self-hostable</p>
           <h1>Keep track of who paid for dinner.</h1>
           <p className="mkt-lede">
             SplitSmart is a Splitwise replacement you can run yourself, or use
             here if you&apos;re willing to trust a random person on the internet
             with who paid for dinner. Groups, friends, one-off bills, 100+
             currencies, and it still works on a plane with no signal. You
-            don&apos;t need an account to settle a single trip. Someone can
-            just send you a link.
+            don&apos;t need an account to settle a single trip. Someone can just
+            send you a link.
           </p>
           <div className="mkt-cta">
             {signedIn ? (
@@ -125,8 +147,8 @@ export function Home() {
             )}
           </div>
           <p className="mkt-fine">
-            Or open a link someone sends you and pick your name. No signup at
-            all.
+            Or open a link someone sends you and start managing splits. No
+            signup at all.
           </p>
         </div>
 
@@ -138,47 +160,36 @@ export function Home() {
       <section className="mkt-band" aria-label="Highlights">
         <div className="mkt-tiles">
           <article className="mkt-tile mkt-tile-accent mkt-tile-a">
-            <h2>Works with no signal</h2>
+            <h2>Offline support</h2>
             <p>
-              Install it on your phone and add the dinner while you&apos;re
-              still at the table, airplane mode and all. It writes to the device
-              and syncs once you&apos;re back online.
+              It writes to the device and syncs once you&apos;re back online.
             </p>
           </article>
           <article className="mkt-tile mkt-tile-b">
-            <h2>No account for a one-off trip</h2>
+            <h2>No forced accounts</h2>
             <p>
-              Send someone a guest link and they are in: no email, no password,
-              nothing to install. The link is the credential, so you can expire
-              it or switch it off whenever you like. If they later want an
-              account, it folds their history straight into it.
+              Send someone a guest link and they get edit access. Your friends
+              can create an account if they want to keep using it.
             </p>
           </article>
           <article className="mkt-tile mkt-tile-deep mkt-tile-c">
-            <h2>Open source and free</h2>
+            <h2>Open source</h2>
             <p>
               The code is on{" "}
               <a
                 href="https://github.com/cjx3711/splitsmart"
                 target="_blank"
                 rel="noreferrer"
-                className="mkt-inline"
-              >
+                className="mkt-inline">
                 GitHub
               </a>
-              , and this instance is free for now. Read the{" "}
-              <Link to="/about" className="mkt-inline">
-                about page
-              </Link>{" "}
-              before you trust it with anything you can&apos;t afford to lose.
+              if you want to self-host, though this instance is free for now.
             </p>
           </article>
           <article className="mkt-tile mkt-tile-d">
-            <h2>The API isn&apos;t paywalled</h2>
+            <h2>Free API access</h2>
             <p>
-              Bearer tokens for the native API, and it also speaks the basic
-              Splitwise API shapes, so whatever you already pointed at Splitwise
-              has a good chance of just working. The endpoints are in the{" "}
+              The endpoints are in the{" "}
               <Link to="/docs" className="mkt-inline">
                 API docs
               </Link>
@@ -190,35 +201,42 @@ export function Home() {
 
       <HomeGallery />
 
-      <section className="mkt-list-wrap">
+      <section className="mkt-list-wrap" aria-labelledby="mkt-whats-in-it">
         <div className="mkt-list-intro">
-          <h2>What&apos;s in it</h2>
+          <h2 id="mkt-whats-in-it">What&apos;s in it</h2>
           <p className="muted">
             The same jobs Splitwise does, minus the upsell that shows up while
-            you&apos;re adding a taxi.
+            you&apos;re adding a bill. Plus a whole bunch of small fixes to
+            things that have irritated me for years.
           </p>
         </div>
-        <ul className="mkt-checklist">
-          <li>Groups, friends, and one-off expenses that belong to neither</li>
-          <li>As many expenses a day as you want, because that&apos;s a strange thing to ration</li>
-          <li>Six split types: equal, exact, percent, shares, adjustment, itemised</li>
-          <li>Itemised bills, where each line has its own sharers and tax and tip get spread proportionally</li>
-          <li>Settle up, with suggested transfers if the group wants to simplify</li>
-          <li>100+ currencies, each its own ledger. Nothing is converted, and JPY isn&apos;t treated as cents</li>
-          <li>A currency picker that puts the ones you actually use at the top</li>
-          <li>An activity feed for the groups and expenses you&apos;re on</li>
-          <li>Splitwise import, and your API key is used for the request and then dropped</li>
-          <li>Installable as a PWA, and the ledger stays on the device</li>
-          <li>A native JSON API, plus compatibility with the basic Splitwise API shapes</li>
-        </ul>
+        <div className="mkt-list-cols">
+          <div className="mkt-list-col">
+            <h3>Same as Splitwise</h3>
+            <ul className="mkt-checklist">
+              {SAME_AS_SPLITWISE.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="mkt-list-col mkt-list-col-better">
+            <h3>Improvements</h3>
+            <ul className="mkt-checklist">
+              {IMPROVEMENTS.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </section>
 
       <section className="mkt-compare" aria-labelledby="mkt-compare-heading">
         <div className="mkt-compare-intro">
           <h2 id="mkt-compare-heading">What we don&apos;t have</h2>
           <p className="muted">
-            Splitwise has a company, two phone apps, and a payments product.
-            This is a ledger. The column on the right is the honest one.
+            Splitwise is a company, has two phone apps, and a payments product.
+            <br />
+            This is a toy app I built in 2 weeks.
           </p>
         </div>
         <div className="mkt-compare-scroll">
@@ -242,8 +260,7 @@ export function Home() {
           </table>
         </div>
         <p className="mkt-compare-foot muted">
-          If any of those are the reason you use Splitwise, stay there. That is
-          a real product with a team. This writes down who paid for dinner.
+          If any of those are the reason you use Splitwise this ain't for you.
         </p>
       </section>
 

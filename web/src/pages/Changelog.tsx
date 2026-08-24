@@ -12,13 +12,27 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    date: "24 August 2026",
+    intro: "The actual first usable version.",
+    items: [
+      "Email verification flow",
+      "Forgot password flow",
+      "Splitwise import ensures parity with splitwise.",
+      "Repeating Splitwise can be resumed.",
+      "Convert a mixed-currency friend or group balance into one currency.",
+      "More fun avatars",
+      "Daily SQLite backups to S3.",
+      "Dropped the Splitwise-compatible API. /api/v1 is the API.",
+    ],
+  },
+  {
     date: "18 August 2026",
-    intro: "First usable version hopefully",
+    intro: "What I hoped was the first usable version",
     items: [
       "Friends, groups, and expenses.",
       "Six split types.",
       "Settle up, with suggested simplifications and auto estimated conversions.",
-      "Comments on a expense. Edit, delete, or restore one and a note shows up saying what changed. Deletes aren't gone forever.",
+      "Comments on a expense. Edit, delete, or restore one and a note shows up saying what changed.",
       "Recurring expenses.",
       "Search, filters, CSV of whatever you're looking at.",
       "Guest accounts, accessible with expiring links.",
@@ -26,7 +40,7 @@ const ENTRIES: Entry[] = [
       "Offline mode for real accounts, with local database and syncing.",
       "PWA installable on Android and iOS.",
       "Import from Splitwise. API key is not saved.",
-      "A normal JSON API, and enough of Splitwise's v3.0 that the Toshl sync I already had can point here. Ids are ULIDs, not integers.",
+      "A basic JSON API.",
     ],
   },
 ];

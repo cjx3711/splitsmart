@@ -2587,10 +2587,11 @@ dialog.mkt-lightbox::backdrop {
   max-width: 1080px;
   margin: 0 auto;
   padding: 3rem 1.5rem 1rem;
-  display: grid;
-  grid-template-columns: minmax(12rem, 0.7fr) minmax(0, 1.3fr);
-  gap: 2rem 3rem;
-  align-items: start;
+}
+
+.mkt-list-intro {
+  max-width: 40rem;
+  margin-bottom: 1.75rem;
 }
 
 .mkt-list-intro h2 {
@@ -2599,13 +2600,39 @@ dialog.mkt-lightbox::backdrop {
   letter-spacing: -0.03em;
 }
 
+.mkt-list-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem 2rem;
+  align-items: start;
+}
+
+.mkt-list-col h3 {
+  margin: 0 0 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.mkt-list-col-better {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem 1.3rem;
+}
+
+.mkt-list-col-better h3 {
+  color: var(--logo-bright);
+}
+
 .mkt-checklist {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.65rem 1.5rem;
+  gap: 0.65rem;
 }
 
 .mkt-checklist li {
@@ -2868,10 +2895,17 @@ dialog.mkt-lightbox::backdrop {
 }
 
 @media (max-width: 860px) {
-  .mkt-hero,
-  .mkt-list-wrap {
+  .mkt-hero {
     grid-template-columns: 1fr;
     padding-top: 2rem;
+  }
+
+  .mkt-list-wrap {
+    padding-top: 2rem;
+  }
+
+  .mkt-list-cols {
+    grid-template-columns: 1fr;
   }
 
   .mkt-lightbox-figure {
@@ -2896,10 +2930,6 @@ dialog.mkt-lightbox::backdrop {
 
   .mkt-hero-visual {
     max-width: 24rem;
-  }
-
-  .mkt-checklist {
-    grid-template-columns: 1fr;
   }
 
   .mkt-compare-table thead {
