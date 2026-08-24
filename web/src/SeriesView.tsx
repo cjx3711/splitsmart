@@ -1,10 +1,9 @@
 /**
  * Every bill in a repeating series, oldest first.
  *
- * A series is the first bill (the template, tagged "repeats") plus ordinary
- * expenses that point at it. There is no bundle table. This view exists so that
- * relationship is visible, and so deleting the first bill versus a later one
- * is not a surprise.
+ * A series is the first bill (the template) plus ordinary expenses that point
+ * at it. There is no bundle table. This view exists so that relationship is
+ * visible, and so deleting the first bill versus a later one is not a surprise.
  *
  * Shared by the logged-in page (mirror) and the guest page (network).
  */
@@ -71,8 +70,7 @@ export function SeriesView({
               ) : (
                 <>
                   Each bill is its own expense. Deleting a later one does not stop the series.
-                  Deleting the first bill (the one marked repeats) stops new bills; the ones already
-                  made stay.
+                  Deleting the first bill stops new bills; the ones already made stay.
                 </>
               )}
             </HelpTip>

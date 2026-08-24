@@ -4,8 +4,13 @@
  * Shared by Settings (yourself) and the friend/group screens (placeholder
  * people). The parent owns the value and the save; this is just the fields.
  */
-import { ICON_HUES, defaultIconLetters } from "../../src/domain/person.ts";
+import {
+  defaultIconLetters,
+  type AvatarPattern,
+} from "../../src/domain/person.ts";
+import { parseAvatarPattern } from "../../src/domain/avatar-pattern.ts";
 import { Avatar } from "./Avatar.tsx";
+import { AvatarPatternEditor } from "./AvatarPatternEditor.tsx";
 import { HelpTip } from "./HelpTip.tsx";
 
 export type IdentityDraft = {
@@ -14,6 +19,7 @@ export type IdentityDraft = {
   iconLetters: string;
   iconEmoji: string;
   iconHue: number | null;
+  iconPattern: AvatarPattern | null;
 };
 
 const EMOJIS = [
@@ -25,7 +31,14 @@ const EMOJIS = [
 ];
 
 export function emptyIdentityDraft(): IdentityDraft {
-  return { name: "", nickname: "", iconLetters: "", iconEmoji: "", iconHue: null };
+  return {
+    name: "",
+    nickname: "",
+    iconLetters: "",
+    iconEmoji: "",
+    iconHue: null,
+    iconPattern: null,
+  };
 }
 
 export function draftFromPerson(person: {
@@ -34,9 +47,11 @@ export function draftFromPerson(person: {
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
+  iconPattern?: AvatarPattern | string | null;
   icon_letters?: string | null;
   icon_emoji?: string | null;
   icon_hue?: number | null;
+  icon_pattern?: AvatarPattern | string | null;
 }): IdentityDraft {
   return {
     name: person.name,
@@ -44,6 +59,7 @@ export function draftFromPerson(person: {
     iconLetters: person.iconLetters ?? person.icon_letters ?? "",
     iconEmoji: person.iconEmoji ?? person.icon_emoji ?? "",
     iconHue: person.iconHue ?? person.icon_hue ?? null,
+    iconPattern: parseAvatarPattern(person.iconPattern ?? person.icon_pattern),
   };
 }
 
@@ -53,13 +69,15 @@ export function identityPayload(draft: IdentityDraft): {
   iconLetters: string | null;
   iconEmoji: string | null;
   iconHue: number | null;
+  iconPattern: AvatarPattern | null;
 } {
   return {
     name: draft.name.trim(),
     nickname: draft.nickname.trim() || null,
     iconLetters: draft.iconLetters.trim() || null,
     iconEmoji: draft.iconEmoji.trim() || null,
-    iconHue: draft.iconHue,
+    iconHue: draft.iconPattern ? Math.round(draft.iconPattern.base.h) % 360 : draft.iconHue,
+    iconPattern: draft.iconPattern,
   };
 }
 
@@ -90,6 +108,7 @@ export function PersonIdentityForm({
           iconLetters={value.iconLetters.trim() || null}
           iconEmoji={value.iconEmoji.trim() || null}
           iconHue={value.iconHue}
+          iconPattern={value.iconPattern}
           size={64}
         />
         <div>
@@ -123,11 +142,25 @@ export function PersonIdentityForm({
         />
       </div>
 
+      <AvatarPatternEditor
+        id={id}
+        iconHue={value.iconHue}
+        value={value.iconPattern}
+        onChange={(iconPattern) =>
+          onChange({
+            ...value,
+            iconPattern,
+            iconHue: iconPattern ? Math.round(iconPattern.base.h) % 360 : null,
+          })
+        }
+      />
+
       <div>
         <div className="label-with-help">
           <label htmlFor={`${idPrefix}-letters`}>Icon letters</label>
           <HelpTip label="About icon letters">
-            Up to two characters. Leave blank to derive them from the name.
+            Up to two characters, drawn on top of the pattern. Leave blank to
+            derive them from the name.
           </HelpTip>
         </div>
         <input
@@ -176,35 +209,6 @@ export function PersonIdentityForm({
           placeholder="Or paste any emoji"
           maxLength={16}
         />
-      </fieldset>
-
-      <fieldset className="identity-fieldset">
-        <legend>Icon colour</legend>
-        <div className="identity-hue-row">
-          <button
-            type="button"
-            className={
-              value.iconHue === null ? "identity-hue auto selected" : "identity-hue auto"
-            }
-            onClick={() => onChange({ ...value, iconHue: null })}
-            aria-pressed={value.iconHue === null}
-          >
-            Auto
-          </button>
-          {ICON_HUES.map((hue) => (
-            <button
-              key={hue}
-              type="button"
-              className={value.iconHue === hue ? "identity-hue selected" : "identity-hue"}
-              style={{
-                background: `linear-gradient(150deg, hsl(${hue} 62% 68%), hsl(${(hue + 26) % 360} 58% 52%))`,
-              }}
-              onClick={() => onChange({ ...value, iconHue: hue })}
-              aria-pressed={value.iconHue === hue}
-              aria-label={`Hue ${hue}`}
-            />
-          ))}
-        </div>
       </fieldset>
     </div>
   );

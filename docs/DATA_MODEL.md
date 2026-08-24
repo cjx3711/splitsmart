@@ -108,9 +108,8 @@ re-split.
 ## Soft deletes
 
 `expenses.deleted_at` rather than a DELETE, for three reasons: balance queries
-filter on it, the compat API must return `deleted_at` to clients so they can
-sync incrementally, and `restoreExpense` can put a row back. Never hard-delete an
-expense.
+filter on it, `restoreExpense` can put a row back, and undo in the UI needs
+the tombstone. Never hard-delete an expense.
 
 Restore is not just clearing the column: `expense_repayments` is rebuilt from
 `expense_users` on the way back, because it is a cache (above) and the row has
@@ -164,8 +163,7 @@ time instead of dropping three months of rent into the ledger all dated today.
 filtered on, except for one key:
 
 `splitwise_id` is the import matching key. Entity PKs are always fresh ULIDs;
-the original Splitwise integer is **not** reused as `id` and is **not**
-returned on `/api/sw/v3.0`. A unique expression index on
+the original Splitwise integer is **not** reused as `id`. A unique expression index on
 `json_extract(metadata, '$.splitwise_id')` (live rows only, for users) lets a
 second import match instead of duplicating, including a friend's later import
 of the same Splitwise person. `notes` and other leftovers share the same

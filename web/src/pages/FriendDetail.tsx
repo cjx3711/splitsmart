@@ -3,9 +3,14 @@
  *
  * Expenses here span every group plus the one-on-one ones; the question "what
  * is between us" does not stop at a group boundary. Shared groups are listed
- * from current membership. Settled ones are hidden behind "Show settled up groups"
- * so the list stays the groups that still have something between you.
+ * from current membership, once — the totals card does not repeat them.
+ * Settled ones are hidden behind "Show settled up groups" so the list stays
+ * the groups that still have something between you.
  * New expenses added from this screen are one-on-one (no group).
+ *
+ * On a wide screen the totals and groups sit in a right-hand panel so the
+ * expense list can start at the top. Narrow screens stack them, same order
+ * as before: totals, groups, guest link, expenses.
  *
  * Adding and settling live in dialogs off the header rather than inline, so the
  * page stays a view of the balance instead of a stack of forms.
@@ -13,7 +18,7 @@
  * Read from the mirror and written through the outbox, so both dialogs work with
  * no network. Only the guest-link panel is online-only.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useParams, Link } from "react-router-dom";
 import { displayName, api, type ExpenseQuery, type GroupMember } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
@@ -92,12 +97,54 @@ export function FriendDetail() {
     ...new Set([...owed.map((b) => b.currencyCode), user.defaultCurrency]),
   ];
   const outstandingGroupIds = new Set(
-    friend.breakdown.filter((entry) => entry.groupId && entry.balances.length > 0).map((entry) => entry.groupId),
+    friend.breakdown
+      .filter((entry) => entry.groupId && entry.balances.length > 0)
+      .map((entry) => entry.groupId),
   );
   const settledSharedGroups = sharedGroups.filter((g) => !outstandingGroupIds.has(g.id));
   const visibleSharedGroups = showSettledGroups
     ? sharedGroups
     : sharedGroups.filter((g) => outstandingGroupIds.has(g.id));
+  const sharedById = new Map(sharedGroups.map((g) => [g.id, g]));
+  const leftoverGroups = friend.breakdown.filter(
+    (entry) => entry.groupId !== null && !sharedById.has(entry.groupId),
+  );
+  const oneOnOne = friend.breakdown.find((entry) => entry.groupId === null);
+  const listingGroups = visibleSharedGroups.length > 0 || leftoverGroups.length > 0;
+  const showOneOnOne = Boolean(oneOnOne && oneOnOne.balances.length > 0 && listingGroups);
+  const showGroupsSection = listingGroups || settledSharedGroups.length > 0;
+
+  const othersOn = (groupId: string) =>
+    (membersByGroup.get(groupId) ?? []).filter((m) => m.id !== user.id && m.id !== friend.id);
+
+  const sourceRow = (
+    key: string,
+    to: string | undefined,
+    icon: ReactNode,
+    title: string,
+    subtitle: ReactNode,
+    figures: ReactNode,
+  ) => {
+    const inner = (
+      <>
+        {icon}
+        <div className="list-item-body">
+          <div className="list-item-title">{title}</div>
+          {subtitle ? <div className="breakdown-sub">{subtitle}</div> : null}
+        </div>
+        <div className="list-item-figures">{figures}</div>
+      </>
+    );
+    return to ? (
+      <Link key={key} to={to} className="list-item">
+        {inner}
+      </Link>
+    ) : (
+      <div key={key} className="list-item">
+        {inner}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -120,10 +167,7 @@ export function FriendDetail() {
         <div className="page-actions">
           {friend.is_ghost === 1 && (
             <OnlineOnly what="Editing a placeholder's name">
-              <button
-                className="secondary"
-                onClick={() => setOpenDialog("identity")}
-              >
+              <button className="secondary" onClick={() => setOpenDialog("identity")}>
                 Edit name
               </button>
             </OnlineOnly>
@@ -211,76 +255,93 @@ export function FriendDetail() {
         }}
       />
 
-      <div className="card">
-        <span className="eyebrow">
-          <span className="with-help">
-            Between you
-            <HelpTip label="About this balance">
-              In a group with simplify debts on, cycles through other people are collapsed, the same
-              way Splitwise does. Each bill still shows who paid.
-            </HelpTip>
-          </span>
-        </span>
-        {friend.balances.length === 0 ? (
-          <p className="muted" style={{ margin: "0.4rem 0 0" }}>
-            You're settled up.
-          </p>
-        ) : (
-          <div className="ledger" style={{ marginTop: "0.4rem" }}>
-            {friend.balances.map((b) => (
-              <div key={b.currencyCode} className="ledger-row">
-                <span className={b.amountMinor > 0 ? "positive" : "negative"}>
-                  {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
-                  <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                </span>
+      <div className="friend-page">
+        <aside className="friend-aside">
+          <div className="card">
+            <span className="eyebrow">
+              <span className="with-help">
+                Between you
+                <HelpTip label="About this balance">
+                  In a group with simplify debts on, cycles through other people are collapsed, the same
+                  way Splitwise does. Each bill still shows who paid.
+                </HelpTip>
+              </span>
+            </span>
+            {friend.balances.length === 0 ? (
+              <p className="muted" style={{ margin: "0.4rem 0 0" }}>
+                You're settled up.
+              </p>
+            ) : (
+              <div className="ledger" style={{ marginTop: "0.4rem" }}>
+                {friend.balances.map((b) => (
+                  <div key={b.currencyCode} className="ledger-row">
+                    <span className={b.amountMinor > 0 ? "positive" : "negative"}>
+                      {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
+                      <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            <EstimatedTotal balances={friend.balances} preferredCurrency={user.defaultCurrency} />
+            {friend.balances.length > 1 && (
+              <div className="ledger-actions">
+                <OnlineOnly what="Converting a balance">
+                  <button
+                    type="button"
+                    className="secondary inline"
+                    onClick={() => setOpenDialog("convert")}
+                  >
+                    Convert balance
+                  </button>
+                </OnlineOnly>
+              </div>
+            )}
+            <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
           </div>
-        )}
-        {friend.balances.length > 1 && (
-          <EstimatedTotal balances={friend.balances} preferredCurrency={user.defaultCurrency} />
-        )}
-        {friend.balances.length > 1 && (
-          <div className="ledger-actions">
-            <OnlineOnly what="Converting a balance">
-              <button
-                type="button"
-                className="secondary inline"
-                onClick={() => setOpenDialog("convert")}
-              >
-                Convert balance
-              </button>
-            </OnlineOnly>
-          </div>
-        )}
 
-        {(friend.breakdown.length > 1 ||
-          (showSettledGroups && settledSharedGroups.length > 0)) && (
-          <div className="list breakdown-list" style={{ marginTop: "0.6rem" }}>
-            {friend.breakdown.length > 1 &&
-              friend.breakdown.map((entry) => {
-              const groupType = entry.groupId
-                ? sharedGroups.find((g) => g.id === entry.groupId)?.group_type
-                : undefined;
-              // Everyone else on the bill: the two people this page is already
-              // about would just repeat the header, so they're left off.
-              const others = (entry.groupId ? membersByGroup.get(entry.groupId) ?? [] : []).filter(
-                (m) => m.id !== user.id && m.id !== friend.id,
-              );
-
-              const row = (
-                <>
-                  {entry.groupId ? (
-                    <GroupTypeIcon type={groupType ?? "other"} className="nav-item-icon" />
-                  ) : (
-                    <span className="avatar-placeholder" aria-hidden="true" />
-                  )}
-                  <div className="list-item-body">
-                    <div className="list-item-title">
-                      {entry.groupId ? entry.groupName?.trim() || "Unnamed group" : "One-on-one"}
-                    </div>
-                    {(others.length > 0 || entry.simplified) && (
-                      <div className="breakdown-sub">
+          {showGroupsSection && (
+            <>
+              <h2>Shared groups</h2>
+              {(listingGroups || showOneOnOne) && (
+                <div className="list breakdown-list">
+                  {visibleSharedGroups.map((g) => {
+                    const entry = friend.breakdown.find((e) => e.groupId === g.id);
+                    const others = othersOn(g.id);
+                    return sourceRow(
+                      g.id,
+                      `/groups/${g.id}`,
+                      <GroupTypeIcon type={g.group_type} className="nav-item-icon" />,
+                      g.name.trim() || "Unnamed group",
+                      <>
+                        <span className="muted">{groupTypeLabel(g.group_type)}</span>
+                        {others.length > 0 && (
+                          <span className="avatar-stack">
+                            {others.slice(0, 4).map((m) => (
+                              <Avatar key={m.id} {...avatarFromRow(m)} size={20} />
+                            ))}
+                            {others.length > 4 && (
+                              <span className="avatar-overflow">+{others.length - 4}</span>
+                            )}
+                          </span>
+                        )}
+                        {entry?.simplified && <span className="muted">simplified</span>}
+                      </>,
+                      entry && entry.balances.length > 0 ? (
+                        <Amounts balances={entry.balances} signed />
+                      ) : (
+                        <span className="muted">settled up</span>
+                      ),
+                    );
+                  })}
+                  {leftoverGroups.map((entry) => {
+                    const others = othersOn(entry.groupId!);
+                    return sourceRow(
+                      entry.groupId!,
+                      `/groups/${entry.groupId}`,
+                      <GroupTypeIcon type="other" className="nav-item-icon" />,
+                      entry.groupName?.trim() || "Unnamed group",
+                      <>
                         {others.length > 0 && (
                           <span className="avatar-stack">
                             {others.slice(0, 4).map((m) => (
@@ -292,124 +353,86 @@ export function FriendDetail() {
                           </span>
                         )}
                         {entry.simplified && <span className="muted">simplified</span>}
-                      </div>
+                      </>,
+                      <Amounts balances={entry.balances} signed />,
+                    );
+                  })}
+                  {showOneOnOne &&
+                    oneOnOne &&
+                    sourceRow(
+                      "none",
+                      undefined,
+                      <span className="avatar-placeholder" aria-hidden="true" />,
+                      "One-on-one",
+                      null,
+                      <Amounts balances={oneOnOne.balances} signed />,
                     )}
-                  </div>
-                  <div className="list-item-figures">
-                    <Amounts balances={entry.balances} signed />
-                  </div>
-                </>
-              );
-
-              return entry.groupId ? (
-                <Link key={entry.groupId} to={`/groups/${entry.groupId}`} className="list-item">
-                  {row}
-                </Link>
-              ) : (
-                <div key="none" className="list-item">
-                  {row}
                 </div>
-              );
-            })}
-            {showSettledGroups &&
-              settledSharedGroups.map((g) => (
-                <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
-                  <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
-                  <div className="list-item-body">
-                    <div className="list-item-title">{g.name.trim() || "Unnamed group"}</div>
-                  </div>
-                  <div className="list-item-figures muted">settled up</div>
-                </Link>
-              ))}
-          </div>
-        )}
-        {settledSharedGroups.length > 0 && (
-          <div className="ledger-actions">
-            <button
-              type="button"
-              className="secondary inline"
-              aria-expanded={showSettledGroups}
-              onClick={() => setShowSettledGroups((open) => !open)}
-            >
-              {showSettledGroups ? "Hide settled up groups" : "Show settled up groups"}
-            </button>
-          </div>
-        )}
-        <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
-      </div>
+              )}
+              {settledSharedGroups.length > 0 && (
+                <div className="ledger-actions ledger-actions-centered">
+                  <button
+                    type="button"
+                    className="secondary inline compact"
+                    aria-expanded={showSettledGroups}
+                    onClick={() => setShowSettledGroups((open) => !open)}
+                  >
+                    {showSettledGroups ? "Hide settled up groups" : "Show settled up groups"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </aside>
 
-      {visibleSharedGroups.length > 0 && (
-        <>
-          <h2>Shared groups</h2>
-          <div className="list">
-            {visibleSharedGroups.map((g) => {
-              const bucket = friend.breakdown.find((entry) => entry.groupId === g.id);
-              return (
-                <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
-                  <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
-                  <div className="list-item-body">
-                    <div className="list-item-title">{g.name}</div>
-                    <div className="muted">{groupTypeLabel(g.group_type)}</div>
-                  </div>
-                  {bucket && bucket.balances.length > 0 ? (
-                    <div className="list-item-figures">
-                      <Amounts balances={bucket.balances} signed />
-                    </div>
-                  ) : (
-                    <div className="list-item-figures muted">settled up</div>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        </>
-      )}
+        <div className="friend-body">
+          {/*
+            Only a placeholder gets a link. Someone with their own account logs in;
+            a link that acted as them would be an impersonation channel, and the
+            server refuses to mint one.
+          */}
+          {friend.is_ghost === 1 && (
+            <>
+              <h2>Guest link</h2>
+              <LinkPanel
+                query={{ friendId: friend.id }}
+                canManage
+                slots={[
+                  {
+                    id: `friend-${friend.id}`,
+                    kind: "friend",
+                    userId: friend.id,
+                    label: `${name}'s link`,
+                    note: `They can open this without an account, or create one and claim the link to keep this history. Links expire after 3 months.`,
+                  },
+                ]}
+                intro="Share this link so they can view your shared expenses. Links expire after 3 months. If one is compromised, turn it off and create a new one."
+              />
+            </>
+          )}
 
-      {/*
-        Only a placeholder gets a link. Someone with their own account logs in;
-        a link that acted as them would be an impersonation channel, and the
-        server refuses to mint one.
-      */}
-      {friend.is_ghost === 1 && (
-        <>
-          <h2>Guest link</h2>
-          <LinkPanel
-            query={{ friendId: friend.id }}
-            canManage
-            slots={[
-              {
-                id: `friend-${friend.id}`,
-                kind: "friend",
-                userId: friend.id,
-                label: `${name}'s link`,
-                note: `They can open this without an account, or create one and claim the link to keep this history. Links expire after 3 months.`,
-              },
-            ]}
-            intro="Share this link so they can view your shared expenses. Links expire after 3 months. If one is compromised, turn it off and create a new one."
+          <h2>Shared expenses</h2>
+          {/* No person picker: this screen IS "what is between the two of us", and
+              the download says so too via csvScope. */}
+          <ExpenseFilters
+            value={filters}
+            onChange={setFilters}
+            csvScope={{ friendId: friend.id }}
+            csvFilename={`splitsmart-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
           />
-        </>
-      )}
-
-      <h2>Shared expenses</h2>
-      {/* No person picker: this screen IS "what is between the two of us", and
-          the download says so too via csvScope. */}
-      <ExpenseFilters
-        value={filters}
-        onChange={setFilters}
-        csvScope={{ friendId: friend.id }}
-        csvFilename={`splitsmart-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
-      />
-      <ExpenseList
-        expenses={expenses}
-        currentUserId={user.id}
-        nameOf={nameOf}
-        showGroup
-        empty={
-          Object.keys(filters).length > 0
-            ? "Nothing shared with them matches those filters."
-            : `Nothing split with ${name} yet.`
-        }
-      />
+          <ExpenseList
+            expenses={expenses}
+            currentUserId={user.id}
+            nameOf={nameOf}
+            showGroup
+            empty={
+              Object.keys(filters).length > 0
+                ? "Nothing shared with them matches those filters."
+                : `Nothing split with ${name} yet.`
+            }
+          />
+        </div>
+      </div>
     </>
   );
 }

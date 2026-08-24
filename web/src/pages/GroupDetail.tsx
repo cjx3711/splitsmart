@@ -5,6 +5,10 @@
  * from the mirror and written through the outbox - the balances and the settle-up
  * suggestions are derived here with the same pure functions the server uses, not
  * fetched. Adding a member and minting a guest link stay online-only, and say so.
+ *
+ * On a wide screen the member balances, suggested settle-up, and convert sit
+ * in a right-hand panel so the expense list can start higher. Narrow screens
+ * stack them, with balances still above the expenses.
  */
 import { useState } from "react";
 import { useParams } from "react-router-dom";
@@ -32,6 +36,7 @@ import { useSync } from "../sync/SyncProvider.tsx";
 import { markMemberLeft, patchPerson, restoreMember, revertPerson, setGroupSimplify } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { HelpTip } from "../HelpTip.tsx";
 import { FriendListItem, friendHref } from "../FriendListItem.tsx";
 
@@ -39,7 +44,7 @@ export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "identity" | "convert" | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
   const [removingMember, setRemovingMember] = useState<GroupMember | null>(null);
@@ -82,6 +87,17 @@ export function GroupDetail() {
   const outstandingCurrencies = [
     ...new Set(balances.flatMap((e) => e.balances.map((b) => b.currencyCode))),
   ];
+  const hasSettle = settle.some((s) => s.transfers.length > 0);
+  const canConvert = outstandingCurrencies.length > 1;
+  const showAside = balances.length > 0 || hasSettle || canConvert;
+  const convertTransfers = settle.flatMap((s) =>
+    s.transfers.map((t) => ({
+      currencyCode: s.currencyCode,
+      fromUserId: t.fromUserId,
+      toUserId: t.toUserId,
+      amountMinor: t.amountMinor,
+    })),
+  );
 
   const isOwner = role === "owner";
 
@@ -233,69 +249,117 @@ export function GroupDetail() {
         }}
       />
 
-      <h2 style={{ marginTop: 0 }}>Balances</h2>
-      {balances.length === 0 ? (
-        <p className="empty">Everyone is settled up.</p>
-      ) : (
-        <div className="list">
-          {balances.map((entry) => (
-            <FriendListItem
-              key={entry.userId}
-              to={friendHref(entry.userId, user.id)}
-              avatar={avatarFor(entry.userId)}
-              title={nameOf(entry.userId)}
-            >
-              <div>
-                <div className="ledger">
-                  {entry.balances.map((b) => (
-                    <div key={b.currencyCode} className={b.amountMinor >= 0 ? "positive" : "negative"}>
-                      {b.amountMinor >= 0 ? "gets back " : "owes "}
-                      <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                    </div>
-                  ))}
-                </div>
-                <EstimatedTotal balances={entry.balances} preferredCurrency={user.defaultCurrency} />
-              </div>
-            </FriendListItem>
-          ))}
-        </div>
-      )}
-      <ConversionFootnote
-        sets={balances.map((e) => e.balances)}
-        preferredCurrency={user.defaultCurrency}
+      <ConvertGroupBalanceDialog
+        open={openDialog === "convert"}
+        nameOf={nameOf}
+        transfers={convertTransfers}
+        preferredCurrency={group.default_currency}
+        onClose={() => setOpenDialog(null)}
+        onSubmit={async (payments) => {
+          if (!engine) throw new Error("Not ready to save yet.");
+          for (const payment of payments) {
+            const id = ulid();
+            await engine.enqueue({
+              kind: "payment.create",
+              id,
+              payload: paymentAsExpense(payment, group.id),
+            });
+            await engine.enqueue({
+              kind: "comment.create",
+              id: ulid(),
+              payload: { expenseId: id, content: payment.comment },
+            });
+          }
+        }}
       />
 
-      {settle.some((s) => s.transfers.length > 0) && (
-        <>
-          <h2 className="with-help">
-            Suggested settle-up
-            <HelpTip label="About suggested settle-up">
-              The fewest transfers that clear this group, one set per currency. Nothing is recorded
-              until someone actually pays. Use Settle up above, which starts prefilled with the
-              first of these.
-            </HelpTip>
-          </h2>
-          <div className="card stack">
-            {settle
-              .filter((s) => s.transfers.length > 0)
-              .map((s) => (
-                <div key={s.currencyCode}>
-                  <span className="eyebrow">{s.currencyCode}</span>
-                  <ul className="breakdown">
-                    {s.transfers.map((t, i) => (
-                      <li key={i}>
-                        {nameOf(t.fromUserId)} → {nameOf(t.toUserId)}{" "}
-                        <Amount minor={t.amountMinor} currency={s.currencyCode} />
-                      </li>
+      <div className={showAside ? "split-page" : undefined}>
+        {showAside && (
+          <aside className="split-aside">
+            <h2 style={{ marginTop: 0 }}>Balances</h2>
+            {balances.length === 0 ? (
+              <p className="empty">Everyone is settled up.</p>
+            ) : (
+              <div className="list">
+                {balances.map((entry) => (
+                  <FriendListItem
+                    key={entry.userId}
+                    to={friendHref(entry.userId, user.id)}
+                    avatar={avatarFor(entry.userId)}
+                    title={nameOf(entry.userId)}
+                  >
+                    <div>
+                      <div className="ledger">
+                        {entry.balances.map((b) => (
+                          <div
+                            key={b.currencyCode}
+                            className={b.amountMinor >= 0 ? "positive" : "negative"}
+                          >
+                            {b.amountMinor >= 0 ? "gets back " : "owes "}
+                            <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
+                          </div>
+                        ))}
+                      </div>
+                      <EstimatedTotal
+                        balances={entry.balances}
+                        preferredCurrency={user.defaultCurrency}
+                      />
+                    </div>
+                  </FriendListItem>
+                ))}
+              </div>
+            )}
+            <ConversionFootnote
+              sets={balances.map((e) => e.balances)}
+              preferredCurrency={user.defaultCurrency}
+            />
+            {canConvert && (
+              <div className="ledger-actions">
+                <OnlineOnly what="Converting a balance">
+                  <button
+                    type="button"
+                    className="secondary inline"
+                    onClick={() => setOpenDialog("convert")}
+                  >
+                    Convert balance
+                  </button>
+                </OnlineOnly>
+              </div>
+            )}
+            {hasSettle && (
+              <>
+                <h2 className="with-help">
+                  Suggested settle-up
+                  <HelpTip label="About suggested settle-up">
+                    The fewest transfers that clear this group, one set per currency. Nothing is recorded
+                    until someone actually pays. Use Settle up above, which starts prefilled with the
+                    first of these.
+                  </HelpTip>
+                </h2>
+                <div className="card stack">
+                  {settle
+                    .filter((s) => s.transfers.length > 0)
+                    .map((s) => (
+                      <div key={s.currencyCode}>
+                        <span className="eyebrow">{s.currencyCode}</span>
+                        <ul className="breakdown">
+                          {s.transfers.map((t, i) => (
+                            <li key={i}>
+                              {nameOf(t.fromUserId)} → {nameOf(t.toUserId)}{" "}
+                              <Amount minor={t.amountMinor} currency={s.currencyCode} />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     ))}
-                  </ul>
                 </div>
-              ))}
-          </div>
-        </>
-      )}
+              </>
+            )}
+          </aside>
+        )}
 
-      <h2>Expenses</h2>
+        <div className={showAside ? "split-body" : undefined}>
+      <h2 style={{ marginTop: 0 }}>Expenses</h2>
       {/* No group picker: this screen IS the group scope, and a filter cannot
           widen it. The CSV carries the same filters as the list. */}
       <ExpenseFilters
@@ -335,7 +399,12 @@ export function GroupDetail() {
             subtitle={
               <span className="muted">
                 {m.role}
-                {m.is_ghost === 1 ? " · guest" : " · has an account"}
+                {m.is_ghost === 1 && (
+                  <>
+                    {" "}
+                    <span className="tag muted">guest</span>
+                  </>
+                )}
               </span>
             }
             actions={
@@ -435,6 +504,8 @@ export function GroupDetail() {
             : "Only the group owner can create or turn off guest links."
         }
       />
+        </div>
+      </div>
 
     </>
   );

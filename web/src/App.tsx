@@ -31,7 +31,9 @@ import { Settings } from "./pages/Settings.tsx";
 import { Import } from "./pages/Import.tsx";
 import { Admin } from "./pages/Admin.tsx";
 import { AdminUser } from "./pages/AdminUser.tsx";
+import { AdminBackups } from "./pages/AdminBackups.tsx";
 import { Verify } from "./pages/Verify.tsx";
+import { Reset } from "./pages/Reset.tsx";
 import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 import { Footer } from "./Footer.tsx";
@@ -79,13 +81,17 @@ export function App() {
   );
 }
 
+function isPublicAuthPath(pathname: string): boolean {
+  return pathname === "/login" || pathname === "/reset" || pathname.startsWith("/reset/");
+}
+
 function Shell() {
   const { user } = useAuth();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
-  // Login is a public form. Showing the sidebar around it when a session
-  // already exists is the bug; the page itself redirects away.
-  const appChrome = Boolean(user) && location.pathname !== "/login";
+  // Login and password reset are public forms. Showing the sidebar around them
+  // when a session already exists is the bug; login itself redirects away.
+  const appChrome = Boolean(user) && !isPublicAuthPath(location.pathname);
 
   // Close the mobile drawer whenever the route changes, so tapping a group
   // doesn't leave the menu covering the screen you just asked for.
@@ -96,6 +102,8 @@ function Shell() {
       {/* Public: the link is often opened in a different browser. */}
       <Route path="/verify/:token" element={<Verify />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/reset" element={<Reset />} />
+      <Route path="/reset/:token" element={<Reset />} />
       {/*
         Reached from the guest shell, holding a link secret, once you have an
         account. Not protected: arriving here logged out is the normal case,
@@ -124,6 +132,16 @@ function Shell() {
           <Protected>
             <AdminGate>
               <Admin />
+            </AdminGate>
+          </Protected>
+        }
+      />
+      <Route
+        path="/admin/backups"
+        element={
+          <Protected>
+            <AdminGate>
+              <AdminBackups />
             </AdminGate>
           </Protected>
         }
@@ -277,7 +295,7 @@ function TopBar({
             <AddExpenseDialog open={adding} onClose={() => setAdding(false)} />
           </>
         )}
-        {!user && location.pathname !== "/login" && (
+        {!user && !isPublicAuthPath(location.pathname) && (
           <Link to="/login" className="mkt-btn mkt-btn-sm">
             Log in
           </Link>

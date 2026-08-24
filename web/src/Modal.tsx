@@ -50,19 +50,27 @@ export function Dialog({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  // Escape fires `close` without going through React, so bounce that back into
-  // state or the two drift apart. dialog.close() fires the same event, including
-  // when React already set open=false to move to another step — only notify the
-  // parent when it still thinks this dialog is open.
+  // Escape fires `cancel` then `close`. Preventing `cancel` keeps the native
+  // dialog open so the parent can confirm first (discard edits, etc.); the
+  // parent still closes it by setting open=false. `close` is the fallback for
+  // programmatic dialog.close() and for when React already moved on.
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
 
+    const handleCancel = (event: Event) => {
+      event.preventDefault();
+      if (openRef.current) onClose();
+    };
     const handleClose = () => {
       if (openRef.current) onClose();
     };
+    dialog.addEventListener("cancel", handleCancel);
     dialog.addEventListener("close", handleClose);
-    return () => dialog.removeEventListener("close", handleClose);
+    return () => {
+      dialog.removeEventListener("cancel", handleCancel);
+      dialog.removeEventListener("close", handleClose);
+    };
   }, [onClose]);
 
   return (
@@ -91,14 +99,21 @@ export function Modal({
   title,
   onClose,
   children,
+  className,
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} className="modal" aria-label={title}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      className={className ? `modal ${className}` : "modal"}
+      aria-label={title}
+    >
       <div className="modal-head">
         <h2 className="modal-title">{title}</h2>
         <button className="icon" onClick={onClose} aria-label="Close" type="button">

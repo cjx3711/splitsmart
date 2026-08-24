@@ -35,6 +35,7 @@ import {
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { isUlid } from "../../domain/ulid.ts";
 import { ulidSchema } from "./expense-schema.ts";
+import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 
 async function membershipOf(groupId: string, userId: string) {
   return db
@@ -71,7 +72,7 @@ async function withPeople(links: LinkSummary[]) {
   const people = ids.length
     ? await db
         .selectFrom("users")
-        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
         .where("id", "in", ids)
         .execute()
     : [];
@@ -87,6 +88,7 @@ async function withPeople(links: LinkSummary[]) {
           iconLetters: byId.get(link.userId)?.icon_letters ?? null,
           iconEmoji: byId.get(link.userId)?.icon_emoji ?? null,
           iconHue: byId.get(link.userId)?.icon_hue ?? null,
+          iconPattern: parseAvatarPattern(byId.get(link.userId)?.icon_pattern ?? null),
         }
       : null,
   }));

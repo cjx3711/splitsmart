@@ -5,20 +5,16 @@ invariants that are easy to break and hard to notice.
 
 ## What this is
 
-A self-hosted Splitwise replacement with API compatibility for the endpoints
-Splitwise clients actually use, except entity ids are ULID strings rather than
-integers (see `docs/SPLITWISE_COMPAT.md`). Two consumers matter:
+A self-hosted Splitwise replacement. Two consumers matter:
 
 1. The React frontend in `web/` talks to the native API at `/api/v1`.
-2. External tools (notably `splitwise-to-toshl`) talk to the compat API at
-   `/api/sw/v3.0`, which mimics Splitwise's v3.0 wire format except that entity
-   ids are ULID strings rather than integers.
+2. External tools talk to the same `/api/v1` with a bearer token minted in
+   Settings.
 
-The long-term goal is full API parity. See `docs/PLAN.md` for the roadmap and
-`docs/SPLITWISE_COMPAT.md` for the endpoint-by-endpoint status. Native entity
-ids are ULIDs (`docs/ULIDS.md`); `/api/sw/v3.0` uses those same ULID strings
-as `id` (a documented break from Splitwise integers - see
-`docs/SPLITWISE_COMPAT.md`).
+There was a Splitwise-compatible shim at `/api/sw/v3.0`. It is gone: native
+already had the same information, and recoding a client against `/api/v1` is
+cheaper than maintaining a frozen Splitwise wire. See `/docs`. Native entity
+ids are ULIDs (`docs/ULIDS.md`).
 
 ## Stack
 
@@ -76,7 +72,7 @@ fonts); re-record with `--update` on the device you run on rather than
 strips ULIDs, dates, link secrets and the live FX estimate. Update a baseline
 in the commit that changed the UI, never to quiet a failing run.
 
-## The five rules
+## The four rules
 
 These are the things that will silently corrupt financial data if broken.
 
@@ -174,24 +170,6 @@ partial, or nonsense cannot make the cache disagree with `expense_users` - the
 worst it can do is choose a different valid pairing. Do not add a path that
 writes `expense_repayments` from anything but this function.
 
-### 5. The compat layer's wire format is frozen
-
-`src/routes/compat/` must reproduce Splitwise's shapes exactly, including the
-parts that are ugly:
-
-- money as decimal **strings** (`"25.00"`), not numbers
-- `users__0__paid_share` flattened keys on `create_expense` input
-- `deleted_at` tombstones returned to the client, not filtered out
-- both `user_id` **and** nested `user.id` on expense participants
-- entity `id` / `user_id` / `group_id` values are ULID **strings**, not
-  Splitwise integers. Category ids stay Splitwise integers. See
-  `docs/SPLITWISE_COMPAT.md`.
-
-Wrong-but-compatible beats right-but-broken. **Do not "improve" a response
-shape.** `src/routes/compat/v3.test.ts` asserts on these field names and string
-formats specifically to catch well-intentioned cleanups. New features get native
-routes under `/api/v1`. Never extend `/api/sw/v3.0` with fields Splitwise never had.
-
 ## Layout
 
 ```
@@ -210,6 +188,8 @@ src/
     split.ts         The split engine. Pure. Heavily tested. Also imported by
                      the frontend. See "Split types" below.
     ulid.ts          Crockford ULID. Pure. Also imported by the frontend.
+    person.ts        Names, nicknames, icon letters. Pure. Shared with web/
+    avatar-pattern.ts  Geometric avatars: HSLA bands, hashed or stored. Pure.
     metadata.ts      JSON bag on users/groups/expenses/comments
     balances.ts      Balance queries. Friend totals apply simplifyDebts per
                      group when simplify_by_default is on. One-on-one expenses
@@ -226,6 +206,11 @@ src/
     import.ts        Splitwise import: people -> groups -> expenses -> comments
     wipe.ts          Hard-delete one account's ledger so reimport is possible
     admin-stats.ts   Operator usage counts + 30-day series (ADMIN_EMAILS)
+  backup/            Daily SQLite snapshot to S3. Config never throws (kept
+                     out of env.ts so a typo cannot take the ledger down).
+                     VACUUM INTO on a dedicated connection; claim_key UNIQUE
+                     is the day lock. wipeUserLedger must never touch
+                     database_backups.
   splitwise/
     client.ts        READ-ONLY client for the real Splitwise API. Nothing else
                      may talk to secure.splitwise.com.
@@ -237,14 +222,14 @@ src/
     send.ts          Resend or Postmark; never throws
     signup.ts        Email-first signup (`emails` table)
     verification.ts  Existing-account verify tokens (`email_tokens`)
+    reset.ts         Password reset tokens (`email_tokens.reset_password`)
     templates.ts     Mail bodies
   routes/
     native/          Clean API at /api/v1, used by web/
       expense-filters.ts  ONE definition of q / dates / category / friend / group
       comments.ts         Thread routes; system rows are NOT reachable from here
       export.ts           /api/v1/expenses.csv (a sibling of /expenses, not a child)
-      admin.ts            /api/v1/admin/* usage dashboard (ADMIN_EMAILS)
-    compat/          Splitwise v3.0 shim. Wire format frozen.
+      admin.ts            /api/v1/admin/* usage + backups (ADMIN_EMAILS)
   server.ts          Entry point
 web/                 React frontend (Vite)
   src/
@@ -253,10 +238,11 @@ web/                 React frontend (Vite)
                      edit dialogs so they cannot drift
     CommentThread.tsx    The thread. Same component on both shells
     RepeatNote.tsx       What a bill says about its own recurrence
-    ExpenseFilters.tsx   The filter bar + the CSV link, on three screens
+    ExpenseFilters.tsx   Search on the bar; the rest in a modal. CSV link.
     LinkPanel.tsx    Mint/rotate/revoke a guest link. Shows the URL once
     guest/           The guest shell. No Dexie, no sync, no logged-in router
-    Logo.tsx         The mark (also copied literally into public/favicon.svg)
+    Avatar.tsx           Letters/emoji on a hashed or stored chord-band pattern
+    PersonIdentityForm.tsx  Name, nickname, pattern editor, letters, emoji
     Sidebar.tsx      Owns the group/friend lists shown on every screen
     ExpenseForm.tsx      The one add-expense form (group, friend, or neither)
     ExpenseDialog.tsx    ExpenseForm in a modal. Shared by both shells
@@ -267,11 +253,11 @@ web/                 React frontend (Vite)
     PeoplePicker.tsx     Who is on the expense: an email-style To: field
     PaidBy.tsx           Who put the money in. NOT how it is split
     SplitEditor.tsx      How it is split, previewed with the real engine
-    categories.tsx       Category icons (react-icons/lucide) + the picker
+    categories.tsx       Category icons + the parent/child picker (form + filters)
 scripts/
   export-splitwise.ts    Raw API dump. RUN THIS FIRST, see below
   check-invariants.ts    Data integrity audit
-docs/                Plan, data model, compat reference
+docs/                Plan, data model
 fixtures/splitwise/  REAL API responses, captured while the API is free.
                      Treat as read-only ground truth; categories.test.ts diffs
                      our data against them. Cannot be re-fetched once Splitwise
@@ -281,15 +267,19 @@ fixtures/splitwise/  REAL API responses, captured while the API is free.
 ## Category IDs are Splitwise's real IDs
 
 `src/db/categories.ts` is not a reconstruction: it was captured from the live
-API. This matters because `category_id` passes straight through the compat
-layer, so an imported expense or a third-party client carrying a Splitwise id
-has to resolve to the same category here.
+API. This matters because `category_id` is what an imported expense or a
+third-party client carrying a Splitwise id has to resolve to.
 
 The ids are **non-sequential**, and parents and children share **one** id space:
 parents are 1, 2, 19, 25, 27, 31, 40 while children run 3–50. `Dining out` is
 13, `Uncategorized > General` is 18 (the default). Do not renumber them, and do
 not "sort" the tree; `src/db/categories.test.ts` diffs it against
 `fixtures/splitwise/get_categories.json` on every run and will fail.
+
+Native extras live in `EXTRA_PARENTS` / `EXTRA_LEAVES` with ids **≥ 51**.
+`splitwise_id` is NULL on those rows. Import still matches in the Splitwise
+id space; extras only appear in the native picker. Adding one is a seed, not
+a migration.
 
 ## Auth model
 
@@ -325,7 +315,7 @@ time. That is what makes revocation immediate, and it is why the guest shell is
 never allowed to work offline: a link can be withdrawn, a cached ledger cannot.
 
 `requireAuth` **rejects** `link_` tokens rather than ignoring them, so a guest
-secret can never reach `/api/v1` or the compat API. The guest tree is
+secret can never reach `/api/v1`. The guest tree is
 `/api/v1/guest/*` and nothing else; there is deliberately no route there that
 mints a link, adds a person, or creates a group.
 
@@ -558,9 +548,8 @@ Two kinds, and the difference decides what the UI may offer:
   Not removable; they reappear on the next load.
 
 `listRelatedUserIds()` in `src/domain/friends.ts` returns the union and is the
-**only** definition of "who is my friend". Both `/api/v1/friends` and the compat
-layer's `get_friends` call it, so the two cannot drift. Do not hand-roll the
-UNION at a call site; the schema comment says so too.
+**only** definition of "who is my friend". `/api/v1/friends` calls it. Do not
+hand-roll the UNION at a call site; the schema comment says so too.
 
 Removing a friendship touches nothing financial. `DELETE /api/v1/friends/:id`
 returns `stillVisible` so the UI can explain why someone is still listed rather
@@ -575,9 +564,10 @@ returns `inviteUrl` once so the inviter can pass it on by hand.
 
 ## Email
 
-`src/email/`: Resend or Postmark transport (one provider), templates, and two
-verification paths. Links point at `/app/verify/:token`, inside the logged-in
-shell.
+`src/email/`: Resend or Postmark transport (one provider), templates, signup,
+existing-account verification, and password reset. Verification links point at
+`/app/verify/:token`; reset links at `/app/reset/:token`. Both are inside the
+logged-in shell.
 
 **Signup is email-first.** `POST /api/v1/auth/signup` writes a row to `emails`
 (address, hashed token, requester IP) and does not create a user.
@@ -598,14 +588,24 @@ and they have to come back still holding the guest-link secret.
 change-email path) still uses `email_tokens`. `issueVerificationToken()` is
 not called from register.
 
+**Password reset** uses the same `email_tokens` table with
+`purpose = 'reset_password'`. `POST /api/v1/auth/password/forgot` always
+returns `{ ok: true }` so the wording cannot enumerate accounts; the link
+goes to `/app/reset/:token`. Completing it writes the new hash, marks the
+address verified (inbox proof), ends every web session for that account, and
+opens a new one. API tokens are a separate credential and stay. Ghosts have
+no login, so they cannot reset. The URL is never returned on the wire (that
+would leak whether the address exists); when mail is unconfigured,
+`sendEmail()` logs it like every other message.
+
 **`sendEmail()` never throws and never blocks boot.** Configure either
 `RESEND_API_KEY` + `RESEND_FROM_ADDRESS` or `POSTMARK_SERVER_TOKEN` +
 `POSTMARK_FROM_ADDRESS`, not both. With neither set it logs the message
 (link included) to the console. Callers check `result.delivered` rather than
 catching.
 
-Verification tokens are single-use, expire in 24h, stored hash-only, and issuing
-a new one supersedes any outstanding ones.
+Verification and reset tokens are single-use, expire in 24h, stored hash-only,
+and issuing a new one supersedes any outstanding ones of the same purpose.
 
 Two details that look optional and are not:
 
@@ -762,9 +762,6 @@ Local comments Splitwise never saw are never deleted by a re-import.
 There is no upload endpoint, no multipart parsing, no image handling, and no
 object storage anywhere in this codebase. This is intentional.
 
-The only trace is `receipt: { large: null, original: null }` in
-`src/routes/compat/serializers.ts`, which is a hardcoded null so Splitwise
-clients see the key they expect instead of `undefined`. It is not a feature stub.
 The importer reads a source receipt URL for exactly one purpose: to warn, once,
 in the preview. Fetching it would be downloading untrusted bytes we have nowhere
 to put.
@@ -777,7 +774,7 @@ untrusted bytes, so it needs an explicit decision, not an incidental one.
 
 - **`src/db/index.ts` opens a connection at import time.** Tests must set
   `process.env.DATABASE_PATH` *before* importing anything that reaches it. See
-  the dynamic-import pattern at the top of `src/routes/compat/v3.test.ts`.
+  the dynamic-import pattern at the top of `src/routes/native/guest.test.ts`.
 - **`src/db/types.ts` is checked in but generated.** After a migration, run
   `yarn db:migrate && yarn db:codegen`. Hand-editing it without a matching
   migration gives you types that lie. Note that the checked-in file predates the
@@ -800,8 +797,8 @@ untrusted bytes, so it needs an explicit decision, not an incidental one.
   cent it is, drifting balances.
 - **`STRICT` tables.** SQLite will reject a type mismatch rather than coercing.
   This is intentional. Do not remove it.
-- **Soft deletes only.** Every balance query filters `deleted_at IS NULL`, and
-  the compat API must return `deleted_at` to clients. Never hard-delete an expense.
+- **Soft deletes only.** Every balance query filters `deleted_at IS NULL`.
+  Never hard-delete an expense; restore needs the tombstone.
 
 ## Before you commit
 
@@ -809,8 +806,8 @@ untrusted bytes, so it needs an explicit decision, not an incidental one.
 yarn typecheck && yarn test && yarn db:check
 ```
 
-If you touched anything under `src/domain/` or `src/routes/compat/`, the tests
-in `split.test.ts` and `v3.test.ts` are the ones that matter. Both are fast.
+If you touched anything under `src/domain/`, the tests in `split.test.ts` are
+the ones that matter. They are fast.
 
 **`migrations/001` is still folded, not layered.** Anything that changed the
 schema means `yarn db:reset` (destructive) on every local database, including

@@ -5,6 +5,9 @@
  * not do: no invite panel, no member management, no group settings. Those are
  * not merely hidden; there is no route on the guest API that would serve them.
  * See docs/GUEST.md, "Guest chrome".
+ *
+ * On a wide screen the member balances, suggested settle-up, and convert sit
+ * in a right-hand panel, matching the logged-in group page.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -20,6 +23,7 @@ import { avatarFromRow } from "../Avatar.tsx";
 import { FriendListItem } from "../FriendListItem.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { groupCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
@@ -48,7 +52,7 @@ export function GuestGroup() {
     }>
   >([]);
   const [error, setError] = useState<string | null>(null);
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | null>(null);
+  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -91,6 +95,17 @@ export function GuestGroup() {
   const outstandingCurrencies = [
     ...new Set(balances.flatMap((e) => e.balances.map((b) => b.currencyCode))),
   ];
+  const hasSettle = settle.some((s) => s.transfers.length > 0);
+  const canConvert = outstandingCurrencies.length > 1;
+  const showAside = balances.length > 0 || hasSettle || canConvert;
+  const convertTransfers = settle.flatMap((s) =>
+    s.transfers.map((t) => ({
+      currencyCode: s.currencyCode,
+      fromUserId: t.fromUserId,
+      toUserId: t.toUserId,
+      amountMinor: t.amountMinor,
+    })),
+  );
 
   return (
     <>
@@ -147,48 +162,112 @@ export function GuestGroup() {
         }}
       />
 
-      <h2 style={{ marginTop: 0 }}>Balances</h2>
-      {balances.length === 0 ? (
-        <p className="empty">Everyone is settled up.</p>
-      ) : (
-        <div className="list">
-          {balances.map((entry) => {
-            const member = members.find((m) => m.id === entry.userId);
-            return (
-            <FriendListItem
-              key={entry.userId}
-              avatar={
-                member
-                  ? avatarFromRow(member)
-                  : { id: entry.userId, name: nameOf(entry.userId) }
-              }
-              title={nameOf(entry.userId)}
-            >
-              <div>
-                <div className="ledger">
-                  {entry.balances.map((b) => (
-                    <div
-                      key={b.currencyCode}
-                      className={b.amountMinor >= 0 ? "positive" : "negative"}
-                    >
-                      {b.amountMinor >= 0 ? "gets back " : "owes "}
-                      <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                    </div>
-                  ))}
-                </div>
-                <EstimatedTotal balances={entry.balances} preferredCurrency={me.defaultCurrency} />
-              </div>
-            </FriendListItem>
-            );
-          })}
-        </div>
-      )}
-      <ConversionFootnote
-        sets={balances.map((e) => e.balances)}
-        preferredCurrency={me.defaultCurrency}
+      <ConvertGroupBalanceDialog
+        open={openDialog === "convert"}
+        nameOf={nameOf}
+        transfers={convertTransfers}
+        preferredCurrency={group.default_currency}
+        onClose={() => setOpenDialog(null)}
+        onSubmit={async (payments) => {
+          for (const payment of payments) {
+            const { id } = await guestApi.createPayment({ ...payment, groupId: group.id });
+            await guestApi.addComment(id, payment.comment);
+          }
+          await load();
+        }}
       />
 
-      <h2>Expenses</h2>
+      <div className={showAside ? "split-page" : undefined}>
+        {showAside && (
+          <aside className="split-aside">
+            <h2 style={{ marginTop: 0 }}>Balances</h2>
+            {balances.length === 0 ? (
+              <p className="empty">Everyone is settled up.</p>
+            ) : (
+              <div className="list">
+                {balances.map((entry) => {
+                  const member = members.find((m) => m.id === entry.userId);
+                  return (
+                    <FriendListItem
+                      key={entry.userId}
+                      avatar={
+                        member
+                          ? avatarFromRow(member)
+                          : { id: entry.userId, name: nameOf(entry.userId) }
+                      }
+                      title={nameOf(entry.userId)}
+                    >
+                      <div>
+                        <div className="ledger">
+                          {entry.balances.map((b) => (
+                            <div
+                              key={b.currencyCode}
+                              className={b.amountMinor >= 0 ? "positive" : "negative"}
+                            >
+                              {b.amountMinor >= 0 ? "gets back " : "owes "}
+                              <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
+                            </div>
+                          ))}
+                        </div>
+                        <EstimatedTotal
+                          balances={entry.balances}
+                          preferredCurrency={me.defaultCurrency}
+                        />
+                      </div>
+                    </FriendListItem>
+                  );
+                })}
+              </div>
+            )}
+            <ConversionFootnote
+              sets={balances.map((e) => e.balances)}
+              preferredCurrency={me.defaultCurrency}
+            />
+            {canConvert && (
+              <div className="ledger-actions">
+                <button
+                  type="button"
+                  className="secondary inline"
+                  onClick={() => setOpenDialog("convert")}
+                >
+                  Convert balance
+                </button>
+              </div>
+            )}
+            {hasSettle && (
+              <>
+                <h2 className="with-help">
+                  Suggested settle-up
+                  <HelpTip label="About suggested settle-up">
+                    The fewest transfers that clear this group, one set per currency. Nothing is recorded
+                    until someone actually pays. Use Settle up above, which starts prefilled with the
+                    first of these.
+                  </HelpTip>
+                </h2>
+                <div className="card stack">
+                  {settle
+                    .filter((s) => s.transfers.length > 0)
+                    .map((s) => (
+                      <div key={s.currencyCode}>
+                        <span className="eyebrow">{s.currencyCode}</span>
+                        <ul className="breakdown">
+                          {s.transfers.map((t, i) => (
+                            <li key={i}>
+                              {nameOf(t.fromUserId)} → {nameOf(t.toUserId)}{" "}
+                              <Amount minor={t.amountMinor} currency={s.currencyCode} />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                </div>
+              </>
+            )}
+          </aside>
+        )}
+
+        <div className={showAside ? "split-body" : undefined}>
+      <h2 style={{ marginTop: 0 }}>Expenses</h2>
       <ExpenseList
         expenses={expenses}
         currentUserId={me.id}
@@ -211,11 +290,18 @@ export function GuestGroup() {
             subtitle={
               <span className="muted">
                 {m.role}
-                {m.is_ghost === 1 && " · guest"}
+                {m.is_ghost === 1 && (
+                  <>
+                    {" "}
+                    <span className="tag muted">guest</span>
+                  </>
+                )}
               </span>
             }
           />
         ))}
+      </div>
+        </div>
       </div>
     </>
   );

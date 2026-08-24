@@ -70,6 +70,24 @@ describe("lastSharedExpenseIdByUser", () => {
     );
     assert.equal(last.get("a"), older);
   });
+
+  test("an import rounding settle-up flagged on the sync document is skipped too", () => {
+    const last = lastSharedExpenseIdByUser(
+      [
+        {
+          id: older,
+          shares: [{ userId: "me" }, { userId: "a" }],
+        },
+        {
+          id: newest,
+          importRounding: true,
+          shares: [{ userId: "me" }, { userId: "a" }],
+        },
+      ],
+      "me",
+    );
+    assert.equal(last.get("a"), older);
+  });
 });
 
 describe("compareByLastExpense", () => {

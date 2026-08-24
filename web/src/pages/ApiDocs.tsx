@@ -3,39 +3,37 @@ import { Link } from "react-router-dom";
 import { GROUP_TYPES } from "../../../src/domain/group-types.ts";
 
 /**
- * Public reference for the two HTTP APIs. Kept as a page rather than an
- * OpenAPI dump so the money rules and the frozen compat quirks stay next to
- * the endpoints they apply to.
+ * Public reference for the HTTP API. Kept as a page rather than an OpenAPI
+ * dump so the money rules stay next to the endpoints they apply to.
  */
 export function ApiDocs() {
   return (
     <article className="mkt-prose mkt-docs">
       <h1>API</h1>
       <p>
-        SplitSmart speaks two HTTP APIs from the same process. The native one
-        is what this web app uses. The Splitwise-compatible one exists so
-        existing clients can keep working after changing only the base URL.
+        One HTTP API, at <code>/api/v1</code>. CamelCase JSON, integer minor
+        units. This web app uses it; so can anything else that holds a bearer
+        token.
       </p>
-      <ul>
-        <li>
-          Native: <code>/api/v1</code>, camelCase JSON, integer minor units
-        </li>
-        <li>
-          Compat: <code>/api/sw/v3.0</code>, Splitwise v3.0 wire format,
-          decimal strings
-        </li>
-      </ul>
       <p>
         Mint a token in Settings after you log in. Send it as{" "}
         <code>Authorization: Bearer &lt;token&gt;</code>. Cookie sessions work
-        on the native API too; they are how the browser talks to itself. The
-        compat API is bearer-only.
+        too; they are how the browser talks to itself.
       </p>
+      <aside id="compat" className="docs-tombstone">
+        <p>
+          There used to be a second API at <code>/api/sw/v3.0</code> that
+          copied Splitwise&apos;s v3.0 shapes so existing clients could keep
+          working after changing only the base URL. Maintaining a frozen,
+          ugly wire next to this one was a lot of work for a drop-in that an
+          agent can recode against <code>/api/v1</code> in an afternoon. The
+          shim is gone. This page is the API.
+        </p>
+      </aside>
       <nav className="docs-toc" aria-label="On this page">
         <a href="#auth">Auth</a>
         <a href="#money">Money</a>
         <a href="#native">Native API</a>
-        <a href="#compat">Compat API</a>
       </nav>
 
       <h2 id="auth">Auth</h2>
@@ -92,28 +90,53 @@ export function ApiDocs() {
           (ghosts) cannot log in at all; a guest link acts as them instead.
         </p>
       </Endpoint>
+      <Endpoint method="POST" path="/api/v1/auth/password/forgot" auth="public">
+        <Code>{`{ "email": "you@example.com" }`}</Code>
+        <p>
+          Always <code>200</code> with <code>{`{ ok: true }`}</code>, whether
+          or not that address has an account. If it does, a 24-hour single-use
+          link is emailed (or written to the server log when no mail provider
+          is configured). The URL is never returned here: that would reveal
+          whether the address exists.
+        </p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/auth/password/reset/:token" auth="public">
+        <p>
+          Opens a reset link so the form can show which address it will change.
+          Does not consume the token. <code>200</code> with{" "}
+          <code>{`{ ok, email }`}</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/auth/password/reset/:token" auth="public">
+        <Code>{`{ "password": "at-least-8" }`}</Code>
+        <p>
+          Writes the new hash, marks the address verified, ends every web
+          session for that account, and opens a new one. API tokens stay.{" "}
+          <code>200</code> with <code>{`{ user, emailVerified: true }`}</code>.
+        </p>
+      </Endpoint>
       <Endpoint method="POST" path="/api/v1/auth/logout" auth="public">
         <p>Clears the session cookie. <code>{`{ ok: true }`}</code></p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/auth/me">
         <Code>{`{ "user": { "id": "01ARZ…", "email": "you@example.com", "name": "Alex Chen",
-  "nickname": null, "iconLetters": null, "iconEmoji": null, "iconHue": null,
+  "nickname": null, "iconLetters": null, "iconEmoji": null, "iconHue": null, "iconPattern": null,
   "isGhost": false, "defaultCurrency": "USD",
   "emailVerified": true, "needsEmailVerification": false, "isAdmin": false } }`}</Code>
         <p>
           <code>isAdmin</code> is true when the account's email is listed in the
-          server's <code>ADMIN_EMAILS</code> env var. Native only; not on the
-          compat wire format.
+          server's <code>ADMIN_EMAILS</code> env var.
         </p>
       </Endpoint>
       <Endpoint method="PATCH" path="/api/v1/auth/me">
         <Code>{`{ "name": "Alex Chen", "nickname": "Alex", "iconLetters": "AC",
-  "iconEmoji": null, "iconHue": 205, "defaultCurrency": "JPY" }`}</Code>
+  "iconEmoji": null, "iconHue": 205, "iconPattern": { "base": { "h": 205, "s": 62, "l": 38, "a": 1 }, "layers": [] }, "defaultCurrency": "JPY" }`}</Code>
         <p>
-          Any subset of those fields. Name, nickname, letters, emoji and hue
-          are how you look in the app; currency is the expense-entry default
-          and display conversions. Letters are at most two graphemes; hue is
-          0–359 or <code>null</code> (hashed from your id). Must be a currency
+          Any subset of those fields. Name, nickname, letters, emoji and the
+          geometric pattern are how you look in the app; currency is the expense-entry default
+          and display conversions. Letters are at most two graphemes; the pattern is a base
+          colour plus up to ten bands (start/end percent, rotation, HSLA).{" "}
+          <code>iconPattern: null</code> hashes a unique pattern from your id. Must be a currency
           from <code>GET /api/v1/categories/currencies</code>. Returns the same{" "}
           <code>{`{ user }`}</code> shape as GET. Does not convert any stored
           balances.
@@ -144,11 +167,6 @@ export function ApiDocs() {
         come from <code>GET /api/v1/categories/currencies</code>; do not
         assume 2. There is no exchange-rate table. Balances are arrays, one
         entry per currency that is not zero.
-      </p>
-      <p>
-        The compat API is the opposite on purpose: money is a decimal{" "}
-        <em>string</em> (<code>"25.00"</code>, or <code>"3000"</code> for JPY)
-        so Splitwise clients keep parsing what they already parse.
       </p>
 
       <h2 id="native">Native API</h2>
@@ -422,8 +440,8 @@ export function ApiDocs() {
         A guest link IS the credential. It is sent as{" "}
         <code>Authorization: Bearer link_&lt;secret&gt;</code>, it is re-checked
         on every request (so revoking is immediate), and it only ever reaches{" "}
-        <code>/api/v1/guest/*</code>. The routes above and the Splitwise compat
-        API reject it outright. Three kinds: <code>group</code> (pick any
+        <code>/api/v1/guest/*</code>. The routes above reject it outright.
+        Three kinds: <code>group</code> (pick any
         placeholder member, re-pickably), <code>group_member</code> (one person,
         no picker), and <code>friend</code> (one person, their groups plus your
         1:1 expenses with them).
@@ -543,14 +561,15 @@ export function ApiDocs() {
         </p>
       </Endpoint>
 
-      <h3>Admin (usage)</h3>
+      <h3>Admin (usage and backups)</h3>
       <p>
         Operator-only. The caller's email must appear in{" "}
         <code>ADMIN_EMAILS</code> (comma-separated, case-insensitive). Empty
-        means nobody. Returns counts and a 30-day series only — never amounts,
-        titles, friend names, or link secrets.{" "}
+        means nobody. Usage endpoints return counts and a 30-day series only —
+        never amounts, titles, friend names, or link secrets.{" "}
         <code>as_of=YYYY-MM-DD</code> pins the series window (UTC); missing or
-        malformed falls back to today.
+        malformed falls back to today. Backup endpoints never return S3
+        credentials; the access key is masked and the secret is a boolean.
       </p>
       <Endpoint method="GET" path="/api/v1/admin/users" auth="admin">
         <Code>{`{ "asOf": "2026-08-18",
@@ -565,6 +584,21 @@ export function ApiDocs() {
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/admin/users/:id" auth="admin">
         <p>Same shape for one user. <code>404</code> for ghosts or deleted.</p>
+      </Endpoint>
+      <Endpoint method="GET" path="/api/v1/admin/backups" auth="admin">
+        <p>
+          Always <code>200</code> once authorised: redacted config, scheduler
+          state, run history, and (when configured) bucket size. A missing S3
+          config is data on this page, not an error.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/admin/backups" auth="admin">
+        <p>
+          Start a run now. Returns <code>202</code> immediately; the upload
+          continues in the background. <code>?force=true</code> records an extra
+          run that does not own the day. <code>409</code> if one is already
+          running; <code>503</code> if backups are not configured.
+        </p>
       </Endpoint>
 
       <Endpoint method="GET" path="/health" auth="public">
@@ -653,40 +687,6 @@ export function ApiDocs() {
         </p>
       </Endpoint>
 
-      <h2 id="compat">Compat API</h2>
-      <p>
-        Base URL: <code>/api/sw/v3.0</code>. Bearer token required. The wire
-        format is frozen: money as decimal strings, flattened{" "}
-        <code>users__0__paid_share</code> keys on create, <code>deleted_at</code>{" "}
-        tombstones returned rather than filtered, and both{" "}
-        <code>user_id</code> and nested <code>user.id</code> on participants.
-        Do not expect native fields such as <code>splitType</code> here -
-        Splitwise never had them.
-      </p>
-      <p>Implemented:</p>
-      <ul>
-        <li>
-          <code>GET /get_current_user</code>
-        </li>
-        <li>
-          <code>GET /get_friends</code> / <code>GET /get_friend/:id</code>
-        </li>
-        <li>
-          <code>GET /get_categories</code>
-        </li>
-        <li>
-          <code>GET /get_expenses</code>
-        </li>
-        <li>
-          <code>POST /create_expense</code>
-        </li>
-      </ul>
-      <p>
-        Point a client such as <code>splitwise-to-toshl</code> at{" "}
-        <code>https://&lt;host&gt;/api</code> and paste a SplitSmart token
-        where the Splitwise key went. Groups, comments, notifications, and
-        OAuth2 are not implemented yet.
-      </p>
       <p>
         <Link to="/about">About this instance</Link>
         {" · "}

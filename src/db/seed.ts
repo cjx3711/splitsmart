@@ -1,21 +1,50 @@
 /**
- * Seeds reference data: currencies and Splitwise's category tree.
+ * Seeds reference data: currencies, Splitwise's category tree, and the native
+ * extras that sit above Splitwise's id space (see EXTRA_* in categories.ts).
  *
  * Idempotent; safe to re-run.
  *
- * CATEGORY IDS ARE SPLITWISE'S REAL IDS, captured from the live API and kept at
- * fixtures/splitwise/get_categories.json. That matters because `category_id`
- * passes straight through the compat layer: an imported expense or a client
- * carrying a Splitwise id has to land on the same category here. The ids are
+ * SPLITWISE CATEGORY IDS ARE THE REAL IDS, captured from the live API and kept
+ * at fixtures/splitwise/get_categories.json. That matters because `category_id`
+ * is what an imported expense or a client carrying a Splitwise id has to land
+ * on. The ids are
  * non-sequential and share one space between parents and children, so they are
- * inserted explicitly rather than autoincremented.
+ * inserted explicitly rather than autoincremented. Extras start at 51.
  *
  * Usage:  yarn db:seed
  */
+import type SQLite from "better-sqlite3";
 import { openDatabase } from "./index.ts";
 import { env } from "../env.ts";
 import { CURRENCIES } from "./currencies.ts";
-import { CATEGORIES, DEFAULT_CATEGORY_ID, MAX_SPLITWISE_CATEGORY_ID } from "./categories.ts";
+import {
+  CATEGORIES,
+  DEFAULT_CATEGORY_ID,
+  EXTRA_LEAVES,
+  EXTRA_PARENTS,
+  MAX_SEEDED_CATEGORY_ID,
+} from "./categories.ts";
+
+/**
+ * Native-only categories (ids ≥ 51). Shared with seed-from-splitwise so a
+ * refresh of the Splitwise tree does not wipe the extras we added on top.
+ */
+export function seedExtraCategories(db: SQLite.Database): void {
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO categories
+       (id, splitwise_id, parent_id, name, icon, sort_order, is_default)
+     VALUES (?, NULL, ?, ?, NULL, ?, 0)`,
+  );
+  EXTRA_PARENTS.forEach((parent, parentIndex) => {
+    insert.run(parent.id, null, parent.name, 100 + parentIndex);
+    parent.children.forEach((child, childIndex) => {
+      insert.run(child.id, parent.id, child.name, childIndex);
+    });
+  });
+  EXTRA_LEAVES.forEach((child, childIndex) => {
+    insert.run(child.id, child.parentId, child.name, 100 + childIndex);
+  });
+}
 
 export function seed(databasePath: string = env.DATABASE_PATH): void {
   const db = openDatabase(databasePath);
@@ -58,10 +87,12 @@ export function seed(databasePath: string = env.DATABASE_PATH): void {
       });
     });
 
+    seedExtraCategories(db);
+
     // No manual sqlite_sequence bump is needed: `id INTEGER PRIMARY KEY
     // AUTOINCREMENT` makes SQLite raise the stored sequence to any explicit id
-    // we insert, so locally-created categories already start above Splitwise's
-    // range. Asserted below rather than assumed.
+    // we insert, so later locally-created categories start above everything
+    // we seeded. Asserted below rather than assumed.
   });
 
   run();
@@ -80,15 +111,15 @@ export function seed(databasePath: string = env.DATABASE_PATH): void {
     .prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'categories'`)
     .get() as { seq: number } | undefined;
 
-  if ((sequence?.seq ?? 0) < MAX_SPLITWISE_CATEGORY_ID) {
+  if ((sequence?.seq ?? 0) < MAX_SEEDED_CATEGORY_ID) {
     throw new Error(
-      `categories sequence is ${sequence?.seq ?? 0}, expected >= ${MAX_SPLITWISE_CATEGORY_ID}. ` +
-        `New categories could collide with Splitwise ids.`,
+      `categories sequence is ${sequence?.seq ?? 0}, expected >= ${MAX_SEEDED_CATEGORY_ID}. ` +
+        `New categories could collide with a seeded id.`,
     );
   }
 
   console.log(`  currencies: ${counts.currencies}`);
-  console.log(`  categories: ${counts.parents} parents, ${counts.leaves} leaves (Splitwise ids)`);
+  console.log(`  categories: ${counts.parents} parents, ${counts.leaves} leaves (Splitwise + extras)`);
 
   db.close();
 }

@@ -1,7 +1,7 @@
 # SplitSmart
 
-A self-hosted Splitwise replacement with API compatibility, so existing Splitwise
-clients keep working after pointing them at a different base URL.
+A self-hosted Splitwise replacement. One Node process, one SQLite file, a JSON
+API at `/api/v1`.
 
 ## Why
 
@@ -73,25 +73,11 @@ SPLITWISE_API_KEY=... yarn export:splitwise
 Get a key from [secure.splitwise.com/apps](https://secure.splitwise.com/apps).
 The output is gitignored; back it up somewhere private.
 
-## Using it with splitwise-to-toshl
-
-1. Settings → API tokens → create a token.
-2. In `splitwise-to-toshl`, set the proxy target in `webapp/server.js`:
-
-```bash
-SPLITWISE_API_URL=http://localhost:5545/api
-```
-
-3. Paste the SplitSmart token where the Splitwise API key goes.
-
-All six endpoints that app uses are implemented and tested. See
-[docs/SPLITWISE_COMPAT.md](docs/SPLITWISE_COMPAT.md).
-
 ## Commands
 
 ```bash
 yarn dev             # API + frontend with reload
-yarn test            # split engine, money, auth, compat API
+yarn test            # split engine, money, auth, native API
 yarn typecheck       # server + web
 yarn db:check        # audit data integrity
 yarn db:reset        # wipe and rebuild locally
@@ -101,13 +87,13 @@ yarn build           # production build
 
 ## Documentation
 
-- **[CLAUDE.md](CLAUDE.md)**: how the repo works, and the five rules that keep
+- **[CLAUDE.md](CLAUDE.md)**: how the repo works, and the four rules that keep
   financial data correct. Read this before changing anything.
-- [docs/PLAN.md](docs/PLAN.md): roadmap toward full API parity
+- [docs/PLAN.md](docs/PLAN.md): roadmap
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md): schema reasoning
 - [docs/GUEST.md](docs/GUEST.md): guest links, the two shells, and claiming
 - [docs/OFFLINE.md](docs/OFFLINE.md): the offline-first plan for `/app`
-- [docs/SPLITWISE_COMPAT.md](docs/SPLITWISE_COMPAT.md): endpoint reference
+- The HTTP API is documented in the app at `/docs`
 
 ## Status
 
@@ -115,11 +101,10 @@ Working: accounts, groups, friends, all six split types with an editor, one-on-o
 expenses, per-currency balances, settle-up suggestions, comments (including the
 automatic ones written when a bill is edited), recurring expenses, expense search
 and filters, CSV export, undo for a deleted expense, guest links and claiming,
-the Splitwise importer, email verification, API tokens, and the six
-Splitwise-compatible endpoints.
+the Splitwise importer, email verification, password reset, and API tokens.
 
 Not yet: offline writes and sync for `/app` (see [docs/OFFLINE.md](docs/OFFLINE.md)),
-group invites by email, password reset. See [docs/PLAN.md](docs/PLAN.md).
+group invites by email. See [docs/PLAN.md](docs/PLAN.md).
 
 ## License
 

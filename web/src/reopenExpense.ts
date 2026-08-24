@@ -14,6 +14,7 @@ import { formatMoney, type ExpenseDetail } from "./api.ts";
 import type { Payment } from "./PaidBy.tsx";
 import type { SplitDraftInit } from "./SplitEditor.tsx";
 import type { ExpenseFormInit } from "./ExpenseForm.tsx";
+import { isImportRoundingExpense } from "../../src/domain/metadata.ts";
 
 /** Recovers who paid what as one of PaidBy's three shapes, from the raw shares. */
 export function reconstructPayment(
@@ -82,7 +83,7 @@ export function reconstructExpenseForm(
 ): ExpenseFormInit {
   return {
     description: expense.description,
-    details: expense.details,
+    details: isImportRoundingExpense(expense) ? null : expense.details,
     amount: formatMoney(expense.cost_minor, decimals ?? 2) ?? "",
     date: expense.date.slice(0, 10),
     categoryId: expense.category_id ?? 18,

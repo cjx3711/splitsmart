@@ -27,7 +27,7 @@ const IMPROVEMENTS = [
   "Itemised bills, where each line has its own sharers and tax and tip get spread proportionally",
   "Splitwise import, and your API key is used for the request and then dropped",
   "Installable as a PWA, and the ledger stays on the device",
-  "A native JSON API, plus compatibility with the basic Splitwise API shapes",
+  "A JSON API at /api/v1, with a bearer token from Settings",
 ];
 
 /**

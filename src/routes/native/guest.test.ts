@@ -460,15 +460,6 @@ describe("a guest link is not a user credential", () => {
     }
   });
 
-  test("the Splitwise compat API refuses it too", async () => {
-    const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
-
-    const res = await app.request("/api/sw/v3.0/get_current_user", {
-      headers: { Authorization: `Bearer link_${secret}` },
-    });
-    assert.equal(res.status, 401);
-  });
-
   test("and a real API token is refused by the guest API", async () => {
     const res = await app.request("/api/v1/guest/session", {
       headers: { Authorization: `Bearer ${ownerToken}` },

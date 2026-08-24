@@ -16,13 +16,28 @@
  * The CSV carries the same filters, and is built from the mirror through the same
  * pure formatter the server uses, so the file is byte-identical either way and
  * downloading works offline.
+ *
+ * Search stays on the bar (it is the thing people type every time). Everything
+ * else lives in a modal so the seven-control wrap does not eat the list.
  */
 import { useEffect, useState } from "react";
 import { displayName, type ExpenseQuery, type Friend, type Group } from "./api.ts";
-import { useCategories } from "./categories.tsx";
+import { categoryPath, CategoryPicker, useCategories } from "./categories.tsx";
 import { useAuth } from "./App.tsx";
+import { Modal } from "./Modal.tsx";
 import { useLocalDb } from "./sync/SyncProvider.tsx";
 import { localExpenseCsv } from "./db/queries.ts";
+
+function modalFilterCount(value: ExpenseQuery): number {
+  return (
+    Number(value.groupId !== undefined) +
+    Number(value.friendId !== undefined) +
+    Number(value.datedAfter !== undefined) +
+    Number(value.datedBefore !== undefined) +
+    Number(value.categoryId !== undefined) +
+    Number(value.isPayment !== undefined)
+  );
+}
 
 export function ExpenseFilters({
   value,
@@ -52,6 +67,7 @@ export function ExpenseFilters({
   const categories = useCategories();
   const db = useLocalDb();
   const { user } = useAuth();
+  const [open, setOpen] = useState(false);
   // Typing is local so every keystroke does not fire a request; the parent is
   // told once the box settles. 250ms is short enough to feel immediate.
   const [q, setQ] = useState(value.q ?? "");
@@ -65,18 +81,9 @@ export function ExpenseFilters({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce the text, not the callback identity
   }, [q]);
 
-  const active =
-    Boolean(value.q) ||
-    value.groupId !== undefined ||
-    value.friendId !== undefined ||
-    value.datedAfter !== undefined ||
-    value.datedBefore !== undefined ||
-    value.categoryId !== undefined ||
-    value.isPayment !== undefined;
-
-  // Leaf categories only: a parent is a display grouping and no expense carries
-  // its id. See src/db/categories.ts.
-  const leaves = categories.filter((c) => c.parent_id !== null);
+  const modalCount = modalFilterCount(value);
+  const active = Boolean(value.q) || modalCount > 0;
+  const categoryLabel = categoryPath(categories, value.categoryId);
 
   return (
     <div className="filters">
@@ -88,87 +95,17 @@ export function ExpenseFilters({
         aria-label="Search descriptions"
       />
 
-      {groups && (
-        <select
-          value={value.groupId ?? ""}
-          aria-label="Group"
-          onChange={(e) =>
-            onChange({ ...value, groupId: e.target.value === "" ? undefined : e.target.value })
-          }
-        >
-          <option value="">Any group</option>
-          {/* Splitwise's "non-group expenses" bucket, spelled for a query string. */}
-          <option value="none">No group</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {people && (
-        <select
-          value={value.friendId ?? ""}
-          aria-label="With"
-          onChange={(e) =>
-            onChange({ ...value, friendId: e.target.value === "" ? undefined : e.target.value })
-          }
-        >
-          <option value="">Anyone</option>
-          {people.map((p) => (
-            <option key={p.id} value={p.id}>
-              {displayName(p)}
-            </option>
-          ))}
-        </select>
-      )}
-
-      <select
-        value={value.categoryId ?? ""}
-        aria-label="Category"
-        onChange={(e) =>
-          onChange({
-            ...value,
-            categoryId: e.target.value === "" ? undefined : Number(e.target.value),
-          })
-        }
+      <button
+        type="button"
+        className={`filters-trigger${modalCount > 0 ? " is-active" : ""}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={modalCount > 0 ? `Filters, ${modalCount} active` : "Filters"}
+        onClick={() => setOpen(true)}
       >
-        <option value="">Any category</option>
-        {leaves.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-
-      <input
-        type="date"
-        value={value.datedAfter?.slice(0, 10) ?? ""}
-        aria-label="From"
-        onChange={(e) => onChange({ ...value, datedAfter: e.target.value || undefined })}
-      />
-      <input
-        type="date"
-        value={value.datedBefore?.slice(0, 10) ?? ""}
-        aria-label="To"
-        onChange={(e) => onChange({ ...value, datedBefore: e.target.value || undefined })}
-      />
-
-      <select
-        value={value.isPayment === undefined ? "" : String(value.isPayment)}
-        aria-label="Kind"
-        onChange={(e) =>
-          onChange({
-            ...value,
-            isPayment: e.target.value === "" ? undefined : e.target.value === "true",
-          })
-        }
-      >
-        <option value="">Expenses and payments</option>
-        <option value="false">Expenses only</option>
-        <option value="true">Settle-ups only</option>
-      </select>
+        Filters
+        {modalCount > 0 && <span className="filters-badge">{modalCount}</span>}
+      </button>
 
       {active && (
         <button type="button" className="link" onClick={() => onChange({})}>
@@ -202,6 +139,120 @@ export function ExpenseFilters({
       >
         Download CSV
       </button>
+
+      <Modal
+        open={open}
+        title="Filter expenses"
+        onClose={() => setOpen(false)}
+        className="modal-wide"
+      >
+        <div className="filter-modal">
+          {groups && (
+            <label className="filter-field">
+              Group
+              <select
+                value={value.groupId ?? ""}
+                onChange={(e) =>
+                  onChange({ ...value, groupId: e.target.value === "" ? undefined : e.target.value })
+                }
+              >
+                <option value="">Any group</option>
+                {/* Splitwise's "non-group expenses" bucket, spelled for a query string. */}
+                <option value="none">No group</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {people && (
+            <label className="filter-field">
+              With
+              <select
+                value={value.friendId ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    friendId: e.target.value === "" ? undefined : e.target.value,
+                  })
+                }
+              >
+                <option value="">Anyone</option>
+                {people.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {displayName(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <div className="filter-dates">
+            <label className="filter-field">
+              From
+              <input
+                type="date"
+                value={value.datedAfter?.slice(0, 10) ?? ""}
+                onChange={(e) => onChange({ ...value, datedAfter: e.target.value || undefined })}
+              />
+            </label>
+            <label className="filter-field">
+              To
+              <input
+                type="date"
+                value={value.datedBefore?.slice(0, 10) ?? ""}
+                onChange={(e) => onChange({ ...value, datedBefore: e.target.value || undefined })}
+              />
+            </label>
+          </div>
+
+          <label className="filter-field">
+            Kind
+            <select
+              value={value.isPayment === undefined ? "" : String(value.isPayment)}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  isPayment: e.target.value === "" ? undefined : e.target.value === "true",
+                })
+              }
+            >
+              <option value="">Expenses and payments</option>
+              <option value="false">Expenses only</option>
+              <option value="true">Settle-ups only</option>
+            </select>
+          </label>
+
+          <div className="filter-field">
+            <div className="filter-field-label">Category</div>
+            {categoryLabel && <p className="field-hint">{categoryLabel}</p>}
+            <CategoryPicker
+              value={value.categoryId ?? null}
+              allowAny
+              allowParent
+              onChange={(id) => onChange({ ...value, categoryId: id ?? undefined })}
+            />
+          </div>
+
+          <div className="filter-modal-actions">
+            {modalCount > 0 && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => onChange(value.q ? { q: value.q } : {})}
+              >
+                Clear filters
+              </button>
+            )}
+            <button type="button" className="inline" onClick={() => setOpen(false)}>
+              Done
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

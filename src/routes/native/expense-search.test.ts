@@ -271,6 +271,13 @@ describe("filters", () => {
     ]);
   });
 
+  test("a parent category matches every leaf under it", async () => {
+    // 25 is Splitwise's "Food and drink"; dinner is leaf 13.
+    assert.deepEqual(names((await get("/expenses?category_id=25")).body), [
+      "Dinner out, 50% mine",
+    ]);
+  });
+
   test("by kind: settle-ups are expenses too, until you say otherwise", async () => {
     assert.deepEqual(names((await get("/expenses?is_payment=true")).body), ["Payment"]);
     assert.ok(!names((await get("/expenses?is_payment=false")).body).includes("Payment"));

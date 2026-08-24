@@ -8,6 +8,7 @@ import { api, type AdminUserUsage } from "../api.ts";
 import { HelpTip } from "../HelpTip.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { UsageChart } from "../UsageChart.tsx";
+import { AdminNav } from "./AdminNav.tsx";
 
 export function Admin() {
   const online = useOnline();
@@ -54,6 +55,7 @@ export function Admin() {
   if (!online) {
     return (
       <>
+        <AdminNav current="usage" />
         <div className="page-head">
           <h1 className="with-help">
             Usage
@@ -71,6 +73,7 @@ export function Admin() {
 
   return (
     <>
+      <AdminNav current="usage" />
       <div className="page-head">
         <h1 className="with-help">
           Usage

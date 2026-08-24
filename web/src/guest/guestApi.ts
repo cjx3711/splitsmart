@@ -25,6 +25,7 @@ import {
   type ExpenseDetail,
 } from "../api.ts";
 import { readActingAs, readGuestLink } from "./guestStorage.ts";
+import type { AvatarPattern } from "../../../src/domain/avatar-pattern.ts";
 
 export type GuestLinkFailure = "invalid" | "expired" | "revoked" | "claimed" | "gone";
 
@@ -107,6 +108,7 @@ export interface GuestPerson {
   iconLetters: string | null;
   iconEmoji: string | null;
   iconHue: number | null;
+  iconPattern: AvatarPattern | null;
 }
 
 export interface GuestGroupSummary {
@@ -142,6 +144,7 @@ export interface GuestMember {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  icon_pattern: AvatarPattern | null;
   is_ghost: number;
   role: string;
   joined_via: string;
@@ -154,6 +157,7 @@ export type GuestVisiblePerson = {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  icon_pattern: AvatarPattern | null;
   is_ghost: number;
 };
 
@@ -189,6 +193,7 @@ export const guestApi = {
         icon_letters: string | null;
         icon_emoji: string | null;
         icon_hue: number | null;
+        icon_pattern: AvatarPattern | null;
       };
       balances: CurrencyAmount[];
       expenses: ExpenseSummary[];

@@ -68,7 +68,6 @@ import {
 } from "./friends.ts";
 import { isUlid, ulid, ulidTime } from "./ulid.ts";
 import {
-  IMPORT_ROUNDING_DETAILS,
   metadataFromSplitwise,
   parseMetadata,
   serializeMetadata,
@@ -2093,7 +2092,6 @@ async function writeRoundingPayment(input: {
   const expenseId = await createExpense({
     id: when.id,
     description: "Payment",
-    details: IMPORT_ROUNDING_DETAILS,
     costMinor: input.amount,
     currencyCode: input.currency,
     date: when.date,

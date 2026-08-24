@@ -12,12 +12,9 @@ What is deliberately still open:
   cannot be done from here. The importer no longer *depends* on the answer (it
   handles nested and non-nested comments alike), but the raw backup is still
   time-boxed: run `yarn export:splitwise` while the API is free.
-- **The optional compat wrappers** at the end. Still optional, still not the
-  point, and `docs/PLAN.md` phase 3 lists them.
 
-This was never a plan to finish `/api/sw/v3.0`. That layer already covers what
-this instance needs (`splitwise-to-toshl`: current user, friends, categories,
-expenses list, create expense).
+The Splitwise-compatible shim at `/api/sw/v3.0` was dropped. Native `/api/v1`
+is the API.
 
 Status checklists live in `docs/PLAN.md` phase 2. This document is the how.
 
@@ -33,10 +30,9 @@ soft `deleted_at`, rewritten in `mergeUsers` - and nothing read or wrote it. The
 importer ignored `comments` / `comments_count`. The export script never fetched
 comments as their own resource. Recurring did not exist at all.
 
-All of that is now built. Compat `serializeExpense` still hardcodes
-`repeats: false` and `comments_count: 0`, deliberately: see the frozen-wire note
-below. Imported Splitwise recurrences still arrive as ordinary one-off bills,
-which was the right answer then and is the implemented one now (slice 2).
+All of that is now built. Imported Splitwise recurrences still arrive as
+ordinary one-off bills, which was the right answer then and is the implemented
+one now (slice 2).
 
 ---
 
@@ -46,7 +42,7 @@ A feature is not done when the native route returns 200. It is done when
 all of these that apply have landed together:
 
 1. **Domain writer.** One module writes the table, inside a transaction.
-   Guest (and any later compat wrap) call that function; they do not INSERT.
+   Guest routes call that function; they do not INSERT.
 2. **Native routes** under `/api/v1`.
 3. **Guest routes** under `/api/v1/guest/*`, if a link visitor can see the
    parent. They can see expenses, so they can see and write comments.
@@ -64,12 +60,6 @@ all of these that apply have landed together:
 Receipts stay out. CLAUDE.md "No file uploads": no multipart, no object
 storage. Importing a Splitwise receipt URL is fetching untrusted bytes we
 have nowhere to put. One preview warning, not a skip per expense.
-
-Do not add comments, recurring flags, or search params to `/api/sw/v3.0`
-as part of this work. New features get native routes. The frozen-wire rule
-in CLAUDE.md still holds: if a later optional wrap needs `comments_count`
-on an expense, fill it from a COUNT, do not invent fields Splitwise never
-had.
 
 ---
 
@@ -181,7 +171,7 @@ DELETE /api/v1/comments/:id
 ```
 
 List returns live user *and* system comments, oldest first, with author
-`{ id, name, nickname, iconLetters, iconEmoji, iconHue }`. Guests get the same three routes under
+`{ id, name, nickname, iconLetters, iconEmoji, iconHue, iconPattern }`. Guests get the same three routes under
 `/api/v1/guest/...`, scoped with `expenseInScope`. A guest may comment as
 the person the link acts as, and may delete only their own user comments.
 System comments are not deletable.
@@ -389,31 +379,8 @@ undo, and the activity feed offers one for a delete you find later.
 
 ---
 
-## Optional: a few more compat wrappers
-
-Not required for the app. The six endpoints Toshl uses already work. If
-something else you run wants to list groups or edit an expense through
-`/api/sw/v3.0`, wrap native - do not invent a second write path:
-
-- `get_groups` / `get_group/:id`
-- `get_expense/:id`, `update_expense/:id`, `delete_expense/:id`
-- `create_group`, `add_user_to_group`, `remove_user_from_group`
-- `create_friend` / `delete_friend/:id` (native already does this)
-- `get_currencies` if a client asks
-
-Do **not** add `get_comments`, `get_notifications`, OAuth2, or recurring
-fields on this wire as part of feature work. Native first. Frozen-wire
-rule still applies if you do wrap: money as decimal strings, ULID ids,
-`deleted_at` returned, both `user_id` and `user.id`.
-
-`group_id: 0` stays `null`. `invite_link` on a serialized group stays
-`null` (guest secrets are shown once at mint).
-
----
-
 ## Deliberately later or never
 
-- Finishing `/api/sw/v3.0` for third-party Splitwise clients
 - Push notifications, email-on-expense (phase 4)
 - Receipts / image attachments (CLAUDE.md)
 - Currency conversion, charts, Splitwise Pro

@@ -171,6 +171,41 @@ export function convertBalances(
   return total;
 }
 
+/** True when at least one amount would actually move under `preferredCurrency`. */
+export function needsConversion(
+  balances: Array<{ currencyCode: string }>,
+  preferredCurrency: string,
+): boolean {
+  const pref = preferredCurrency.toUpperCase();
+  return balances.some((b) => b.currencyCode.toUpperCase() !== pref);
+}
+
+export type FriendColumn = "owe" | "owed" | "both" | "none";
+
+/**
+ * Which dashboard column a friend belongs in. Mixed-currency people can owe
+ * you in one ledger and be owed in another; when a converted net is available
+ * they appear once, on the side of that estimate. Without rates they still
+ * show in both so neither side of the ledger is hidden.
+ */
+export function friendDashboardColumn(
+  balances: Array<{ currencyCode: string; amountMinor: number }>,
+  preferredCurrency: string,
+  rates: Record<string, number> | null,
+  decimalsFor: (code: string) => number | null,
+): FriendColumn {
+  const hasNeg = balances.some((b) => b.amountMinor < 0);
+  const hasPos = balances.some((b) => b.amountMinor > 0);
+  if (hasNeg && !hasPos) return "owe";
+  if (hasPos && !hasNeg) return "owed";
+  if (!hasNeg && !hasPos) return "none";
+  if (rates) {
+    const total = convertBalances(balances, preferredCurrency, rates, decimalsFor);
+    if (total !== null) return total > 0 ? "owed" : "owe";
+  }
+  return "both";
+}
+
 /**
  * The global rates source. Mount once around the app. Tests pass `rates` (and
  * optionally `date`) so `useExchangeRates` returns that snapshot and never

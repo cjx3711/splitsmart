@@ -9,6 +9,7 @@ import {
   CONVERSION_DESCRIPTION,
   formatQuotedRate,
   planBalanceConversion,
+  planGroupBalanceConversion,
 } from "./convertBalance.ts";
 
 function decimalsFor(code: string): number | null {
@@ -142,4 +143,72 @@ test("skips zero balances and needs no payments when everything is already the t
   assert.deepEqual(result.legs, []);
   assert.deepEqual(result.payments, []);
   assert.equal(result.resultMinor, 500);
+});
+
+const ALICE = "01ALICE0000000000000000000";
+const BOB = "01BOB0000000000000000000000";
+
+function groupPlan(
+  transfers: Array<{
+    currencyCode: string;
+    fromUserId: string;
+    toUserId: string;
+    amountMinor: number;
+  }>,
+  target = "JPY",
+  rates: Record<string, number> = JPY_RATES,
+) {
+  return planGroupBalanceConversion({
+    transfers,
+    targetCode: target,
+    rates,
+    decimalsFor,
+    rateDate: "2026-08-23",
+    formatAmount,
+  });
+}
+
+test("group conversion skips transfers already in the target and converts the rest", () => {
+  const result = groupPlan([
+    { currencyCode: "JPY", fromUserId: ALICE, toUserId: YOU, amountMinor: 209303 },
+    { currencyCode: "USD", fromUserId: ALICE, toUserId: YOU, amountMinor: 2472 },
+    { currencyCode: "TWD", fromUserId: YOU, toUserId: ALICE, amountMinor: 20000 },
+  ]);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  assert.equal(result.legs.length, 2);
+  assert.deepEqual(
+    result.payments.map((p) => ({
+      from: p.fromUserId,
+      to: p.toUserId,
+      amount: p.amountMinor,
+      code: p.currencyCode,
+    })),
+    [
+      { from: ALICE, to: YOU, amount: 2472, code: "USD" },
+      { from: YOU, to: ALICE, amount: 2472, code: "JPY" },
+      { from: YOU, to: ALICE, amount: 20000, code: "TWD" },
+      { from: ALICE, to: YOU, amount: 1000, code: "JPY" },
+    ],
+  );
+});
+
+test("group conversion refuses the whole plan when a rate is missing", () => {
+  const result = groupPlan(
+    [{ currencyCode: "EUR", fromUserId: ALICE, toUserId: BOB, amountMinor: 100 }],
+    "JPY",
+    { USD: 0.01 },
+  );
+  assert.deepEqual(result, { ok: false, reason: "missing_rate", currencyCode: "EUR" });
+});
+
+test("group conversion is a no-op when every transfer is already the target", () => {
+  const result = groupPlan([
+    { currencyCode: "JPY", fromUserId: ALICE, toUserId: YOU, amountMinor: 500 },
+  ]);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.legs, []);
+  assert.deepEqual(result.payments, []);
 });

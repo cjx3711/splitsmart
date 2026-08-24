@@ -133,6 +133,7 @@ export async function listComments(
       "users.icon_letters",
       "users.icon_emoji",
       "users.icon_hue",
+      "users.icon_pattern",
     ])
     .where("comments.expense_id", "=", expenseId)
     .where("comments.deleted_at", "is", null)

@@ -372,3 +372,47 @@ describe("GET /api/v1/admin/users/:id", () => {
     assert.equal(res.status, 404);
   });
 });
+
+describe("GET /api/v1/admin/backups", () => {
+  test("401 without auth", async () => {
+    const res = await app.request("/api/v1/admin/backups");
+    assert.equal(res.status, 401);
+  });
+
+  test("403 for a non-admin", async () => {
+    const res = await authed(bobToken, "/api/v1/admin/backups");
+    assert.equal(res.status, 403);
+  });
+
+  test("200 with redacted config even when backups are unconfigured", async () => {
+    const res = await authed(aliceToken, "/api/v1/admin/backups");
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      config: { status: string; problems: Array<{ key: string; reason: string }> };
+      scheduler: { state: string };
+      stats: { total: number; consecutiveFailures: number };
+      runs: unknown[];
+      databaseError: string | null;
+    };
+    assert.equal(body.config.status, "unconfigured");
+    assert.ok(body.config.problems.some((p) => p.key === "BACKUP_S3_BUCKET"));
+    assert.equal(body.scheduler.state, "unknown");
+    assert.equal(body.stats.total, 0);
+    assert.deepEqual(body.runs, []);
+    assert.equal(body.databaseError, null);
+  });
+});
+
+describe("POST /api/v1/admin/backups", () => {
+  test("403 for a non-admin", async () => {
+    const res = await authed(bobToken, "/api/v1/admin/backups", { method: "POST" });
+    assert.equal(res.status, 403);
+  });
+
+  test("503 when backups are not configured", async () => {
+    const res = await authed(aliceToken, "/api/v1/admin/backups", { method: "POST" });
+    assert.equal(res.status, 503);
+    const body = (await res.json()) as { error: string };
+    assert.equal(body.error, "not_configured");
+  });
+});

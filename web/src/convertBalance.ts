@@ -156,3 +156,110 @@ export function planBalanceConversion(opts: {
 
   return { ok: true, legs, payments, resultMinor };
 }
+
+/**
+ * The group equivalent: each suggested settle-up transfer in a currency other
+ * than the target is closed and reopened in the target, same pair of payments
+ * as the friend conversion. Transfers already in the target are left alone.
+ * Nets in the group stay the same; only the pairing currency changes.
+ */
+export type GroupConversionLeg = {
+  fromUserId: string;
+  toUserId: string;
+  sourceCode: string;
+  sourceMinor: number;
+  targetCode: string;
+  targetMinor: number;
+};
+
+export type GroupConversionPlan =
+  | { ok: true; legs: GroupConversionLeg[]; payments: ConversionPayment[] }
+  | { ok: false; reason: "missing_rate" | "rounds_to_zero"; currencyCode: string };
+
+export function planGroupBalanceConversion(opts: {
+  transfers: Array<{
+    currencyCode: string;
+    fromUserId: string;
+    toUserId: string;
+    amountMinor: number;
+  }>;
+  targetCode: string;
+  rates: Record<string, number>;
+  decimalsFor: (code: string) => number | null;
+  rateDate: string;
+  formatAmount: (minor: number, code: string) => string | null;
+}): GroupConversionPlan {
+  const target = opts.targetCode.toUpperCase();
+  const legs: GroupConversionLeg[] = [];
+  const payments: ConversionPayment[] = [];
+
+  for (const transfer of opts.transfers) {
+    if (transfer.amountMinor <= 0) continue;
+    const source = transfer.currencyCode.toUpperCase();
+    if (source === target) continue;
+
+    const converted = convertMinor(
+      transfer.amountMinor,
+      source,
+      target,
+      opts.rates,
+      opts.decimalsFor,
+    );
+    if (converted === null) {
+      return { ok: false, reason: "missing_rate", currencyCode: source };
+    }
+    if (converted === 0) {
+      return { ok: false, reason: "rounds_to_zero", currencyCode: source };
+    }
+
+    const fromLabel = opts.formatAmount(transfer.amountMinor, source) ?? String(transfer.amountMinor);
+    const toLabel = opts.formatAmount(converted, target) ?? String(converted);
+    const rate = formatQuotedRate(
+      transfer.amountMinor,
+      source,
+      converted,
+      target,
+      opts.decimalsFor,
+    );
+    const note = conversionNote({
+      sourceLabel: fromLabel,
+      sourceCode: source,
+      targetLabel: toLabel,
+      targetCode: target,
+      rate,
+      rateDate: opts.rateDate,
+    });
+
+    legs.push({
+      fromUserId: transfer.fromUserId,
+      toUserId: transfer.toUserId,
+      sourceCode: source,
+      sourceMinor: transfer.amountMinor,
+      targetCode: target,
+      targetMinor: converted,
+    });
+
+    payments.push(
+      {
+        fromUserId: transfer.fromUserId,
+        toUserId: transfer.toUserId,
+        amountMinor: transfer.amountMinor,
+        currencyCode: source,
+        description: CONVERSION_DESCRIPTION,
+        details: note,
+        comment: note,
+      },
+      {
+        fromUserId: transfer.toUserId,
+        toUserId: transfer.fromUserId,
+        amountMinor: converted,
+        currencyCode: target,
+        description: CONVERSION_DESCRIPTION,
+        details: note,
+        comment: note,
+      },
+    );
+  }
+
+  return { ok: true, legs, payments };
+}

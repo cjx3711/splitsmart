@@ -8,7 +8,9 @@
  * so a preview cannot disagree with a stored expense by a cent, and a guest
  * cannot get a different close/Escape behaviour from a logged-in user.
  */
+import { useEffect, useState } from "react";
 import { Modal } from "./Modal.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { ExpenseForm, type ExpenseFormInit } from "./ExpenseForm.tsx";
 import { displayName, type ExpenseInput, type Group } from "./api.ts";
 import type { Person } from "./PeoplePicker.tsx";
@@ -61,25 +63,54 @@ export function ExpenseDialog({
   allowRepeat?: boolean;
   onSubmit: (input: ExpenseInput) => Promise<void>;
 }) {
+  const [confirming, setConfirming] = useState(false);
+  // An edit is seeded from a stored bill. Closing that without saving would
+  // throw away typed changes; a blank add can just go away.
+  const confirmClose = initial !== undefined;
+
+  useEffect(() => {
+    if (!open) setConfirming(false);
+  }, [open]);
+
+  function requestClose() {
+    if (confirmClose) setConfirming(true);
+    else onClose();
+  }
+
   return (
-    <Modal open={open} title={title} onClose={onClose}>
-      <ExpenseForm
-        className="stack"
-        candidates={candidates}
-        initialParticipantIds={initialParticipantIds}
-        currentUserId={currentUserId}
-        defaultCurrency={defaultCurrency}
-        groups={groups}
-        groupId={groupId}
-        onGroupChange={onGroupChange}
-        initial={initial}
-        submitLabel={submitLabel}
-        allowRepeat={allowRepeat}
-        onSubmit={async (input) => {
-          await onSubmit(input);
+    <>
+      <Modal open={open} title={title} onClose={requestClose}>
+        <ExpenseForm
+          className="stack"
+          candidates={candidates}
+          initialParticipantIds={initialParticipantIds}
+          currentUserId={currentUserId}
+          defaultCurrency={defaultCurrency}
+          groups={groups}
+          groupId={groupId}
+          onGroupChange={onGroupChange}
+          initial={initial}
+          submitLabel={submitLabel}
+          allowRepeat={allowRepeat}
+          onCancel={requestClose}
+          onSubmit={async (input) => {
+            await onSubmit(input);
+            onClose();
+          }}
+        />
+      </Modal>
+      <ConfirmDialog
+        open={confirming}
+        title="Discard changes?"
+        confirmLabel="Discard"
+        onClose={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
           onClose();
         }}
-      />
-    </Modal>
+      >
+        <p>This expense will stay as it was.</p>
+      </ConfirmDialog>
+    </>
   );
 }

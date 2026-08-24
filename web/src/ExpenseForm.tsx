@@ -65,6 +65,7 @@ export function ExpenseForm({
   groupId,
   onGroupChange,
   onSubmit,
+  onCancel,
   submitLabel = "Add expense",
   className = "card stack",
   initial,
@@ -80,6 +81,8 @@ export function ExpenseForm({
   groupId: string | null;
   onGroupChange?: (groupId: string | null) => void;
   onSubmit: (input: ExpenseInput) => Promise<void>;
+  /** Shown next to Save. Closing without this is the ✕ / Escape path. */
+  onCancel?: () => void;
   submitLabel?: string;
   /** Pass "stack" inside a Modal (the dialog already draws the surround). */
   className?: string;
@@ -376,9 +379,14 @@ export function ExpenseForm({
         )}
       </div>
 
-      <div>
+      <div className="expense-form-actions">
+        {onCancel && (
+          <button type="button" className="secondary inline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        )}
         <button type="submit" disabled={busy || people.length === 0} className="inline">
-          {busy ? "Adding…" : submitLabel}
+          {busy ? (initial ? "Saving…" : "Adding…") : submitLabel}
         </button>
       </div>
     </form>

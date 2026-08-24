@@ -137,6 +137,7 @@ export const friendRoutes = new Hono<AppEnv>()
         "icon_letters",
         "icon_emoji",
         "icon_hue",
+        "icon_pattern",
         "is_ghost",
         "default_currency",
       ])
@@ -190,6 +191,7 @@ export const friendRoutes = new Hono<AppEnv>()
           "icon_letters",
           "icon_emoji",
           "icon_hue",
+          "icon_pattern",
           "is_ghost",
         ])
         .where("email", "=", input.email)
@@ -308,6 +310,7 @@ export const friendRoutes = new Hono<AppEnv>()
         "icon_letters",
         "icon_emoji",
         "icon_hue",
+        "icon_pattern",
         "is_ghost",
       ])
       .executeTakeFirstOrThrow();
@@ -374,6 +377,7 @@ export const friendRoutes = new Hono<AppEnv>()
       "icon_letters",
       "icon_emoji",
       "icon_hue",
+      "icon_pattern",
       "is_ghost",
       "default_currency",
     ])
@@ -461,6 +465,7 @@ export const friendRoutes = new Hono<AppEnv>()
           "icon_letters",
           "icon_emoji",
           "icon_hue",
+          "icon_pattern",
           "is_ghost",
           "default_currency",
         ])

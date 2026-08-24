@@ -70,6 +70,7 @@ export function Sidebar({ className }: { className: string }) {
             iconLetters={user.iconLetters}
             iconEmoji={user.iconEmoji}
             iconHue={user.iconHue}
+            iconPattern={user.iconPattern}
             size={32}
           />
           <span className="sidebar-user-name">{shownName}</span>
@@ -96,7 +97,7 @@ export function Sidebar({ className }: { className: string }) {
         <span className="nav-item-label">All expenses</span>
       </NavLink>
       {user?.isAdmin && (
-        <NavLink to="/admin" className={navClass}>
+        <NavLink to="/admin" end className={navClass}>
           <span className="dot" />
           <span className="nav-item-label">Usage</span>
         </NavLink>

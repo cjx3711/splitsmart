@@ -63,6 +63,17 @@ export function paymentTitle(shares: Share[], nameOf: PersonLookup): string {
   return `${nameOf(payer.user_id)} paid ${nameOf(recipient.user_id)}`;
 }
 
+/** The other person on a one-on-one expense, if there is exactly one. */
+export function counterpartUserId(
+  shares: Array<{ user_id: string }>,
+  currentUserId: string,
+): string | undefined {
+  const others = [
+    ...new Set(shares.map((s) => s.user_id).filter((id) => id !== currentUserId)),
+  ];
+  return others.length === 1 ? others[0] : undefined;
+}
+
 export function PaymentMark({ size = 12 }: { size?: number }) {
   return (
     <span className="payment-mark" aria-hidden="true">
@@ -194,15 +205,18 @@ export function ExpenseList({
 
             <div className="list-item-figures">
               <div>
-                {/* A series template and one of its bills look the same in a list
-                    otherwise, and editing the wrong one has different consequences. */}
+                {/* Same word for the template and every bill it generated —
+                    they are one series. The first bill is the brighter tag
+                    because editing it changes the schedule; the sr-only
+                    "first bill" is how smoke finds that row. */}
                 {expense.repeat_interval && (
                   <span className="tag" title={`Repeats ${expense.repeat_interval}`}>
-                    repeats
+                    series
+                    <span className="sr-only"> first bill</span>
                   </span>
                 )}
                 {!expense.repeat_interval && expense.repeat_of && (
-                  <span className="tag muted" title="One of a repeating series">
+                  <span className="tag muted" title="One bill in this series">
                     series
                   </span>
                 )}

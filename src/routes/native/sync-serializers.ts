@@ -24,8 +24,9 @@ import type {
   SyncShare,
   SyncUser,
 } from "../../domain/sync-types.ts";
-import { repeatPausedOf } from "../../domain/metadata.ts";
+import { importRoundingOf, repeatPausedOf } from "../../domain/metadata.ts";
 import { knownEmail } from "../../domain/person.ts";
+import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 
 export type {
   SyncCategory,
@@ -50,6 +51,7 @@ const USER_COLUMNS = [
   "icon_letters",
   "icon_emoji",
   "icon_hue",
+  "icon_pattern",
   "email",
   "invite_email",
   "is_ghost",
@@ -65,6 +67,7 @@ type UserRow = {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  icon_pattern: string | null;
   email: string | null;
   invite_email: string | null;
   is_ghost: number;
@@ -81,6 +84,7 @@ export function toSyncUser(row: UserRow): SyncUser {
     iconLetters: row.icon_letters,
     iconEmoji: row.icon_emoji,
     iconHue: row.icon_hue,
+    iconPattern: parseAvatarPattern(row.icon_pattern),
     email: knownEmail(row),
     isGhost: row.is_ghost === 1,
     defaultCurrency: row.default_currency,
@@ -219,6 +223,7 @@ export async function loadExpenses(
       nextRepeat: row.next_repeat,
       repeatOf: row.repeat_of,
       repeatPaused: repeatPausedOf(row.metadata),
+      importRounding: importRoundingOf(row.metadata),
       version: row.version,
       createdBy: row.created_by,
       updatedBy: row.updated_by,

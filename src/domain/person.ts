@@ -6,9 +6,16 @@
  *
  * There is no first/last split. That is an America-centric shape Splitwise
  * had; the native model has one `name`, an optional `nickname` used in lists
- * when set, and optional icon overrides (letters, emoji, colour). Nothing
- * financial reads the icon fields.
+ * when set, and optional icon overrides (letters, emoji, a geometric pattern).
+ * Nothing financial reads the icon fields.
  */
+
+import {
+  parseAvatarPattern,
+  type AvatarPattern,
+} from "./avatar-pattern.ts";
+
+export type { AvatarPattern };
 
 export const MAX_NAME_LENGTH = 100;
 export const MAX_NICKNAME_LENGTH = 40;
@@ -27,6 +34,7 @@ export interface PersonAppearance extends PersonName {
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
+  iconPattern?: AvatarPattern | null;
 }
 
 /** Columns every person payload needs so avatars can render without a second fetch. */
@@ -36,6 +44,7 @@ export const PERSON_COLUMNS = [
   "icon_letters",
   "icon_emoji",
   "icon_hue",
+  "icon_pattern",
 ] as const;
 
 export function personCamel(row: {
@@ -44,6 +53,7 @@ export function personCamel(row: {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  icon_pattern: string | AvatarPattern | null;
 }) {
   return {
     name: row.name,
@@ -51,6 +61,7 @@ export function personCamel(row: {
     iconLetters: row.icon_letters,
     iconEmoji: row.icon_emoji,
     iconHue: row.icon_hue,
+    iconPattern: parseAvatarPattern(row.icon_pattern),
   };
 }
 
@@ -60,6 +71,7 @@ export function personSnake(row: {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  icon_pattern: string | AvatarPattern | null;
 }) {
   return {
     name: row.name,
@@ -67,6 +79,7 @@ export function personSnake(row: {
     icon_letters: row.icon_letters,
     icon_emoji: row.icon_emoji,
     icon_hue: row.icon_hue,
+    icon_pattern: parseAvatarPattern(row.icon_pattern),
   };
 }
 

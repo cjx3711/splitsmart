@@ -35,6 +35,7 @@ export function GuestFriend() {
     icon_letters: string | null;
     icon_emoji: string | null;
     icon_hue: number | null;
+    icon_pattern: import("../../../src/domain/avatar-pattern.ts").AvatarPattern | null;
   } | null>(null);
   const [balances, setBalances] = useState<CurrencyAmount[]>([]);
   const [expenses, setExpenses] = useState<ExpenseSummary[]>([]);
@@ -159,66 +160,70 @@ export function GuestFriend() {
         }}
       />
 
-      <div className="card">
-        <span className="eyebrow">Between you</span>
-        {balances.length === 0 ? (
-          <p className="muted" style={{ margin: "0.4rem 0 0" }}>
-            You're settled up.
-          </p>
-        ) : (
-          <div className="ledger" style={{ marginTop: "0.4rem" }}>
-            {balances.map((b) => (
-              <div key={b.currencyCode} className="ledger-row">
-                <span className={b.amountMinor > 0 ? "positive" : "negative"}>
-                  {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
-                  <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                </span>
+      <div className="friend-page">
+        <aside className="friend-aside">
+          <div className="card">
+            <span className="eyebrow">Between you</span>
+            {balances.length === 0 ? (
+              <p className="muted" style={{ margin: "0.4rem 0 0" }}>
+                You're settled up.
+              </p>
+            ) : (
+              <div className="ledger" style={{ marginTop: "0.4rem" }}>
+                {balances.map((b) => (
+                  <div key={b.currencyCode} className="ledger-row">
+                    <span className={b.amountMinor > 0 ? "positive" : "negative"}>
+                      {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
+                      <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            <EstimatedTotal balances={balances} preferredCurrency={me.defaultCurrency} />
+            {balances.length > 1 && (
+              <div className="ledger-actions">
+                <button
+                  type="button"
+                  className="secondary inline"
+                  onClick={() => setOpenDialog("convert")}
+                >
+                  Convert balance
+                </button>
+              </div>
+            )}
+            <ConversionFootnote sets={[balances]} preferredCurrency={me.defaultCurrency} />
           </div>
-        )}
-        {balances.length > 1 && (
-          <EstimatedTotal balances={balances} preferredCurrency={me.defaultCurrency} />
-        )}
-        {balances.length > 1 && (
-          <div className="ledger-actions">
-            <button
-              type="button"
-              className="secondary inline"
-              onClick={() => setOpenDialog("convert")}
-            >
-              Convert balance
-            </button>
-          </div>
-        )}
-        <ConversionFootnote sets={[balances]} preferredCurrency={me.defaultCurrency} />
+
+          {session.groups.length > 0 && (
+            <>
+              <h2>Your groups</h2>
+              <div className="list">
+                {session.groups.map((g) => (
+                  <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
+                    <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
+                    <div className="list-item-body">
+                      <div className="list-item-title">{g.name}</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+        </aside>
+
+        <div className="friend-body">
+          <h2>Shared expenses</h2>
+          <ExpenseList
+            expenses={expenses}
+            currentUserId={me.id}
+            nameOf={nameOf}
+            showGroup
+            personLinks={false}
+            empty="Nothing split yet."
+          />
+        </div>
       </div>
-
-      {session.groups.length > 0 && (
-        <>
-          <h2>Your groups</h2>
-          <div className="list">
-            {session.groups.map((g) => (
-              <Link key={g.id} to={`/groups/${g.id}`} className="list-item">
-                <GroupTypeIcon type={g.group_type} className="nav-item-icon" />
-                <div className="list-item-body">
-                  <div className="list-item-title">{g.name}</div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </>
-      )}
-
-      <h2>Shared expenses</h2>
-      <ExpenseList
-        expenses={expenses}
-        currentUserId={me.id}
-        nameOf={nameOf}
-        showGroup
-        personLinks={false}
-        empty="Nothing split yet."
-      />
     </>
   );
 }

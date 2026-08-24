@@ -134,7 +134,7 @@ with that id. A retry of the same id is a no-op that returns the existing row
 returns the id.
 
 Users and groups remain server-minted (online-only creates). Comments follow
-the expense rule. The compat layer already speaks the same ULID `id`.
+the expense rule.
 
 ### 2. The server stays the only writer of expense tables
 
@@ -496,7 +496,7 @@ Push then `conflict`s, which is correct (shares changed under you).
 
 ### Endpoints
 
-Native routes. The compat layer is untouched.
+Native routes.
 
 ```
 GET  /api/v1/sync/bootstrap

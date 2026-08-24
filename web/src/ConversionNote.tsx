@@ -1,5 +1,5 @@
 import { Amount, useCurrencies } from "./money.tsx";
-import { convertBalances, useExchangeRates } from "./exchangeRates.ts";
+import { convertBalances, needsConversion, useExchangeRates } from "./exchangeRates.ts";
 import type { CurrencyAmount } from "./api.ts";
 
 export function ConversionNote({ code, date }: { code: string; date: string }) {
@@ -16,25 +16,29 @@ export function ConversionNote({ code, date }: { code: string; date: string }) {
 }
 
 /**
- * The "≈ … overall*" line. Renders nothing unless there are ≥2 currencies and
- * rates loaded successfully - never a stale or 1:1 stand-in.
+ * The "≈ … *" line. Renders nothing unless some amount is not already in the
+ * preferred currency and rates loaded successfully - never a stale or 1:1 stand-in.
  */
 export function EstimatedTotal({
   balances,
   preferredCurrency,
+  compact = false,
 }: {
   balances: CurrencyAmount[];
   preferredCurrency: string;
+  compact?: boolean;
 }) {
   const { decimalsFor } = useCurrencies();
-  const symbols = balances.length >= 2 ? balances.map((b) => b.currencyCode) : [];
+  const needed = needsConversion(balances, preferredCurrency);
+  const symbols = needed ? balances.map((b) => b.currencyCode) : [];
   const { rates, loading, error } = useExchangeRates(preferredCurrency, symbols);
-  if (balances.length < 2 || loading || error || !rates) return null;
+  if (!needed || loading || error || !rates) return null;
   const total = convertBalances(balances, preferredCurrency, rates, decimalsFor);
   if (total === null) return null;
   return (
-    <div className="estimate">
-      ≈ <Amount minor={total} currency={preferredCurrency} signed /> overall*
+    <div className={compact ? "estimate estimate-compact" : "estimate"}>
+      ≈ <Amount minor={total} currency={preferredCurrency} signed />
+      {compact ? "*" : " overall*"}
     </div>
   );
 }
@@ -51,7 +55,7 @@ export function ConversionFootnote({
   preferredCurrency: string;
 }) {
   const { decimalsFor } = useCurrencies();
-  const needed = sets.some((s) => s.length > 1);
+  const needed = sets.some((s) => needsConversion(s, preferredCurrency));
   const symbols = [...new Set(sets.flatMap((s) => s.map((b) => b.currencyCode)))];
   const { rates, date, loading, error } = useExchangeRates(
     preferredCurrency,
@@ -59,7 +63,9 @@ export function ConversionFootnote({
   );
   if (!needed || !date || loading || error || !rates) return null;
   const any = sets.some(
-    (s) => s.length > 1 && convertBalances(s, preferredCurrency, rates, decimalsFor) !== null,
+    (s) =>
+      needsConversion(s, preferredCurrency) &&
+      convertBalances(s, preferredCurrency, rates, decimalsFor) !== null,
   );
   if (!any) return null;
   return <ConversionNote code={preferredCurrency} date={date} />;

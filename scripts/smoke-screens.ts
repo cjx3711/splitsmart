@@ -64,7 +64,7 @@ export const CAPTURE_PARAMS = {
  * Everything here is a value that is random or live by design. Neutralising
  * them in CSS beats masking: the box keeps its size, so layout still compares.
  *
- *   .avatar     hue is hashed from the user's ULID; every smoke:reset mints new ones.
+ *   .avatar     pattern is hashed from the user's ULID; every smoke:reset mints new ones.
  *   .estimate   the ≈ overall figure, converted at live Exchange Rate API rates.
  *   .comment-time  system comments are stamped at seed time, not SEED_TODAY.
  *   .sync-badge / .sync-icon / .syncbar  pending vs synced is a race against the outbox.
@@ -99,6 +99,12 @@ const DEFS: ScreenDef[] = [
     auth: { kind: "none" },
     path: "/app",
     waitForText: "Sent a guest link?",
+  },
+  {
+    id: "login-reset",
+    auth: { kind: "none" },
+    path: "/app/reset",
+    waitForText: "We'll send a link",
   },
   {
     id: "dashboard",
@@ -156,7 +162,7 @@ const DEFS: ScreenDef[] = [
     id: "expense-rent",
     auth: { kind: "user" },
     path: "/app/groups",
-    click: ["Apartment 4B", { text: "Rent", near: "repeats" }],
+    click: ["Apartment 4B", { text: "Rent", near: "first bill" }],
     waitForText: "will be created soon",
   },
   {
@@ -165,7 +171,7 @@ const DEFS: ScreenDef[] = [
     path: "/app/groups",
     click: [
       "Apartment 4B",
-      { text: "Rent", near: "repeats" },
+      { text: "Rent", near: "first bill" },
       "View all bills in this series",
     ],
     waitForText: "Monthly series",
@@ -176,7 +182,7 @@ const DEFS: ScreenDef[] = [
     path: "/app/groups",
     click: [
       "Apartment 4B",
-      { text: "Rent", near: "repeats" },
+      { text: "Rent", near: "first bill" },
       "Stop repeating",
     ],
     waitForText: "Stop repeating this series?",

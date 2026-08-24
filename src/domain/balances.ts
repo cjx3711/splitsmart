@@ -39,8 +39,7 @@ export interface GroupMemberBalance {
  * Net balance between one user and every other user they share history with,
  * across all groups and one-on-one expenses.
  *
- * This is what the friends list and the Splitwise-compatible `get_friends`
- * endpoint are built on. Groups with `simplify_by_default` contribute their
+ * This is what the friends list is built on. Groups with `simplify_by_default` contribute their
  * simplified edges, not the raw per-bill who-owes-whom. One-on-one expenses
  * stay pairwise: friends who are not in a group together are not asked to
  * settle with a third person. Summing a person's rows from

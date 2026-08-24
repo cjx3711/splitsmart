@@ -70,16 +70,21 @@ import { getMeta } from "./local.ts";
  * rather than making the UI hold the normalised form keeps the date inputs
  * showing what the user typed.
  */
-function toFilters(query: ExpenseQuery = {}): ExpenseFilters {
-  return {
+async function toFilters(db: LocalDb, query: ExpenseQuery = {}): Promise<ExpenseFilters> {
+  const filters: ExpenseFilters = {
     ...(query.q?.trim() ? { q: query.q.trim() } : {}),
     ...(query.groupId ? { groupId: query.groupId } : {}),
     ...(query.friendId ? { friendId: query.friendId } : {}),
     ...(query.datedAfter ? { datedAfter: bound(query.datedAfter) } : {}),
     ...(query.datedBefore ? { datedBefore: bound(query.datedBefore, true) } : {}),
-    ...(query.categoryId !== undefined ? { categoryId: query.categoryId } : {}),
     ...(query.isPayment !== undefined ? { isPayment: query.isPayment } : {}),
   };
+  if (query.categoryId !== undefined) {
+    filters.categoryId = query.categoryId;
+    const children = await db.categories.where("parentId").equals(query.categoryId).toArray();
+    if (children.length > 0) filters.categoryChildIds = children.map((c) => c.id);
+  }
+  return filters;
 }
 
 /** Local re-spelling of `normaliseBound`, kept identical so the two agree. */
@@ -446,6 +451,7 @@ export async function localProfile(db: LocalDb): Promise<ApiUser | null> {
     iconLetters: profile.iconLetters,
     iconEmoji: profile.iconEmoji,
     iconHue: profile.iconHue,
+    iconPattern: profile.iconPattern,
     isGhost: profile.isGhost,
     defaultCurrency: profile.defaultCurrency,
     // isAdmin is live from /auth/me only — never cached in Dexie.
@@ -536,6 +542,7 @@ export async function localGroup(
       icon_letters: m.user?.iconLetters ?? null,
       icon_emoji: m.user?.iconEmoji ?? null,
       icon_hue: m.user?.iconHue ?? null,
+      icon_pattern: m.user?.iconPattern ?? null,
       is_ghost: m.user?.isGhost ? 1 : 0,
       role: m.role,
       joined_via: m.joinedVia,
@@ -575,6 +582,7 @@ export async function localGroupMembers(
       icon_letters: m.user?.iconLetters ?? null,
       icon_emoji: m.user?.iconEmoji ?? null,
       icon_hue: m.user?.iconHue ?? null,
+      icon_pattern: m.user?.iconPattern ?? null,
       is_ghost: m.user?.isGhost ? 1 : 0,
       role: m.role,
       joined_via: m.joinedVia,
@@ -724,6 +732,7 @@ function toApiFriend(
     icon_letters: user.iconLetters,
     icon_emoji: user.iconEmoji,
     icon_hue: user.iconHue,
+    icon_pattern: user.iconPattern,
     is_ghost: user.isGhost ? 1 : 0,
     // Only explicit friendships can be removed. The derived ones come from shared
     // groups and expenses and would reappear on the next load.
@@ -746,7 +755,7 @@ export async function localExpenses(
   selfId: string,
   query: ExpenseQuery = {},
 ): Promise<{ expenses: ExpenseSummary[] }> {
-  const filters = toFilters(query);
+  const filters = await toFilters(db, query);
   const rows = (await liveExpenses(db))
     .filter((e) => e.shares.some((s) => s.userId === selfId) && keep(e, filters))
     .sort(byDateDesc);
@@ -759,7 +768,7 @@ export async function localGroupExpenses(
   groupId: string,
   query: ExpenseQuery = {},
 ): Promise<{ expenses: ExpenseSummary[] }> {
-  const filters = toFilters(query);
+  const filters = await toFilters(db, query);
   // Filters narrow the group scope, never widen it: a `groupId` filter naming a
   // different group returns nothing rather than that group's expenses, same as
   // the server.
@@ -811,7 +820,7 @@ export async function localFriendExpenses(
   friendId: string,
   query: ExpenseQuery = {},
 ): Promise<{ expenses: ExpenseSummary[] }> {
-  const filters = toFilters(query);
+  const filters = await toFilters(db, query);
   const rows = (await liveExpenses(db))
     .filter(
       (e) =>
@@ -1023,6 +1032,7 @@ export async function localComments(
         iconLetters: row.author?.iconLetters ?? null,
         iconEmoji: row.author?.iconEmoji ?? null,
         iconHue: row.author?.iconHue ?? null,
+        iconPattern: row.author?.iconPattern ?? null,
       },
     })),
   };

@@ -29,9 +29,11 @@ export function PersonIdentityDialog({
     iconLetters?: string | null;
     iconEmoji?: string | null;
     iconHue?: number | null;
+    iconPattern?: import("../../src/domain/avatar-pattern.ts").AvatarPattern | string | null;
     icon_letters?: string | null;
     icon_emoji?: string | null;
     icon_hue?: number | null;
+    icon_pattern?: import("../../src/domain/avatar-pattern.ts").AvatarPattern | string | null;
   } | null;
   onClose: () => void;
   onSave: (id: string, payload: ReturnType<typeof identityPayload>) => Promise<void>;

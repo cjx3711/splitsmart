@@ -20,9 +20,8 @@ import { patchPerson, revertPerson } from "../sync/localFirst.ts";
 /**
  * Account settings and API tokens.
  *
- * The API token list is how you connect splitwise-to-toshl: mint a token here,
- * paste it in as the "Splitwise API key", and point that app's proxy at this
- * server. See docs/SPLITWISE_COMPAT.md.
+ * Tokens are a bearer credential for `/api/v1`, for anything that is not this
+ * browser: scripts, another app, a recoded Splitwise client.
  */
 export function Settings() {
   const { user, setUser } = useAuth();
@@ -32,7 +31,7 @@ export function Settings() {
   const [tokens, setTokens] = useState<
     Array<{ id: string; name: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>
   >([]);
-  const [name, setName] = useState("splitwise-to-toshl");
+  const [name, setName] = useState("API client");
   const [freshToken, setFreshToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
@@ -86,8 +85,8 @@ export function Settings() {
       <h2 className="with-help">
         Name and icon
         <HelpTip label="About name and icon">
-          One name, not first and last. A nickname is what other people see in lists. The icon can
-          be letters, an emoji, and a colour.
+          One name, not first and last. A nickname is what other people see in lists. The image is
+          coloured bands you can randomise or edit; letters and an emoji sit on top.
         </HelpTip>
       </h2>
       {user && identity && (
@@ -109,6 +108,7 @@ export function Settings() {
                   iconLetters: payload.iconLetters,
                   iconEmoji: payload.iconEmoji,
                   iconHue: payload.iconHue,
+                  iconPattern: payload.iconPattern,
                 });
               }
               try {
@@ -189,6 +189,23 @@ export function Settings() {
         <Link to="/import">Start an import</Link>
       </OnlineOnly>
 
+      {user?.isAdmin && (
+        <>
+          <h2 className="with-help">
+            Admin
+            <HelpTip label="About admin">
+              Usage counts and database backups for this instance. Not a ledger browser: no
+              amounts, titles, or link secrets.
+            </HelpTip>
+          </h2>
+          <OnlineOnly what="Opening the admin panel">
+            <button type="button" className="inline" onClick={() => navigate("/admin")}>
+              Open admin
+            </button>
+          </OnlineOnly>
+        </>
+      )}
+
       <h2>Delete all data</h2>
       <p className="muted">
         Permanently remove this account&apos;s groups, friends, expenses and
@@ -202,7 +219,7 @@ export function Settings() {
       <h2 className="with-help">
         API tokens
         <HelpTip label="About API tokens">
-          Use a token as the bearer credential for the Splitwise-compatible API at /api/sw/v3.0.
+          Use a token as the bearer credential for /api/v1. Cookie sessions are for this browser; tokens are for everything else.
         </HelpTip>
       </h2>
 

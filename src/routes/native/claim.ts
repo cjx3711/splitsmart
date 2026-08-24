@@ -141,7 +141,7 @@ export const claimRoutes = new Hono<AppEnv>()
 
   const person = await db
     .selectFrom("users")
-    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
     .where("id", "=", userId)
     .executeTakeFirst();
   if (!person) return c.json({ error: "That person no longer exists" }, 404);

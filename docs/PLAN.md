@@ -1,17 +1,15 @@
 # SplitSmart roadmap
 
-**Primary goal: a Splitwise clone with full API parity.** Everything else is
-secondary to that. A client written against Splitwise should work against
-SplitSmart by changing only its base URL.
+A self-hosted Splitwise replacement. The **product** work that `docs/PARITY.md`
+planned - comments, recurring expenses, search / filters / CSV, restore, and
+what those forced on import and guest links - has landed. That document is now
+the reference for how it works and why.
 
-The **product** work that `docs/PARITY.md` planned - comments, recurring
-expenses, search / filters / CSV, restore, and what those forced on import and
-guest links - has landed. That document is now the reference for how it works and
-why, plus what is deliberately still open (the phase 0 fixture capture, and the
-optional compat wrappers). The compat layer already covers the Toshl endpoints;
-finishing `/api/sw/v3.0` is not on that plan.
+The Splitwise-compatible shim at `/api/sw/v3.0` was dropped. Native `/api/v1`
+has the equivalent information; recoding a client against that shape is cheaper
+than maintaining a frozen Splitwise wire.
 
-Status legend: ✅ done · 🚧 partial · ⬜ not started
+Status legend: ✅ done · 🚧 partial · ⬜ not started · ❌ dropped
 
 ---
 
@@ -44,7 +42,8 @@ longer be free.
 - ✅ Balance queries: pairwise, group, total, simplify-debts
 - ✅ Auth: scrypt passwords, cookie sessions, bearer API tokens
 - ✅ Placeholder people (ghosts) and guest access links (`docs/GUEST.md`)
-- ✅ Compat API: the 6 endpoints `splitwise-to-toshl` uses, with tests
+- ❌ Compat API: shipped the 6 endpoints `splitwise-to-toshl` used, then dropped
+      the shim. Native `/api/v1` is the API.
 - ✅ Minimal React frontend
 - ✅ `yarn db:check` integrity audit
 
@@ -79,7 +78,7 @@ Ordered by how much they matter for day-to-day use.
 - ✅ **Friend management**: `src/domain/friends.ts` + `src/routes/native/
       friends.ts`. Explicit friendships live in `friendships`; derived ones come
       from shared groups and expenses. `listRelatedUserIds` is the single
-      definition, shared with the compat layer's `get_friends`.
+      definition.
 - ✅ **Add a friend by email**: creates a placeholder carrying that address and
       emails a guest link (`/guest/l/<secret>`). Works with mail unconfigured:
       the URL comes back in the response instead, once.
@@ -109,38 +108,12 @@ Ordered by how much they matter for day-to-day use.
 How those landed on import, guest links, and offline is in `docs/PARITY.md`. Do
 not ship a native route without the rest of that list.
 
-## Phase 3: Compat API 🚧
+## Phase 3: Compat API ❌ dropped
 
-The six endpoints `splitwise-to-toshl` uses are done. That is enough for this
-instance. Finishing Splitwise v3.0 is **not** a goal of `docs/PARITY.md`.
-
-**Implemented ✅**
-`get_current_user`, `get_friends`, `get_friend/:id`, `get_categories`,
-`get_expenses`, `create_expense`
-
-**Optional ⬜** if something else you run wants them - wrap native, do not
-invent a second write path. See `docs/PARITY.md`, "Optional: a few more
-compat wrappers".
-
-- `get_groups`, `get_group/:id`
-- `get_expense/:id`, `update_expense/:id`, `delete_expense/:id`
-- `create_group`, `add_user_to_group`, `remove_user_from_group`
-- `create_friend`, `delete_friend/:id`
-- `get_currencies`
-
-**Not doing** (unless a specific client forces it): comments, notifications,
-OAuth2, `undelete_*`, `split_equally`, recurring fields on this wire.
-
-**Deliberately out of scope**
-- Splitwise Pro features (receipt scanning, currency conversion, charts)
-- Push notifications
-- Their web UI's private endpoints
-
-### Parity testing
-
-`src/routes/compat/v3.test.ts` asserts on exact field names and string formats.
-If you add one of the optional wrappers, extend that file. Do not "improve"
-a response shape.
+Shipped the six endpoints `splitwise-to-toshl` used, then removed `/api/sw/v3.0`.
+Native `/api/v1` already had the equivalent information. Recoding that client
+against the native shape is cheaper than maintaining a frozen Splitwise wire.
+See the tombstone on `/docs`.
 
 ## Phase 4: Email 🚧
 
@@ -164,8 +137,11 @@ the verification flow is completable locally with no mail provider.
   - ✅ Advisory by default; `EMAIL_VERIFICATION_REQUIRED=true` withholds the
         signup URL and blocks login for unverified existing accounts
   - ✅ `yarn verify:user` lockout escape hatch
-- ⬜ **Password reset**: `email_tokens.purpose` already permits
-      `'reset_password'`, so this needs routes and a template, not a migration
+- ✅ **Password reset**: `email_tokens.purpose` already permitted
+      `'reset_password'`. `POST /auth/password/forgot` emails a 24h single-use
+      link; `POST /auth/password/reset/:token` writes the new hash, marks the
+      address verified, and ends other web sessions. The request response does
+      not reveal whether the address has an account.
 - ⬜ Change-email flow (re-verify the new address before it takes effect)
 - ✅ **Invite by email**: friend invites (`POST /api/v1/friends` with an
       `email`). Deliberately does NOT use `email_tokens`: the link is a guest
@@ -225,11 +201,6 @@ to this flow. It still takes `SPLITWISE_API_KEY` from the shell.
       Native routers are chained so Hono can infer them; `src/routes/native/v1.ts`
       is the composed type the client imports. The `api` object is a thin wrapper
       for credentials, `ApiError`, and the gzipped sync push.
-- ✅ `@hono/zod-openapi` documents the six compat endpoints at
-      `GET /api/sw/v3.0/openapi.json` (public; it is the frozen wire, not a ledger).
-      Handlers in `v3.ts` are unchanged, so the spec cannot grow a second write path.
-- ⬜ Optionally generate a client for `splitwise-to-toshl` with hey-api, though
-      six endpoints of hand-written types is barely worth the build step
 
 ## Phase 7: Deployment ⬜
 
@@ -239,20 +210,15 @@ changes still fold into `migrations/001` until then; after a deploy they cannot.
 - ⬜ Dockerfile (single container, SQLite on a mounted volume)
 - ⬜ **Backups**: Litestream or a nightly `.backup` to object storage. This is
       real financial data in a single file; treat losing it as the top risk.
-- ⬜ Point `splitwise-to-toshl` at this server: set `SPLITWISE_API_URL` in its
-      `webapp/server.js` proxy target and paste a SplitSmart API token in as the
-      Splitwise key
 
 ## Phase 8: ULID primary keys ✅ **before offline, before deploy**
 
 Full plan in `docs/ULIDS.md`. Destructive. Native entity ids are ULIDs so a
-client can mint an expense id offline. The compat layer uses those same ULID
-strings on the wire (a documented break from Splitwise integers). Categories
+client can mint an expense id offline. Categories
 stay Splitwise's integers. Original Splitwise ids live in `metadata.splitwise_id`.
 
 - ✅ Fold TEXT ULIDs into `migrations/001`; `yarn db:reset`
-- ✅ Compat serializers emit the native ULID as `id` (string)
-- ✅ `src/domain/ulid.ts`, native and compat routes parse path ids as ULIDs
+- ✅ `src/domain/ulid.ts`, native routes parse path ids as ULIDs
 - ✅ Import matches on `metadata.splitwise_id`; PK is always a fresh ULID
 
 ## Phase 9: Guest links ✅

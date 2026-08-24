@@ -26,6 +26,12 @@ export interface ExpenseFilters {
   datedAfter?: string;
   datedBefore?: string;
   categoryId?: number;
+  /**
+   * Leaves under `categoryId` when that id is a parent. Filled at the edges
+   * (SQL subquery / local category table) so this module stays free of I/O.
+   * A parent filter with no children listed matches only the parent id itself.
+   */
+  categoryChildIds?: number[];
   isPayment?: boolean;
 }
 
@@ -144,7 +150,15 @@ export function matchesFilters(
 
   if (filters.datedAfter !== undefined && expense.date < filters.datedAfter) return false;
   if (filters.datedBefore !== undefined && expense.date > filters.datedBefore) return false;
-  if (filters.categoryId !== undefined && expense.categoryId !== filters.categoryId) return false;
+  if (filters.categoryId !== undefined) {
+    const id = expense.categoryId;
+    if (
+      id === null ||
+      (id !== filters.categoryId && !filters.categoryChildIds?.includes(id))
+    ) {
+      return false;
+    }
+  }
   if (filters.isPayment !== undefined && expense.isPayment !== filters.isPayment) return false;
 
   return true;

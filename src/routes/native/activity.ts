@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { sql } from "kysely";
 import { db } from "../../db/index.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
+import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 
 interface ActivityRow {
   id: string;
@@ -24,6 +25,7 @@ interface ActivityRow {
   actor_icon_letters: string | null;
   actor_icon_emoji: string | null;
   actor_icon_hue: number | null;
+  actor_icon_pattern: string | null;
   group_id: string | null;
   group_name: string | null;
   expense_id: string | null;
@@ -48,6 +50,7 @@ export const activityRoutes = new Hono<AppEnv>()
            actor.icon_letters AS actor_icon_letters,
            actor.icon_emoji AS actor_icon_emoji,
            actor.icon_hue   AS actor_icon_hue,
+           actor.icon_pattern AS actor_icon_pattern,
            a.group_id,
            g.name           AS group_name,
            a.expense_id,
@@ -85,6 +88,7 @@ export const activityRoutes = new Hono<AppEnv>()
             iconLetters: r.actor_icon_letters,
             iconEmoji: r.actor_icon_emoji,
             iconHue: r.actor_icon_hue,
+            iconPattern: parseAvatarPattern(r.actor_icon_pattern),
           }
         : null,
       group: r.group_id ? { id: r.group_id, name: r.group_name ?? "" } : null,

@@ -25,7 +25,7 @@ import { db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
 import { ulid } from "./ulid.ts";
-import { personCamel } from "./person.ts";
+import { personCamel, type AvatarPattern } from "./person.ts";
 
 export type LinkKind = "group" | "group_member" | "friend";
 
@@ -59,7 +59,7 @@ export function resolveLinkExpiry(expiresAt?: string | null, from = new Date()):
  *
  * Load-bearing: `requireAuth` on the logged-in tree looks for this and refuses
  * outright, so a link can never be presented as a full-user credential to
- * /api/v1 or to the Splitwise compat API. See src/auth/middleware.ts.
+ * /api/v1. See src/auth/middleware.ts.
  */
 export const LINK_TOKEN_PREFIX = "link_";
 
@@ -319,6 +319,7 @@ export interface ActablePerson {
   iconLetters: string | null;
   iconEmoji: string | null;
   iconHue: number | null;
+  iconPattern: AvatarPattern | null;
 }
 
 /**
@@ -335,7 +336,7 @@ export async function listActablePeople(
     if (!link.userId) return [];
     const one = await database
       .selectFrom("users")
-      .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+      .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
       .where("id", "=", link.userId)
       .where("is_ghost", "=", 1)
       .where("deleted_at", "is", null)
@@ -346,7 +347,7 @@ export async function listActablePeople(
   const rows = await database
     .selectFrom("group_members")
     .innerJoin("users", "users.id", "group_members.user_id")
-    .select(["users.id", "users.name", "users.nickname", "users.icon_letters", "users.icon_emoji", "users.icon_hue"])
+    .select(["users.id", "users.name", "users.nickname", "users.icon_letters", "users.icon_emoji", "users.icon_hue", "users.icon_pattern"])
     .where("group_members.group_id", "=", link.groupId!)
     .where("group_members.left_at", "is", null)
     .where("users.is_ghost", "=", 1)

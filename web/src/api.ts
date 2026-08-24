@@ -163,6 +163,10 @@ export type AdminUserUsage = AdminList["users"][number];
 export type UsageCounts = AdminUserUsage["counts"];
 export type UsageDay = AdminUserUsage["series"][number];
 
+type AdminBackupsGet = InferResponseType<typeof client.admin.backups.$get, 200>;
+export type AdminBackupsResponse = AdminBackupsGet;
+export type BackupRunSummary = AdminBackupsResponse["runs"][number];
+
 export type ExpenseInput = InferRequestType<typeof client.expenses.$post>["json"];
 
 export type BootstrapResponse = InferResponseType<typeof client.sync.bootstrap.$get, 200>;
@@ -259,6 +263,24 @@ export const api = {
     call(client.auth.login.$post, client.auth.login.$post({ json: { email, password } })),
 
   logout: () => call(client.auth.logout.$post, client.auth.logout.$post()),
+
+  forgotPassword: (email: string) =>
+    call(
+      client.auth.password.forgot.$post,
+      client.auth.password.forgot.$post({ json: { email } }),
+    ),
+
+  lookupPasswordReset: (token: string) =>
+    call(
+      client.auth.password.reset[":token"].$get,
+      client.auth.password.reset[":token"].$get({ param: { token } }),
+    ),
+
+  resetPassword: (token: string, password: string) =>
+    call(
+      client.auth.password.reset[":token"].$post,
+      client.auth.password.reset[":token"].$post({ param: { token }, json: { password } }),
+    ),
 
   /** Unauthenticated; the link is often opened in a different browser. */
   verifyEmail: (token: string) =>
@@ -547,6 +569,36 @@ export const api = {
         query: opts?.asOf ? { as_of: opts.asOf } : {},
       }),
     ),
+
+  adminBackups: (opts?: { limit?: number }) =>
+    call(
+      client.admin.backups.$get,
+      client.admin.backups.$get({
+        query: opts?.limit != null ? { limit: String(opts.limit) } : {},
+      }),
+    ),
+
+  adminTriggerBackup: async (force = false) => {
+    const res = await fetch(`/api/v1/admin/backups${force ? "?force=true" : ""}`, {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      run?: {
+        id: number;
+        backupDate: string;
+        attempt: number;
+        trigger: string;
+        status: string;
+      };
+      error?: string;
+      detail?: string;
+    };
+    if (res.status === 401 || res.status === 403) {
+      throw new ApiError(body.error ?? res.statusText, res.status);
+    }
+    return { status: res.status, body };
+  },
 };
 
 // Re-exported so existing imports of these sync entity types from api.ts keep

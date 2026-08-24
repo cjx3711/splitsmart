@@ -163,6 +163,7 @@ export function CommentThread({
                   iconLetters={comment.author.iconLetters}
                   iconEmoji={comment.author.iconEmoji}
                   iconHue={comment.author.iconHue}
+                  iconPattern={comment.author.iconPattern}
                   size={30}
                 />
                 <div className="comment-main">

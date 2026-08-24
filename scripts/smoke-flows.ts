@@ -67,7 +67,7 @@ async function openGroupExpense(page: Page, group: string): Promise<void> {
 async function openRentTemplate(page: Page): Promise<void> {
   await clickNamed(page, "Groups");
   await clickNamed(page, "Apartment 4B");
-  await clickNamed(page, { text: "Rent", near: "repeats" });
+  await clickNamed(page, { text: "Rent", near: "first bill" });
   await page.getByRole("button", { name: "Stop repeating" }).waitFor({ timeout: 10_000 });
 }
 
@@ -415,7 +415,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await page.getByRole("heading", { name: "Members" }).waitFor({ timeout: 10_000 });
       await page
         .locator(".list-item")
-        .filter({ hasText: "member · has an account" })
+        .filter({ hasText: "member" })
         .filter({ hasText: "JJ" })
         .click();
       await page.getByRole("heading", { name: "JJ", exact: true }).waitFor({ timeout: 10_000 });

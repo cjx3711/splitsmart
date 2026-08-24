@@ -46,6 +46,7 @@ import {
   type GuestScope,
 } from "../../domain/access-links.ts";
 import { personCamel, personSnake } from "../../domain/person.ts";
+import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 import { getGroupBalances, getBalanceBetween, simplifyDebts } from "../../domain/balances.ts";
 import {
   createExpense,
@@ -256,11 +257,14 @@ async function visiblePeople(scope: GuestScope) {
 
   const rows = await db
     .selectFrom("users")
-    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "is_ghost"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern", "is_ghost"])
     .where("id", "in", [...ids])
     .execute();
 
-  return rows;
+  return rows.map((r) => ({
+    ...r,
+    icon_pattern: parseAvatarPattern(r.icon_pattern),
+  }));
 }
 
 /**
@@ -348,7 +352,7 @@ export const guestRoutes = new Hono<GuestEnv>()
   const me = scope
     ? await db
         .selectFrom("users")
-        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "default_currency"])
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern", "default_currency"])
         .where("id", "=", scope.actingAs)
         .executeTakeFirst()
     : null;
@@ -365,7 +369,7 @@ export const guestRoutes = new Hono<GuestEnv>()
   const counterpart = scope?.counterpartId
     ? await db
         .selectFrom("users")
-        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
         .where("id", "=", scope.counterpartId)
         .executeTakeFirst()
     : null;
@@ -375,7 +379,7 @@ export const guestRoutes = new Hono<GuestEnv>()
   // only way the guest shell can say whose link they are holding.
   const issuedBy = await db
     .selectFrom("users")
-    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
     .where("id", "=", link.createdBy)
     .executeTakeFirst();
 
@@ -478,6 +482,7 @@ export const guestRoutes = new Hono<GuestEnv>()
       "users.icon_letters",
       "users.icon_emoji",
       "users.icon_hue",
+      "users.icon_pattern",
       "users.is_ghost",
       "group_members.role",
       "group_members.joined_via",
@@ -496,7 +501,10 @@ export const guestRoutes = new Hono<GuestEnv>()
 
   return c.json({
     group,
-    members,
+    members: members.map((m) => ({
+      ...m,
+      icon_pattern: parseAvatarPattern(m.icon_pattern),
+    })),
     balances: await getGroupBalances(db, groupId),
     expenses: await loadExpenses(inThisGroup.map((e) => e.id), 200),
   });
@@ -512,7 +520,7 @@ export const guestRoutes = new Hono<GuestEnv>()
 
   const counterpart = await db
     .selectFrom("users")
-    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue"])
+    .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
     .where("id", "=", scope.counterpartId)
     .executeTakeFirstOrThrow();
 

@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { openDatabase } from "../src/db/index.ts";
+import { seedExtraCategories } from "../src/db/seed.ts";
 import { env } from "../src/env.ts";
 
 interface SplitwiseCategory {
@@ -100,7 +101,7 @@ function main(): void {
         let childOrder = 0;
         for (const child of parent.subcategories ?? []) {
           // Splitwise's fallback leaf is "Uncategorized > General"; mark
-          // whatever plays that role so the compat layer has a default.
+          // whatever plays that role so createExpense has a default.
           const isDefault =
             /uncategor/i.test(parent.name) && /general/i.test(child.name) ? 1 : 0;
           insert.run(
@@ -116,9 +117,11 @@ function main(): void {
         }
       }
 
+      seedExtraCategories(db);
+
       console.log(
         `  categories: ${categoryData.categories.length} parents, ${leafCount} leaves ` +
-          `(using Splitwise ids)`,
+          `(using Splitwise ids, plus native extras)`,
       );
 
       // No sqlite_sequence bump needed; AUTOINCREMENT raises the stored

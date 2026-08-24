@@ -394,7 +394,6 @@ const {
   splitwiseIdSql,
   parseMetadata,
   serializeMetadata,
-  IMPORT_ROUNDING_DETAILS,
 } = await import("../../domain/metadata.ts");
 const { runDueRecurrences } = await import("../../domain/scheduler.ts");
 const { createExpense } = await import("../../domain/expenses.ts");
@@ -1112,7 +1111,7 @@ describe("rounding", () => {
       .where("id", "=", row.expenseId)
       .executeTakeFirstOrThrow();
     assert.equal(payment.is_payment, 1);
-    assert.match(payment.details ?? "", /fractional amounts rounded off/i);
+    assert.equal(payment.details, null);
     assert.equal(parseMetadata(payment.metadata).import_rounding, true);
     // Last real bill Alice and Bob share is Mountain hut (2026-03-08), not
     // Ramen. Dating the leftover-yen payment to that bill keeps Bob from
@@ -1132,7 +1131,7 @@ describe("rounding", () => {
     const existing = await db
       .selectFrom("expenses")
       .select("id")
-      .where("details", "=", IMPORT_ROUNDING_DETAILS)
+      .where("metadata", "like", '%"import_rounding":true%')
       .executeTakeFirstOrThrow();
     await db
       .updateTable("expenses")

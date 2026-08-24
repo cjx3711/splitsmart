@@ -1,16 +1,18 @@
 /**
  * Person avatars.
  *
- * Letters, an optional emoji, and a colour. Colour defaults to a hash of the
- * user id so the same person is the same colour on every screen without storing
- * anything. There is no avatar upload in this codebase (see CLAUDE.md, "No file
- * uploads") and this is not a placeholder for one.
+ * Letters, an optional emoji, and a geometric pattern. The pattern is a base
+ * colour plus stacked chord bands, stored as HSLA on the user and painted here.
+ * When nothing is stored, one is hashed from the user id so everyone looks
+ * distinct without a write. There is no avatar upload (see CLAUDE.md).
  */
 import {
-  avatarBackground,
-  avatarHue,
-  iconLettersOf,
-} from "../../src/domain/person.ts";
+  avatarInkCss,
+  avatarPatternCss,
+  resolveAvatarPattern,
+  type AvatarPattern,
+} from "../../src/domain/avatar-pattern.ts";
+import { iconLettersOf } from "../../src/domain/person.ts";
 
 export type AvatarPerson = {
   id: string;
@@ -19,6 +21,7 @@ export type AvatarPerson = {
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
+  iconPattern?: AvatarPattern | string | null;
 };
 
 export function Avatar({
@@ -28,9 +31,10 @@ export function Avatar({
   iconLetters = null,
   iconEmoji = null,
   iconHue = null,
+  iconPattern = null,
   size = 34,
 }: AvatarPerson & { size?: number }) {
-  const hue = avatarHue({ id, iconHue });
+  const pattern = resolveAvatarPattern({ id, iconHue, iconPattern });
   const emoji = iconEmoji?.trim();
   const letters = iconLettersOf({ name, nickname, iconLetters });
 
@@ -42,7 +46,8 @@ export function Avatar({
         width: size,
         height: size,
         fontSize: emoji ? size * 0.52 : size * 0.4,
-        background: avatarBackground(hue),
+        background: avatarPatternCss(pattern),
+        color: avatarInkCss(pattern),
       }}
     >
       {emoji || letters}
@@ -50,21 +55,27 @@ export function Avatar({
   );
 }
 
-/** Map a snake_case person row onto Avatar props. */
+/** Map a snake_case or camelCase person row onto Avatar props. */
 export function avatarFromRow(person: {
   id: string;
   name: string;
   nickname?: string | null;
+  iconLetters?: string | null;
+  iconEmoji?: string | null;
+  iconHue?: number | null;
+  iconPattern?: AvatarPattern | string | null;
   icon_letters?: string | null;
   icon_emoji?: string | null;
   icon_hue?: number | null;
+  icon_pattern?: AvatarPattern | string | null;
 }): AvatarPerson {
   return {
     id: person.id,
     name: person.name,
     nickname: person.nickname,
-    iconLetters: person.icon_letters,
-    iconEmoji: person.icon_emoji,
-    iconHue: person.icon_hue,
+    iconLetters: person.iconLetters ?? person.icon_letters,
+    iconEmoji: person.iconEmoji ?? person.icon_emoji,
+    iconHue: person.iconHue ?? person.icon_hue,
+    iconPattern: person.iconPattern ?? person.icon_pattern,
   };
 }

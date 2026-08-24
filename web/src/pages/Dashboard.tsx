@@ -3,37 +3,46 @@
  *
  * Per-currency rows are the honest picture and stay primary: there is no
  * exchange-rate table in the ledger and there must not be one (see
- * src/domain/balances.ts). When a person holds more than one currency, a
- * labeled ≈ estimate in their preferred currency is added underneath, sourced
- * from Exchange Rate API and cached in the browser for a day. The estimate is opt-in
- * (it appears only when there are ≥2 currencies and rates loaded), dated, and
- * additive to the stack, not a replacement for it.
+ * src/domain/balances.ts). A labeled ≈ estimate in the viewer's preferred
+ * currency is added when any amount is not already in that currency, sourced
+ * from Exchange Rate API and cached in the browser for a day. The estimate is
+ * dated and additive to the stack, not a replacement for it.
  */
 import { Link } from "react-router-dom";
 import { displayName, type Friend, type CurrencyAmount } from "../api.ts";
-import { Amount, Amounts, sumByCurrency } from "../money.tsx";
+import { Amount, Amounts, sumByCurrency, useCurrencies } from "../money.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { FriendListItem } from "../FriendListItem.tsx";
 import { useAuth } from "../App.tsx";
 import { useFriends } from "../localData.ts";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { friendDashboardColumn, useExchangeRates } from "../exchangeRates.ts";
 import { HelpTip } from "../HelpTip.tsx";
 
 export function Dashboard() {
   const { user } = useAuth();
+  const { decimalsFor } = useCurrencies();
   // Every figure below is derived here from the shares in the mirror, through the
   // same pure deriveRepayments the server runs. Balances are never replicated:
   // a pairwise net taken from two people's paid/owed on a three-way bill is
   // wrong, and expense_repayments is a write-time cache, not a source of truth.
   const friends = useFriends()?.friends ?? null;
+  const fxSymbols = friends?.flatMap((f) => f.balances.map((b) => b.currencyCode)) ?? [];
+  const { rates } = useExchangeRates(user?.defaultCurrency ?? "", fxSymbols);
 
   if (!friends || !user) return <p className="muted">Loading…</p>;
 
-  // Someone can owe you in one currency while you owe them in another, so a
-  // person can legitimately appear in both columns.
-  const owedToYou = friends.filter((f) => f.balances.some((b) => b.amountMinor > 0));
-  const youOwe = friends.filter((f) => f.balances.some((b) => b.amountMinor < 0));
+  const columnOf = (person: Friend) =>
+    friendDashboardColumn(person.balances, user.defaultCurrency, rates, decimalsFor);
+  const youOwe = friends.filter((f) => {
+    const column = columnOf(f);
+    return column === "owe" || column === "both";
+  });
+  const owedToYou = friends.filter((f) => {
+    const column = columnOf(f);
+    return column === "owed" || column === "both";
+  });
 
   const allBalances = friends.flatMap((f) => f.balances);
   const positives = sumByCurrency(allBalances.filter((b) => b.amountMinor > 0));
@@ -83,16 +92,27 @@ export function Dashboard() {
         </div>
       </div>
 
-      <ConversionFootnote sets={[net]} preferredCurrency={user.defaultCurrency} />
+      <ConversionFootnote
+        sets={[net, ...friends.map((f) => f.balances)]}
+        preferredCurrency={user.defaultCurrency}
+      />
 
       <div className="columns" style={{ marginTop: "1.75rem" }}>
         <section>
           <h2 style={{ marginTop: 0 }}>You owe</h2>
-          <PeopleList people={youOwe} direction="negative" empty="You don't owe anyone." />
+          <PeopleList
+            people={youOwe}
+            preferredCurrency={user.defaultCurrency}
+            empty="You don't owe anyone."
+          />
         </section>
         <section>
           <h2 style={{ marginTop: 0 }}>You are owed</h2>
-          <PeopleList people={owedToYou} direction="positive" empty="Nobody owes you." />
+          <PeopleList
+            people={owedToYou}
+            preferredCurrency={user.defaultCurrency}
+            empty="Nobody owes you."
+          />
         </section>
       </div>
     </>
@@ -134,26 +154,26 @@ function SummaryLedger({
 /**
  * One row per person, with the per-group breakdown underneath.
  *
- * `direction` picks which half of a mixed balance to show: someone you owe EUR
- * but who owes you USD appears in both columns, each showing only its side.
+ * Mixed balances show both directions on the same card so "you owe SGD" does
+ * not hide "they owe you JPY". The column they sit in is the converted net
+ * when rates are in; until then a mixed person can still appear in both.
  */
 function PeopleList({
   people,
-  direction,
+  preferredCurrency,
   empty,
 }: {
   people: Friend[];
-  direction: "positive" | "negative";
+  preferredCurrency: string;
   empty: string;
 }) {
   if (people.length === 0) return <p className="empty">{empty}</p>;
 
-  const keep = (amount: number) => (direction === "positive" ? amount > 0 : amount < 0);
-
   return (
-    <div className="list">
+    <div className="list owe-list">
       {people.map((person) => {
-        const relevant = person.balances.filter((b) => keep(b.amountMinor));
+        const youOwe = person.balances.filter((b) => b.amountMinor < 0);
+        const theyOwe = person.balances.filter((b) => b.amountMinor > 0);
 
         return (
           <FriendListItem
@@ -162,9 +182,22 @@ function PeopleList({
             avatar={avatarFromRow(person)}
             title={displayName(person)}
             subtitle={
-              <div className={direction}>
-                {direction === "positive" ? "owes you " : "you owe "}
-                <Amounts balances={relevant} absolute />
+              <div className="owe-summary">
+                {youOwe.length > 0 && (
+                  <div className="negative">
+                    you owe <Amounts balances={youOwe} absolute />
+                  </div>
+                )}
+                {theyOwe.length > 0 && (
+                  <div className="positive">
+                    owes you <Amounts balances={theyOwe} absolute />
+                  </div>
+                )}
+                <EstimatedTotal
+                  balances={person.balances}
+                  preferredCurrency={preferredCurrency}
+                  compact
+                />
               </div>
             }
             extra={
@@ -176,10 +209,12 @@ function PeopleList({
                 <ul className="breakdown">
                   {person.breakdown.map((entry) => (
                     <li key={entry.groupId ?? "none"}>
-                      <Amounts balances={entry.balances} signed /> in{" "}
-                      {entry.groupId
-                        ? (entry.groupName?.trim() || "this group")
-                        : "one-on-one expenses"}
+                      <Amounts balances={entry.balances} signed />
+                      <span className="breakdown-where">
+                        {entry.groupId
+                          ? (entry.groupName?.trim() || "this group")
+                          : "one-on-one"}
+                      </span>
                     </li>
                   ))}
                 </ul>

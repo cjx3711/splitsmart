@@ -122,7 +122,7 @@ function shiftRight(value: string, places: number): string {
  * Deliberately string-based rather than `Math.round(parseFloat(s) * 100)`,
  * which is wrong for values such as "8.115" that have no exact binary
  * representation. Splitwise sends amounts as decimal strings, so this is the
- * function the compat layer uses on every inbound expense.
+ * function the importer uses on every inbound expense.
  */
 export function parseAmount(input: string | number, decimalPlaces = DEFAULT_DECIMAL_PLACES): number {
   const raw = typeof input === "number" ? input.toFixed(decimalPlaces) : input.trim();
@@ -138,9 +138,8 @@ export function parseAmount(input: string | number, decimalPlaces = DEFAULT_DECI
 /**
  * Formats minor units back to a plain decimal string ("2500" -> "25.00").
  *
- * No currency symbol, no thousands separators: this is the wire format the
- * Splitwise-compatible API returns, and it must round-trip through parseAmount
- * exactly. Display formatting belongs in the frontend.
+ * No currency symbol, no thousands separators: this is a round-trip format
+ * for parseAmount, and for CSV. Display formatting belongs in the frontend.
  */
 export function formatAmount(minor: number, decimalPlaces = DEFAULT_DECIMAL_PLACES): string {
   if (!Number.isInteger(minor)) {

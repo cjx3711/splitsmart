@@ -2,7 +2,7 @@
  * Native group and expense routes.
  *
  * These speak the clean internal model: integer minor units, nested objects,
- * camelCase. The Splitwise wire format is confined to src/routes/compat/.
+ * camelCase.
  */
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
@@ -26,6 +26,7 @@ import { expenseFilterWhere, expenseListQuerySchema, hasFilters, parseExpenseFil
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 import { MAX_NAME_LENGTH, MAX_NICKNAME_LENGTH, personSnake } from "../../domain/person.ts";
+import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 import { repeatPausedOf } from "../../domain/metadata.ts";
 
 /** Throws a 403-shaped result if the caller isn't in the group. */
@@ -147,6 +148,7 @@ export const groupRoutes = new Hono<AppEnv>()
       "users.icon_letters",
       "users.icon_emoji",
       "users.icon_hue",
+      "users.icon_pattern",
       "users.is_ghost",
       "group_members.role",
       "group_members.joined_via",
@@ -157,7 +159,15 @@ export const groupRoutes = new Hono<AppEnv>()
 
   const balances = await getGroupBalances(db, groupId);
 
-  return c.json({ group, members, balances, role: membership.role });
+  return c.json({
+    group,
+    members: members.map((m) => ({
+      ...m,
+      icon_pattern: parseAvatarPattern(m.icon_pattern),
+    })),
+    balances,
+    role: membership.role,
+  });
 })
   .patch("/:id", zValidator("json", z.object({ simplifyByDefault: z.boolean() })), async (c) => {
   const auth = c.get("user");
@@ -437,6 +447,7 @@ export const groupRoutes = new Hono<AppEnv>()
         "icon_letters",
         "icon_emoji",
         "icon_hue",
+        "icon_pattern",
         "is_ghost",
       ])
       .where("id", "=", userId)
@@ -570,10 +581,10 @@ export const expenseRoutes = new Hono<AppEnv>()
 /**
  * Create an expense anywhere: in a group, or in no group at all.
  *
- * The group-scoped and friend-scoped endpoints stay as they are; they are what
- * the compat layer and existing clients use, but neither can express the one
- * shape the add-expense dialog needs: several people, chosen freely, possibly
- * with no group. This is that endpoint, and it is the one the web UI posts to.
+ * The group-scoped and friend-scoped endpoints stay as they are, but neither
+ * can express the one shape the add-expense dialog needs: several people,
+ * chosen freely, possibly with no group. This is that endpoint, and it is the
+ * one the web UI posts to.
  *
  * Who may appear on the expense:
  *

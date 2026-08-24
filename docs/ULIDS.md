@@ -16,10 +16,7 @@ characters of Crockford base32, time-sortable, and safe to generate on the
 client with `crypto.getRandomValues`. They are **not sequential**, which is the
 point; they are only ordered by time.
 
-Native API ids are strings. The Splitwise compat layer uses the **same**
-ULID strings. That is a documented break from Splitwise (JSON numbers);
-see the warning at the top of `docs/SPLITWISE_COMPAT.md`. There is no
-parallel integer `compat_id`.
+Native API ids are strings. There is no parallel integer `compat_id`.
 
 ## What is a ULID
 
@@ -52,7 +49,7 @@ These are not entity ids.
 
 | Column | Why |
 |---|---|
-| `categories.id` | Splitwise's real ids, captured in `fixtures/splitwise/get_categories.json`. `category_id` passes straight through the compat layer. Renumbering them breaks import and every client that already stores `13` for Dining out. Seed continues to insert explicit integers. |
+| `categories.id` | Splitwise's real ids (1–50), captured in `fixtures/splitwise/get_categories.json`, plus native extras at ≥ 51. Renumbering a Splitwise id breaks import and every client that already stores `13` for Dining out. Seed continues to insert explicit integers. |
 | `categories.splitwise_id` | Same number, kept for the importer. |
 | `expense_repayments.seq` | Stable order inside one expense, not an identity. |
 | `*_minor`, `decimal_places`, flags | Money and booleans. |
@@ -66,7 +63,7 @@ These are not entity ids.
 (default `'{}'`). It is a bag for data that is stored, not queried:
 
 - `splitwise_id` - original Splitwise integer, set on import so a second run
-  matches instead of duplicating. Never the native PK, never on the compat wire.
+  matches instead of duplicating. Never the native PK.
 - `notes` - freeform user notes.
 - Extra keys are allowed.
 
@@ -75,18 +72,13 @@ The one exception to "not queried" is a unique expression index on
 Helpers live in `src/domain/metadata.ts`.
 
 Import mints a fresh ULID for every new row. The original integer is **not**
-reused as `id`. Toshl (or any other client) pointed at SplitSmart after an
-import therefore sees different expense ids than it saw on Splitwise. That
-data loss is accepted.
-
-Ghost placeholder emails in the compat serializer are
-`ghost-<ulid>@splitsmart.invalid`. `.invalid` is reserved by RFC 2606.
+reused as `id`.
 
 ## Client-minted expense ids
 
 `createExpense` accepts an optional `id`. If present it must be a valid ULID
-and is used as the PK; if absent the server mints one. Compat and today's web
-UI take the absent path until offline writes land.
+and is used as the PK; if absent the server mints one. Today's web UI takes
+the absent path until offline writes land.
 
 A retry with the same id hits the PK and is a no-op that returns the existing
 row. That is the idempotency story offline-first needs - there is no separate

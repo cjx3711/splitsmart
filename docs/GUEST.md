@@ -98,8 +98,7 @@ Prefix distinguishes these from API tokens. `requireAuth` on the logged-in tree
 rejects `link_` tokens outright (`src/auth/middleware.ts`) with
 `{ guestLink: true }`, rather than falling through to the cookie; a guest
 browser has no cookie, so a missing check would read as an anonymous request
-instead of a clear 401. Compat `/api/sw/v3.0` shares that middleware and so
-refuses them too. The guest client sends `credentials: "omit"` for the mirror
+instead of a clear 401. The guest client sends `credentials: "omit"` for the mirror
 of the same reason.
 
 Guest app talks only to `/api/v1/guest/*`, which resolves the token to
@@ -388,7 +387,7 @@ would be a dead end.
   and ignores a client-supplied name.
 - Expired/revoked secret is 401 with no leftover access; a claimed person is
   401 `claimed`, worded as "log in".
-- A guest link is refused by every `/api/v1` route and by `/api/sw/v3.0`; an
+- A guest link is refused by every `/api/v1` route; an
   API token is refused by `/api/v1/guest/*`.
 - Guest writes stay in scope, including that an EDIT cannot move an expense out
   of the scope that authorised the edit.
@@ -411,7 +410,7 @@ there is deliberately nothing cached for it to fall back to.
 - **Unlink.** Claim is "I am this person".
 - **In-place password-on-ghost.** Create account first; merge is the one path.
 - **Guest offline / Dexie / sync.** A link is revocable; a local copy is not.
-- **Guest API tokens or compat.** Those are full-user credentials.
+- **Guest API tokens.** Those are full-user credentials.
 - **Guests creating people, groups, or links.**
 - **A living second user row after claim.** `merged_into` is a stub, not a
   participant.

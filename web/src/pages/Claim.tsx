@@ -191,6 +191,7 @@ export function Claim() {
                 iconLetters={person.iconLetters}
                 iconEmoji={person.iconEmoji}
                 iconHue={person.iconHue}
+                iconPattern={person.iconPattern}
               />
               <div className="list-item-body">
                 <div className="list-item-title">{name}</div>

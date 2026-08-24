@@ -7,6 +7,7 @@ import { api, ApiError, type AdminUserUsage, type UsageCounts } from "../api.ts"
 import { HelpTip } from "../HelpTip.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
 import { UsageChart } from "../UsageChart.tsx";
+import { AdminNav } from "./AdminNav.tsx";
 
 const COUNT_LABELS: Array<{ key: keyof UsageCounts; label: string }> = [
   { key: "expensesCreated", label: "Expenses created" },
@@ -63,6 +64,7 @@ export function AdminUser() {
   if (!online) {
     return (
       <>
+        <AdminNav current="usage" />
         <p className="crumbs">
           <Link to={`/admin${backQs}`}>Usage</Link>
         </p>
@@ -76,6 +78,7 @@ export function AdminUser() {
 
   return (
     <>
+      <AdminNav current="usage" />
       <p className="crumbs">
         <Link to={`/admin${backQs}`}>Usage</Link>
       </p>

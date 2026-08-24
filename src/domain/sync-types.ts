@@ -1,7 +1,8 @@
 /**
  * The wire shapes `/api/v1/sync/*` speaks.
  *
- * PURE TYPES, no imports, deliberately. This module is imported by BOTH sides -
+ * PURE TYPES. The only import is a type (the avatar pattern), so this stays
+ * free of I/O. Imported by BOTH sides -
  * src/routes/native/sync-serializers.ts builds these, and web/src/db/local.ts
  * stores them - for the same reason src/domain/split.ts is shared: one definition
  * cannot drift from itself, and the first symptom of drift here would be a field
@@ -15,10 +16,11 @@
  * camelCase and nested, unlike the flat snake_case rows the screen endpoints
  * return: these are documents a client stores verbatim, not rows a component
  * reads. Money is integer minor units with its currency alongside, as everywhere.
- *
- * NOT the compat layer. Nothing here is frozen - client and server ship from the
+ * Nothing here is frozen - client and server ship from the
  * same origin - so do not bring Splitwise's decimal strings anywhere near it.
  */
+import type { AvatarPattern } from "./avatar-pattern.ts";
+
 /**
  * A person, as somebody else's device needs to render them.
  *
@@ -36,6 +38,7 @@ export interface SyncUser {
   iconLetters: string | null;
   iconEmoji: string | null;
   iconHue: number | null;
+  iconPattern: AvatarPattern | null;
   email: string | null;
   isGhost: boolean;
   defaultCurrency: string;
@@ -74,8 +77,7 @@ export interface SyncRepayment {
  * worse bug than a few duplicated user records. Names go stale until the next
  * shared write, which is accepted (docs/OFFLINE.md).
  *
- * `deletedAt` is carried, not filtered. A tombstone is how restore works, and
- * the compat layer returns them too.
+ * `deletedAt` is carried, not filtered. A tombstone is how restore works.
  */
 export interface SyncExpense {
   id: string;
@@ -99,6 +101,11 @@ export interface SyncExpense {
    * one-off. Not a column: stored in `expenses.metadata.repeat_paused`.
    */
   repeatPaused: string | null;
+  /**
+   * A leftover-cent settle-up written during Splitwise import. Friend recency
+   * skips these. Not a column: stored in `expenses.metadata.import_rounding`.
+   */
+  importRounding: boolean;
   /** What a later edit has to send back as `baseVersion`. */
   version: number;
   createdBy: string | null;
@@ -166,7 +173,7 @@ export interface SyncCurrency {
 }
 
 export interface SyncCategory {
-  /** Splitwise's integer, not a ULID. See docs/SPLITWISE_COMPAT.md. */
+  /** Splitwise's integer, not a ULID. See src/db/categories.ts. */
   id: number;
   parentId: number | null;
   name: string;

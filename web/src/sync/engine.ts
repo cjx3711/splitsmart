@@ -861,6 +861,7 @@ export class SyncEngine {
           : payload.repeatInterval !== undefined
             ? null
             : (options.base?.repeatPaused ?? null),
+      importRounding: options.base?.importRounding ?? false,
       version: options.base?.version ?? 1,
       createdBy: options.base?.createdBy ?? this.selfId,
       updatedBy: this.selfId,

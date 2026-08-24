@@ -178,6 +178,7 @@ const GHOST_INVITE_COLUMNS = [
   "icon_letters",
   "icon_emoji",
   "icon_hue",
+  "icon_pattern",
   "is_ghost",
   "metadata",
 ] as const;
@@ -210,8 +211,8 @@ export async function findExplicitGhostByInviteEmail(
  * Everyone this user can see: explicit friends, plus everyone they share a live
  * group membership or an expense with.
  *
- * The compat layer's `get_friends` and the native friends list both call this,
- * so the two can never drift apart on who counts as a friend.
+ * The native friends list calls this, and it is the only definition of who
+ * counts as a friend, so a second UNION at a call site cannot drift.
  */
 export async function listRelatedUserIds(
   db: DB,

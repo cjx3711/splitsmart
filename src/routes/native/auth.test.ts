@@ -130,6 +130,10 @@ describe("PATCH /api/v1/auth/me", () => {
         iconLetters: "雪",
         iconEmoji: "🌸",
         iconHue: 48,
+        iconPattern: {
+          base: { h: 48, s: 62, l: 38, a: 1 },
+          layers: [{ start: 20, end: 55, rotation: 30, h: 48, s: 70, l: 50, a: 0.6 }],
+        },
       }),
     });
     assert.equal(res.status, 200);
@@ -139,11 +143,16 @@ describe("PATCH /api/v1/auth/me", () => {
     assert.equal(body.user.iconLetters, "雪");
     assert.equal(body.user.iconEmoji, "🌸");
     assert.equal(body.user.iconHue, 48);
+    assert.deepEqual(body.user.iconPattern, {
+      base: { h: 48, s: 62, l: 38, a: 1 },
+      layers: [{ start: 20, end: 55, rotation: 30, h: 48, s: 70, l: 50, a: 0.6 }],
+    });
 
     const me = await authed("/api/v1/auth/me");
     const meBody = (await me.json()) as { user: Record<string, unknown> };
     assert.equal(meBody.user.nickname, "Yuki");
     assert.equal(meBody.user.iconHue, 48);
+    assert.deepEqual(meBody.user.iconPattern, body.user.iconPattern);
   });
 });
 

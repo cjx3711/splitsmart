@@ -116,7 +116,7 @@ export async function signIn(page: Page, account: Account, base: string): Promis
   const { email, password } = ACCOUNTS[account];
   await page.goto(`${base}/app`, { waitUntil: "domcontentloaded" });
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Log in" }).click();
   await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 15_000 });
 }

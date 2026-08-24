@@ -40,8 +40,8 @@ async function identify(c: Context): Promise<Identity> {
   if (header?.startsWith("Bearer ")) {
     const token = header.slice(7).trim();
 
-    // A guest secret is never a user credential, on this tree or the compat
-    // one. Reject rather than ignore, so the client is told to use /guest.
+    // A guest secret is never a user credential. Reject rather than ignore,
+    // so the client is told to use /guest.
     if (isLinkToken(token)) return { kind: "guest_link" };
 
     if (token) {

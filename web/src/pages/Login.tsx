@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api.ts";
 import { Logo } from "../Logo.tsx";
+import { PasswordField } from "../PasswordField.tsx";
 import { useAuth } from "../App.tsx";
 import { readLastUserId } from "../lastUser.ts";
 
@@ -140,18 +141,13 @@ export function Login() {
           />
         </div>
         {mode === "login" && (
-          <div>
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-              autoComplete="current-password"
-            />
-          </div>
+          <PasswordField
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+            autoComplete="current-password"
+          />
         )}
 
         <button type="submit" disabled={busy}>
@@ -160,6 +156,11 @@ export function Login() {
       </form>
 
       <div className="stack" style={{ marginTop: "0.5rem", alignItems: "flex-start" }}>
+        {mode === "login" && (
+          <Link to="/reset" className="link">
+            Forgot password?
+          </Link>
+        )}
         <button
           className="link"
           onClick={() => {

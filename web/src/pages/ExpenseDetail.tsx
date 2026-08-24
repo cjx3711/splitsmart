@@ -16,7 +16,8 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Amount } from "../money.tsx";
-import { makeLookup, PaymentMark, paymentTitle } from "../ExpenseList.tsx";
+import { makeLookup, PaymentMark, paymentTitle, counterpartUserId } from "../ExpenseList.tsx";
+import { isImportRoundingExpense } from "../../../src/domain/metadata.ts";
 import { EditExpenseDialog } from "../EditExpenseDialog.tsx";
 import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
@@ -66,12 +67,20 @@ export function ExpenseDetail() {
   if (loaded === null) return <p className="empty">This expense is not on this device.</p>;
 
   const expense = loaded.expense;
+  // Nested functions below do not keep the `user` narrowing from the guard
+  // above — they can run later — so pin the id while we know we have it.
+  const selfId = user.id;
   // The tombstone IS the state now, rather than a flag held next to a row the
   // server would refuse to hand back. The undo works offline for the same reason.
   const deleted = expense.deleted_at !== null;
 
   function back() {
-    navigate(expense.group_id ? `/groups/${expense.group_id}` : "/expenses");
+    if (expense.group_id) {
+      navigate(`/groups/${expense.group_id}`);
+      return;
+    }
+    const otherId = counterpartUserId(expense.shares, selfId);
+    navigate(otherId ? `/friends/${otherId}` : "/expenses");
   }
 
   async function handleDelete() {
@@ -122,6 +131,7 @@ export function ExpenseDetail() {
         iconLetters: user.iconLetters,
         iconEmoji: user.iconEmoji,
         iconHue: user.iconHue,
+        iconPattern: user.iconPattern,
       };
     }
     const friend = friends.find((f) => f.id === userId);
@@ -131,15 +141,23 @@ export function ExpenseDetail() {
   const title = isPayment ? paymentTitle(expense.shares, nameOf) : expense.description;
   const deleteSeriesNote = seriesDeleteNote(expense);
 
-  // The group used to be repeated in the meta line below; the trail carries it
-  // now, and one link per destination is enough.
+  // Group expenses hang off the group. A one-on-one (a payment, or any bill
+  // with exactly one other person) hangs off that friend. Everything else
+  // falls back to All expenses.
+  const otherId = counterpartUserId(expense.shares, user.id);
   const trail = expense.group_id
     ? [
         { label: "Groups", to: "/groups" },
         { label: expense.group_name ?? "Group", to: `/groups/${expense.group_id}` },
         { label: title },
       ]
-    : [{ label: "All expenses", to: "/expenses" }, { label: title }];
+    : otherId
+      ? [
+          { label: "Friends", to: "/friends" },
+          { label: nameOf(otherId), to: `/friends/${otherId}` },
+          { label: title },
+        ]
+      : [{ label: "All expenses", to: "/expenses" }, { label: title }];
 
   return (
     <>
@@ -192,7 +210,7 @@ export function ExpenseDetail() {
             <p style={{ margin: "0.4rem 0 0", fontSize: "1.5rem" }}>
               <Amount minor={expense.cost_minor} currency={expense.currency_code} />
             </p>
-            {expense.details && (
+            {expense.details && !isImportRoundingExpense(expense) && (
               <p className="muted" style={{ marginBottom: 0 }}>
                 {expense.details}
               </p>
@@ -214,28 +232,32 @@ export function ExpenseDetail() {
             />
           </div>
 
-          <h2>Who paid, who owes</h2>
-          <div className="list">
-            {expense.shares.map((share) => (
-              <FriendListItem
-                key={share.user_id}
-                to={friendHref(share.user_id, user.id)}
-                avatar={avatarFor(share.user_id)}
-                title={nameOf(share.user_id)}
-              >
-                <div style={{ textAlign: "right" }}>
-                  {share.paid_share_minor > 0 && (
-                    <div className="muted">
-                      paid <Amount minor={share.paid_share_minor} currency={expense.currency_code} />
+          {!isPayment && (
+            <>
+              <h2>Who paid, who owes</h2>
+              <div className="list">
+                {expense.shares.map((share) => (
+                  <FriendListItem
+                    key={share.user_id}
+                    to={friendHref(share.user_id, user.id)}
+                    avatar={avatarFor(share.user_id)}
+                    title={nameOf(share.user_id)}
+                  >
+                    <div style={{ textAlign: "right" }}>
+                      {share.paid_share_minor > 0 && (
+                        <div className="muted">
+                          paid <Amount minor={share.paid_share_minor} currency={expense.currency_code} />
+                        </div>
+                      )}
+                      <div>
+                        owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
+                      </div>
                     </div>
-                  )}
-                  <div>
-                    owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
-                  </div>
-                </div>
-              </FriendListItem>
-            ))}
-          </div>
+                  </FriendListItem>
+                ))}
+              </div>
+            </>
+          )}
 
           <CommentThread expenseId={expense.id} currentUserId={user.id} />
         </>

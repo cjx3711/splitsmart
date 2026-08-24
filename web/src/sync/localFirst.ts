@@ -20,6 +20,7 @@ import {
 } from "../db/apply.ts";
 import { friendshipKey, getMeta, memberKey, setMeta, type LocalDb } from "../db/local.ts";
 import type { SyncFriendship, SyncGroup, SyncGroupMember, SyncUser } from "../db/local.ts";
+import { parseAvatarPattern, type AvatarPattern } from "../../../src/domain/avatar-pattern.ts";
 
 export type IdentityPatch = {
   name?: string;
@@ -27,6 +28,7 @@ export type IdentityPatch = {
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
+  iconPattern?: AvatarPattern | null;
   defaultCurrency?: string;
 };
 
@@ -38,6 +40,7 @@ function withIdentity(user: SyncUser, patch: IdentityPatch): SyncUser {
     ...(patch.iconLetters !== undefined ? { iconLetters: patch.iconLetters } : {}),
     ...(patch.iconEmoji !== undefined ? { iconEmoji: patch.iconEmoji } : {}),
     ...(patch.iconHue !== undefined ? { iconHue: patch.iconHue } : {}),
+    ...(patch.iconPattern !== undefined ? { iconPattern: patch.iconPattern } : {}),
     ...(patch.defaultCurrency !== undefined ? { defaultCurrency: patch.defaultCurrency } : {}),
   };
 }
@@ -111,6 +114,7 @@ export async function revertPerson(db: LocalDb, previous: SyncUser): Promise<voi
     iconLetters: previous.iconLetters,
     iconEmoji: previous.iconEmoji,
     iconHue: previous.iconHue,
+    iconPattern: previous.iconPattern,
     defaultCurrency: previous.defaultCurrency,
   });
 }
@@ -169,9 +173,11 @@ type WirePerson = {
   icon_letters?: string | null;
   icon_emoji?: string | null;
   icon_hue?: number | null;
+  icon_pattern?: unknown;
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
+  iconPattern?: unknown;
   is_ghost?: number;
   isGhost?: boolean;
   default_currency?: string;
@@ -186,6 +192,7 @@ export function syncUserFromWire(person: WirePerson, fallbackCurrency: string): 
     iconLetters: person.iconLetters ?? person.icon_letters ?? null,
     iconEmoji: person.iconEmoji ?? person.icon_emoji ?? null,
     iconHue: person.iconHue ?? person.icon_hue ?? null,
+    iconPattern: parseAvatarPattern(person.iconPattern ?? person.icon_pattern),
     email: person.email ?? null,
     isGhost: person.isGhost === true || person.is_ghost === 1,
     defaultCurrency: person.defaultCurrency ?? person.default_currency ?? fallbackCurrency,
@@ -294,6 +301,7 @@ export function syncUserFromApiUser(user: {
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
+  iconPattern?: AvatarPattern | null;
   isGhost?: boolean;
   defaultCurrency: string;
 }): SyncUser {
@@ -304,6 +312,7 @@ export function syncUserFromApiUser(user: {
     iconLetters: user.iconLetters ?? null,
     iconEmoji: user.iconEmoji ?? null,
     iconHue: user.iconHue ?? null,
+    iconPattern: user.iconPattern ?? null,
     email: user.email ?? null,
     isGhost: Boolean(user.isGhost),
     defaultCurrency: user.defaultCurrency,

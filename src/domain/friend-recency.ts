@@ -17,6 +17,7 @@ export function lastSharedExpenseIdByUser(
     id: string;
     shares: ReadonlyArray<{ userId: string }>;
     details?: string | null;
+    importRounding?: boolean;
   }>,
   selfId: string,
 ): Map<string, string> {

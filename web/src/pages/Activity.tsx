@@ -116,6 +116,7 @@ export function Activity() {
                   iconLetters={entry.actor?.iconLetters}
                   iconEmoji={entry.actor?.iconEmoji}
                   iconHue={entry.actor?.iconHue}
+                  iconPattern={entry.actor?.iconPattern}
                   size={30}
                 />
                 <div className="list-item-body">

@@ -10,7 +10,7 @@ import { Modal } from "./Modal.tsx";
 import { Amount, useCurrencies, useFormatMoney } from "./money.tsx";
 import { CurrencySelect } from "./CurrencySelect.tsx";
 import { useExchangeRates } from "./exchangeRates.ts";
-import { planBalanceConversion, type ConversionPayment } from "./convertBalance.ts";
+import { planBalanceConversion, planGroupBalanceConversion, type ConversionPayment } from "./convertBalance.ts";
 import type { CurrencyAmount } from "./api.ts";
 
 export function ConvertBalanceDialog({
@@ -141,6 +141,156 @@ export function ConvertBalanceDialog({
                 </>
               )}
             </p>
+            {date && (
+              <p className="muted" style={{ margin: 0 }}>
+                Rates as of {date}.{" "}
+                <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">
+                  Rates By Exchange Rate API
+                </a>
+                .
+              </p>
+            )}
+          </>
+        )}
+
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button className="secondary" type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="button" onClick={() => void handleSubmit()} disabled={!canSubmit}>
+            {busy ? "Converting…" : `Convert to ${target}`}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Same action as ConvertBalanceDialog, for a group: every suggested settle-up
+ * transfer in another currency is closed and reopened in the one you pick.
+ */
+export function ConvertGroupBalanceDialog({
+  open,
+  nameOf,
+  transfers,
+  preferredCurrency,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  nameOf: (id: string) => string;
+  transfers: Array<{
+    currencyCode: string;
+    fromUserId: string;
+    toUserId: string;
+    amountMinor: number;
+  }>;
+  preferredCurrency: string;
+  onClose: () => void;
+  onSubmit: (payments: ConversionPayment[]) => Promise<void>;
+}) {
+  const formatMoney = useFormatMoney();
+  const { decimalsFor } = useCurrencies();
+  const [target, setTarget] = useState(preferredCurrency);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTarget(preferredCurrency);
+      setBusy(false);
+      setError(null);
+    }
+  }, [open, preferredCurrency]);
+
+  const symbols = [...new Set(transfers.map((t) => t.currencyCode))];
+  const { rates, date, loading, error: ratesError } = useExchangeRates(
+    open ? target : "",
+    open ? symbols : [],
+  );
+
+  const plan =
+    rates && date
+      ? planGroupBalanceConversion({
+          transfers,
+          targetCode: target,
+          rates,
+          decimalsFor,
+          rateDate: date,
+          formatAmount: formatMoney,
+        })
+      : null;
+
+  const canSubmit = Boolean(plan?.ok && plan.payments.length > 0 && !busy);
+
+  async function handleSubmit() {
+    if (!plan?.ok || plan.payments.length === 0) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await onSubmit(plan.payments);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not convert the balances");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} title="Convert balance" onClose={onClose}>
+      <div className="stack">
+        <p className="muted" style={{ margin: 0 }}>
+          Other currencies in this group are settled and reopened in the one you
+          pick, at today's rate. Existing bills stay in the currency they were
+          recorded in.
+        </p>
+
+        <div>
+          <label htmlFor="groupConvertTarget">Convert to</label>
+          <CurrencySelect id="groupConvertTarget" value={target} onChange={setTarget} />
+        </div>
+
+        {error && <p className="error">{error}</p>}
+
+        {loading && <p className="muted">Fetching today's rates…</p>}
+
+        {ratesError && (
+          <p className="error">
+            Could not load a rate for {target}. Try another currency.
+          </p>
+        )}
+
+        {plan && !plan.ok && (
+          <p className="error">
+            {plan.reason === "rounds_to_zero"
+              ? `${plan.currencyCode} is too small to convert into ${target} without rounding to zero.`
+              : `No rate for ${plan.currencyCode} → ${target}.`}
+          </p>
+        )}
+
+        {plan?.ok && plan.legs.length === 0 && (
+          <p className="muted">Every remaining debt in this group is already in {target}.</p>
+        )}
+
+        {plan?.ok && plan.legs.length > 0 && (
+          <>
+            <div className="convert-preview">
+              {plan.legs.map((leg, i) => (
+                <div key={`${leg.fromUserId}-${leg.toUserId}-${leg.sourceCode}-${i}`} className="convert-preview-row">
+                  <span>
+                    {nameOf(leg.fromUserId)} → {nameOf(leg.toUserId)}
+                  </span>
+                  <Amount minor={leg.sourceMinor} currency={leg.sourceCode} />
+                  <span className="convert-preview-arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <Amount minor={leg.targetMinor} currency={leg.targetCode} />
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: 0 }}>Afterwards every remaining debt in this group is in {target}.</p>
             {date && (
               <p className="muted" style={{ margin: 0 }}>
                 Rates as of {date}.{" "}

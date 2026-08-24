@@ -613,9 +613,8 @@ function splitMetaFields(
  *
  * Repayment rows are left in place; every balance query filters on
  * `expenses.deleted_at IS NULL`, so a deleted expense stops affecting balances
- * without losing the history. The compat API needs `deleted_at` on the way out,
- * which is the other reason not to hard-delete. It is also what makes
- * `restoreExpense` below possible at all.
+ * without losing the history. Undo (`restoreExpense`) needs the tombstone,
+ * which is the other reason not to hard-delete.
  *
  * Deleting a TEMPLATE stops the series and nothing else: the scheduler only
  * looks at live rows, and the bills it already generated are real money that

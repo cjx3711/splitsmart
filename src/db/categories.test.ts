@@ -9,7 +9,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CATEGORIES, DEFAULT_CATEGORY_ID, MAX_SPLITWISE_CATEGORY_ID } from "./categories.ts";
+import {
+  CATEGORIES,
+  DEFAULT_CATEGORY_ID,
+  EXTRA_LEAVES,
+  EXTRA_PARENTS,
+  MAX_SEEDED_CATEGORY_ID,
+  MAX_SPLITWISE_CATEGORY_ID,
+} from "./categories.ts";
 import { CURRENCIES, LEGACY_CODES } from "./currencies.ts";
 
 interface SwCategory {
@@ -74,19 +81,52 @@ describe("categories match the real Splitwise API", () => {
     assert.equal(general?.name, "General");
   });
 
-  test("MAX_SPLITWISE_CATEGORY_ID covers every id", () => {
+  test("MAX_SPLITWISE_CATEGORY_ID covers every Splitwise id", () => {
     const ids = CATEGORIES.flatMap((p) => [p.id, ...p.children.map((c) => c.id)]);
     assert.equal(MAX_SPLITWISE_CATEGORY_ID, Math.max(...ids));
   });
 
   test("the tree is exactly two levels", () => {
-    // Splitwise has no grandchildren, and the compat serializer assumes that.
+    // Splitwise has no grandchildren; the native tree is the same shape.
     for (const parent of CATEGORIES) {
       for (const child of parent.children) {
         assert.equal(typeof child.id, "number");
         assert.ok(!("children" in child), `${child.name} has nested children`);
       }
     }
+  });
+});
+
+describe("extra native categories stay above Splitwise's id space", () => {
+  const splitwiseIds = new Set(
+    CATEGORIES.flatMap((p) => [p.id, ...p.children.map((c) => c.id)]),
+  );
+  const extraIds = [
+    ...EXTRA_PARENTS.flatMap((p) => [p.id, ...p.children.map((c) => c.id)]),
+    ...EXTRA_LEAVES.map((c) => c.id),
+  ];
+  const splitwiseParentIds = new Set(CATEGORIES.map((p) => p.id));
+
+  test("every extra id is unique and greater than every Splitwise id", () => {
+    assert.equal(new Set(extraIds).size, extraIds.length, "duplicate extra id");
+    for (const id of extraIds) {
+      assert.ok(id > MAX_SPLITWISE_CATEGORY_ID, `${id} collides with Splitwise`);
+      assert.ok(!splitwiseIds.has(id), `${id} reuses a Splitwise id`);
+    }
+  });
+
+  test("extra leaves attach to a real parent", () => {
+    const extraParentIds = new Set(EXTRA_PARENTS.map((p) => p.id));
+    for (const leaf of EXTRA_LEAVES) {
+      assert.ok(
+        splitwiseParentIds.has(leaf.parentId) || extraParentIds.has(leaf.parentId),
+        `${leaf.name} parent ${leaf.parentId} is unknown`,
+      );
+    }
+  });
+
+  test("MAX_SEEDED_CATEGORY_ID covers Splitwise and extras", () => {
+    assert.equal(MAX_SEEDED_CATEGORY_ID, Math.max(MAX_SPLITWISE_CATEGORY_ID, ...extraIds));
   });
 });
 

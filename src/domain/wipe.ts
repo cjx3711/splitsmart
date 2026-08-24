@@ -3,8 +3,8 @@
  * book.
  *
  * THIS IS THE ONE PLACE THAT HARD-DELETES EXPENSE ROWS. Everywhere else is a
- * soft delete through src/domain/expenses.ts, because the compat API surfaces
- * `deleted_at` and undo needs the tombstone. A wipe cannot be a soft delete:
+ * soft delete through src/domain/expenses.ts, because undo needs the tombstone.
+ * A wipe cannot be a soft delete:
  * `expenses` (and users, groups, comments) carry a unique index on
  * `metadata.splitwise_id`, and a tombstone would still occupy that slot, so
  * the next import would match instead of creating.

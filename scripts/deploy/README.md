@@ -102,6 +102,14 @@ instead, which takes a consistent snapshot whether or not the container is
 running, then collapse the result to a single self-contained file (no
 sidecars) so it's safe to move around.
 
+Daily off-box copies are a separate in-app feature: set `BACKUP_S3_BUCKET`
+plus access key/secret in `.env.prod` (see `.env.prod.example`). The server
+then VACUUM INTOs `/data/backups`, gzip-streams the snapshot to S3-compatible
+storage (Tigris by default), keeps a week of dailies plus one object per ISO
+week, and shows the run log at `/app/admin/backups`. That path never replaces
+the pre-deploy snapshots above — those are still the thing you restore with
+`restore.sh` after a bad deploy.
+
 If you ever need to inspect this by hand: `.backup` output inherits WAL
 mode and initially comes with `-wal`/`-shm` files of its own — copying such
 a snapshot without all three pieces reproduces the exact problem the scripts
@@ -123,6 +131,8 @@ plain file tools; always go through `sqlite3 .backup` or these scripts.
   splitsmart.db                   other app's data directory
   splitsmart.db-wal
   splitsmart.db-shm
+  backups/                        VACUUM INTO temp files for daily S3 backups
+                                  (orphans older than 6h are swept)
 
 <DEPLOY_ENV_FILE>                 e.g. /etc/splitsmart/splitsmart.env
                                    root:root, chmod 600 — installed by deploy.sh,

@@ -4,13 +4,14 @@
  * Two independent authentication paths, deliberately kept apart:
  *
  *   Sessions: httpOnly cookie, used by the web UI, expires, rotates.
- *   API tokens: bearer header, used by the Splitwise-compatible API and by
- *                external tools like splitwise-to-toshl. Long-lived, revocable.
+ *   API tokens: bearer header, used by external tools against `/api/v1`.
+ *                Long-lived, revocable.
  *
  * Neither stores the secret in plaintext; only SHA-256 digests are persisted.
  */
 import { db } from "../db/index.ts";
 import { generateToken, hashToken } from "./password.ts";
+import { parseAvatarPattern, type AvatarPattern } from "../domain/avatar-pattern.ts";
 import { ulid } from "../domain/ulid.ts";
 
 export const SESSION_COOKIE = "splitsmart_session";
@@ -23,6 +24,7 @@ export interface AuthenticatedUser {
   iconLetters: string | null;
   iconEmoji: string | null;
   iconHue: number | null;
+  iconPattern: AvatarPattern | null;
   email: string | null;
   isGhost: boolean;
   defaultCurrency: string;
@@ -40,6 +42,7 @@ const AUTH_USER_COLUMNS = [
   "users.icon_letters as iconLetters",
   "users.icon_emoji as iconEmoji",
   "users.icon_hue as iconHue",
+  "users.icon_pattern as iconPattern",
   "users.email as email",
   "users.is_ghost as isGhost",
   "users.default_currency as defaultCurrency",
@@ -53,6 +56,7 @@ function toAuthenticated(row: {
   iconLetters: string | null;
   iconEmoji: string | null;
   iconHue: number | null;
+  iconPattern: string | null;
   email: string | null;
   isGhost: number;
   defaultCurrency: string;
@@ -65,6 +69,7 @@ function toAuthenticated(row: {
     iconLetters: row.iconLetters,
     iconEmoji: row.iconEmoji,
     iconHue: row.iconHue,
+    iconPattern: parseAvatarPattern(row.iconPattern),
     email: row.email,
     isGhost: row.isGhost === 1,
     defaultCurrency: row.defaultCurrency,
@@ -126,6 +131,15 @@ export async function resolveSession(token: string): Promise<AuthenticatedUser |
 
 export async function destroySession(token: string): Promise<void> {
   await db.deleteFrom("sessions").where("token_hash", "=", hashToken(token)).execute();
+}
+
+/**
+ * Ends every web session for this account. Password reset calls this so a
+ * stolen password cannot keep an already-open browser logged in. API tokens
+ * are a separate credential and stay; revoke those from Settings.
+ */
+export async function destroySessionsForUser(userId: string): Promise<void> {
+  await db.deleteFrom("sessions").where("user_id", "=", userId).execute();
 }
 
 /** Housekeeping: safe to call on boot and on a timer. */

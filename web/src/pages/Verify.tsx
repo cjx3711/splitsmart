@@ -3,6 +3,7 @@ import { useParams, useSearchParams, Link, useNavigate } from "react-router-dom"
 import { api, ApiError } from "../api.ts";
 import { useAuth } from "../App.tsx";
 import { Logo } from "../Logo.tsx";
+import { PasswordField } from "../PasswordField.tsx";
 
 type State =
   | { kind: "working" }
@@ -129,19 +130,14 @@ export function Verify() {
               placeholder="Optional. Shown in lists instead of the full name."
             />
           </div>
-          <div>
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-              autoComplete="new-password"
-            />
-            <p className="field-hint">At least 8 characters.</p>
-          </div>
+          <PasswordField
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+            autoComplete="new-password"
+            hint="At least 8 characters."
+          />
           <button type="submit" disabled={busy}>
             {busy ? "Working…" : "Create account"}
           </button>

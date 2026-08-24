@@ -7,8 +7,8 @@
  * owed travel as two `Name: amount` lists, so nothing is lost.
  *
  * MONEY IS A DECIMAL STRING HERE, formatted with the currency's own decimal
- * places via `formatAmount`. That is the one place in the app outside the compat
- * layer where a decimal string is correct: a CSV is read by humans and
+ * places via `formatAmount`. That is the one place in the app where a decimal
+ * string is correct: a CSV is read by humans and
  * spreadsheets, neither of which knows what a minor unit is. The currency travels
  * in its own column so the number is never ambiguous.
  */

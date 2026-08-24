@@ -98,6 +98,10 @@ CREATE TABLE users (
   icon_letters       TEXT,
   icon_emoji         TEXT,
   icon_hue           INTEGER,
+  -- Geometric avatar: JSON { base, baseEnd?, baseRotation?, layers[] }.
+  -- HSLA plus start/end/rotation per band. Painted in the browser; never a file.
+  -- Null means hash one from the user id. See src/domain/avatar-pattern.ts.
+  icon_pattern       TEXT,
   avatar_url         TEXT,
 
   default_currency   TEXT NOT NULL DEFAULT 'USD' REFERENCES currencies(code),
@@ -120,6 +124,14 @@ CREATE TABLE users (
   CHECK (json_valid(metadata)),
   CHECK (json_type(metadata) = 'object'),
   CHECK (icon_hue IS NULL OR (icon_hue >= 0 AND icon_hue <= 359)),
+  CHECK (
+    icon_pattern IS NULL OR (
+      json_valid(icon_pattern)
+      AND json_type(icon_pattern) = 'object'
+      AND json_type(icon_pattern, '$.layers') = 'array'
+      AND json_array_length(icon_pattern, '$.layers') <= 10
+    )
+  ),
   -- A real (non-ghost) account must be able to authenticate.
   CHECK (is_ghost = 1 OR (email IS NOT NULL AND password_hash IS NOT NULL)),
   -- A ghost must not occupy the login unique index, or carry a password.
@@ -184,9 +196,9 @@ CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
 -- ---------------------------------------------------------------------------
 -- email_tokens: single-use, expiring tokens sent by email
 -- ---------------------------------------------------------------------------
--- `purpose` exists so password reset (docs/PLAN.md phase 4) can reuse this
--- table rather than needing a schema change. Only 'verify_email' is
--- implemented today; the CHECK constraint already permits 'reset_password'.
+-- `purpose` exists so password reset and email verification share one table
+-- rather than needing a schema change. `verify_email` is the banner / resend
+-- path; `reset_password` is forgot-password (`src/email/reset.ts`).
 --
 -- As everywhere else in this codebase, only the token HASH is stored. A leaked
 -- database must not hand out working verification links.
@@ -729,6 +741,59 @@ CREATE TABLE sync_log (
 CREATE INDEX idx_sync_log_group ON sync_log(group_id, seq);
 CREATE INDEX idx_sync_log_entity ON sync_log(entity, entity_id);
 CREATE INDEX idx_sync_log_audience ON sync_log(audience_user_id, seq);
+
+-- ---------------------------------------------------------------------------
+-- database_backups
+-- ---------------------------------------------------------------------------
+-- Append-only log of daily SQLite snapshots uploaded to S3-compatible storage.
+-- A backup is a server-wide artefact: it belongs to no user, is not part of a
+-- ledger, and wipeUserLedger must never touch it. See src/backup/.
+--
+-- claim_key is the atomic day claim. SQLite treats NULLs in a UNIQUE index as
+-- distinct, so any number of released rows coexist while at most one row holds
+-- a given day. Success KEEPS claim_key set — that is what makes "at most one
+-- backup per calendar day" an index guarantee rather than a consequence of the
+-- due-check being correct. Failed and abandoned rows release it to NULL.
+-- Forced manual runs insert claim_key NULL from the start: they are history
+-- and do not own the day.
+--
+-- backup_date is TEXT, not DATE: the identical "YYYY-MM-DD" string is the
+-- claim key AND the S3 object name, so it must be byte-identical in all three
+-- places. Everything in this feature is UTC.
+CREATE TABLE database_backups (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  backup_date         TEXT    NOT NULL,
+  claim_key           TEXT,
+  trigger             TEXT    NOT NULL,
+  status              TEXT    NOT NULL,
+  attempt             INTEGER NOT NULL DEFAULT 1,
+  is_weekly           INTEGER NOT NULL DEFAULT 0,
+  daily_key           TEXT,
+  weekly_key          TEXT,
+  source_bytes        INTEGER,
+  snapshot_bytes      INTEGER,
+  compressed_bytes    INTEGER,
+  duration_ms         INTEGER,
+  pruned_object_count INTEGER,
+  error_message       TEXT,
+  started_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+  heartbeat_at        TEXT,
+  finished_at         TEXT,
+  created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+  CHECK (trigger IN ('scheduled', 'manual')),
+  CHECK (status IN ('running', 'success', 'failed', 'abandoned')),
+  CHECK (is_weekly IN (0, 1)),
+  CHECK (attempt >= 1)
+) STRICT;
+
+CREATE UNIQUE INDEX database_backups_claim_key
+  ON database_backups (claim_key);
+
+CREATE INDEX database_backups_backup_date_status
+  ON database_backups (backup_date, status);
+
+CREATE INDEX database_backups_status_heartbeat
+  ON database_backups (status, heartbeat_at);
 
 -- ---------------------------------------------------------------------------
 -- updated_at triggers

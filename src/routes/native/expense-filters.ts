@@ -99,7 +99,12 @@ export function expenseFilterWhere(filters: ExpenseFilters) {
       conditions.push(eb("expenses.date", "<=", filters.datedBefore));
     }
     if (filters.categoryId !== undefined) {
-      conditions.push(eb("expenses.category_id", "=", filters.categoryId));
+      // A parent id means "this group": the parent itself (nothing is stored
+      // there) or any of its leaves. A leaf id matches only that leaf, because
+      // it has no children.
+      conditions.push(
+        sql<SqlBool>`(expenses.category_id = ${filters.categoryId} or expenses.category_id in (select id from categories where parent_id = ${filters.categoryId}))`,
+      );
     }
     if (filters.isPayment !== undefined) {
       conditions.push(eb("expenses.is_payment", "=", filters.isPayment ? 1 : 0));

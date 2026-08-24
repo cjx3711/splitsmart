@@ -42,6 +42,7 @@ if [ ! -f "$TAR" ]; then
 fi
 
 mkdir -p "$DATA_DIR"
+mkdir -p "${DATA_DIR}/backups"
 
 # The database is created by the app's own migration on first boot, so a
 # fresh deploy has nothing to back up yet — that's expected, not an error.

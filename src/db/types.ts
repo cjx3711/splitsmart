@@ -11,7 +11,7 @@
  * forget the migration, you get types that lie, which is worse than no types.
  *
  * Entity primary keys (`users`, `groups`, `expenses`, `comments`, `activity`)
- * are ULIDs (string), including on the Splitwise compat wire. Categories stay
+ * are ULIDs (string). Categories stay
  * integer because those ids are Splitwise's. Import matching keys live in
  * `metadata.splitwise_id`. See docs/ULIDS.md.
  */
@@ -38,6 +38,8 @@ export interface UsersTable {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  /** JSON avatar pattern. See src/domain/avatar-pattern.ts. */
+  icon_pattern: string | null;
   avatar_url: string | null;
   default_currency: Generated<string>;
   is_ghost: Generated<number>;
@@ -254,6 +256,31 @@ export interface ActivityTable {
   created_at: Generated<string>;
 }
 
+/**
+ * Daily S3 snapshots. Server-wide, not per-user. See src/backup/.
+ */
+export interface DatabaseBackupsTable {
+  id: Generated<number>;
+  backup_date: string;
+  claim_key: string | null;
+  trigger: string;
+  status: string;
+  attempt: Generated<number>;
+  is_weekly: Generated<number>;
+  daily_key: string | null;
+  weekly_key: string | null;
+  source_bytes: number | null;
+  snapshot_bytes: number | null;
+  compressed_bytes: number | null;
+  duration_ms: number | null;
+  pruned_object_count: number | null;
+  error_message: string | null;
+  started_at: Generated<string>;
+  heartbeat_at: string | null;
+  finished_at: string | null;
+  created_at: Generated<string>;
+}
+
 export interface Database {
   currencies: CurrenciesTable;
   users: UsersTable;
@@ -272,6 +299,7 @@ export interface Database {
   sync_log: SyncLogTable;
   email_tokens: EmailTokensTable;
   emails: EmailsTable;
+  database_backups: DatabaseBackupsTable;
 }
 
 export type User = Selectable<UsersTable>;

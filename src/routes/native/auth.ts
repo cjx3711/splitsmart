@@ -25,6 +25,11 @@ import {
   consumeVerificationToken,
 } from "../../email/verification.ts";
 import {
+  issuePasswordReset,
+  lookupPasswordReset,
+  completePasswordReset,
+} from "../../email/reset.ts";
+import {
   startEmailSignup,
   lookupSignupToken,
   takeSignupForRegister,
@@ -34,6 +39,7 @@ import {
 import { logChange } from "../../domain/sync-log.ts";
 import { ulid } from "../../domain/ulid.ts";
 import { MAX_NAME_LENGTH, personCamel } from "../../domain/person.ts";
+import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 import {
   hasIdentityPatch,
   identityColumns,
@@ -79,6 +85,7 @@ function meUser(user: AuthenticatedUser) {
     iconLetters: user.iconLetters,
     iconEmoji: user.iconEmoji,
     iconHue: user.iconHue,
+    iconPattern: user.iconPattern,
     isGhost: user.isGhost,
     defaultCurrency: user.defaultCurrency,
     emailVerified: user.emailVerifiedAt !== null,
@@ -96,6 +103,7 @@ function toPublicUser(user: {
   icon_letters: string | null;
   icon_emoji: string | null;
   icon_hue: number | null;
+  icon_pattern: string | null;
   default_currency: string;
   is_ghost?: number;
   email_verified_at?: string | null;
@@ -120,6 +128,38 @@ class SignupTokenError extends Error {
     super(code);
     this.name = "SignupTokenError";
     this.code = code;
+  }
+}
+
+function passwordResetTokenFailure(status: "invalid" | "expired" | "already_used" | "email_changed"): {
+  body: { ok: false; status: typeof status; error: string };
+  statusCode: 404 | 409 | 410;
+} {
+  switch (status) {
+    case "expired":
+      return {
+        body: { ok: false, status, error: "That link has expired. Request a new one." },
+        statusCode: 410,
+      };
+    case "already_used":
+      return {
+        body: { ok: false, status, error: "That link has already been used." },
+        statusCode: 410,
+      };
+    case "email_changed":
+      return {
+        body: {
+          ok: false,
+          status,
+          error: "Your email address changed after this link was sent. Request a new one.",
+        },
+        statusCode: 409,
+      };
+    default:
+      return {
+        body: { ok: false, status, error: "That link is not valid." },
+        statusCode: 404,
+      };
   }
 }
 
@@ -213,6 +253,7 @@ export const authRoutes = new Hono<AppEnv>()
           "icon_letters",
           "icon_emoji",
           "icon_hue",
+          "icon_pattern",
           "default_currency",
           "email_verified_at",
         ])
@@ -268,6 +309,7 @@ export const authRoutes = new Hono<AppEnv>()
         "icon_letters",
         "icon_emoji",
         "icon_hue",
+        "icon_pattern",
         "default_currency",
         "is_ghost",
         "email_verified_at",
@@ -313,6 +355,88 @@ export const authRoutes = new Hono<AppEnv>()
     return c.json({
       user: toPublicUser(user),
       emailVerified: user.email_verified_at !== null,
+    });
+  },
+)
+// --- Password reset ---------------------------------------------------------
+//
+// ORDER MATTERS the same way as /verify: /password/forgot is a static path
+// and would still win against /password/reset/:token, but keep the request
+// endpoint first so a future /password/:token cannot swallow it.
+//
+// The forgot response is identical whether the address has an account or
+// not. Completing a reset ends other web sessions and opens a new one.
+
+  .post(
+  "/password/forgot",
+  zValidator("json", z.object({ email: z.string().email() })),
+  async (c) => {
+    await issuePasswordReset(c.req.valid("json").email);
+    return c.json({ ok: true });
+  },
+)
+  .get(
+  "/password/reset/:token",
+  zValidator("param", z.object({ token: z.string().min(16) })),
+  async (c) => {
+    const { token } = c.req.valid("param");
+    const result = await lookupPasswordReset(token);
+    if (result.status === "pending") {
+      return c.json({ ok: true, email: result.email });
+    }
+    const failure = passwordResetTokenFailure(result.status);
+    return c.json(failure.body, failure.statusCode);
+  },
+)
+  .post(
+  "/password/reset/:token",
+  zValidator("param", z.object({ token: z.string().min(16) })),
+  zValidator(
+    "json",
+    z.object({
+      password: z.string().min(8, "Password must be at least 8 characters"),
+    }),
+  ),
+  async (c) => {
+    const { token } = c.req.valid("param");
+    const { password } = c.req.valid("json");
+
+    const pending = await lookupPasswordReset(token);
+    if (pending.status !== "pending") {
+      const failure = passwordResetTokenFailure(pending.status);
+      return c.json(failure.body, failure.statusCode);
+    }
+
+    const result = await completePasswordReset(token, await hashPassword(password));
+    if (result.status !== "reset") {
+      const failure = passwordResetTokenFailure(result.status);
+      return c.json(failure.body, failure.statusCode);
+    }
+
+    const user = await db
+      .selectFrom("users")
+      .select([
+        "id",
+        "email",
+        "name",
+        "nickname",
+        "icon_letters",
+        "icon_emoji",
+        "icon_hue",
+        "icon_pattern",
+        "default_currency",
+        "is_ghost",
+        "email_verified_at",
+      ])
+      .where("id", "=", result.userId)
+      .executeTakeFirstOrThrow();
+
+    const session = await createSession(user.id, c.req.header("User-Agent"));
+    setCookie(c, SESSION_COOKIE, session.token, sessionCookieOptions(session.expiresAt));
+
+    return c.json({
+      user: toPublicUser(user),
+      emailVerified: true,
     });
   },
 )
@@ -486,6 +610,10 @@ export const authRoutes = new Hono<AppEnv>()
         identity.icon_letters !== undefined ? identity.icon_letters : auth.iconLetters,
       iconEmoji: identity.icon_emoji !== undefined ? identity.icon_emoji : auth.iconEmoji,
       iconHue: identity.icon_hue !== undefined ? identity.icon_hue : auth.iconHue,
+      iconPattern:
+        identity.icon_pattern !== undefined
+          ? parseAvatarPattern(identity.icon_pattern)
+          : auth.iconPattern,
     }),
   });
 })

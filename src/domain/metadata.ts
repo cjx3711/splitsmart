@@ -3,8 +3,7 @@
  *
  * Known keys:
  *   splitwise_id - original Splitwise integer, set on import so a second run
- *                  can match instead of duplicating. Never the native PK, never
- *                  on the compat wire.
+ *                  can match instead of duplicating. Never the native PK.
  *   splitwise_registration_status - Splitwise's `registration_status` on the
  *                  person, stored so signup can tell a real Splitwise account
  *                  (`confirmed`) from an email-only dummy. See
@@ -46,17 +45,24 @@ export interface EntityMetadata {
 }
 
 /**
- * `expenses.details` on an `import_rounding` settle-up. Friend recency skips
- * these so a leftover-yen payment does not bump a settled friend to the top
- * of the list; the expense itself is dated to the last real bill with them.
+ * Legacy `expenses.details` on an `import_rounding` settle-up. New rounding
+ * payments leave details empty: the system comment is the user-visible
+ * explanation, and `metadata.import_rounding` (mirrored as `importRounding` on
+ * the sync document) is what friend recency skips. Kept so already-imported
+ * rows still drop out of recency and stay hidden on the expense page.
  */
 export const IMPORT_ROUNDING_DETAILS =
   "Offsets fractional amounts rounded off when importing from Splitwise.";
 
 export function isImportRoundingExpense(expense: {
   details?: string | null;
+  importRounding?: boolean;
 }): boolean {
-  return expense.details === IMPORT_ROUNDING_DETAILS;
+  return expense.importRounding === true || expense.details === IMPORT_ROUNDING_DETAILS;
+}
+
+export function importRoundingOf(raw: string | null | undefined): boolean {
+  return parseMetadata(raw).import_rounding === true;
 }
 
 export const EMPTY_METADATA = "{}";

@@ -11,6 +11,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { ExpenseDetail as ExpenseDetailData } from "../api.ts";
 import { Amount, useCurrencies } from "../money.tsx";
 import { makeLookup, PaymentMark, paymentTitle } from "../ExpenseList.tsx";
+import { isImportRoundingExpense } from "../../../src/domain/metadata.ts";
 import { reconstructExpenseForm } from "../reopenExpense.ts";
 import { CommentThread } from "../CommentThread.tsx";
 import { RepeatNote, seriesDeleteNote } from "../RepeatNote.tsx";
@@ -130,7 +131,7 @@ export function GuestExpense() {
         <p style={{ margin: "0.4rem 0 0", fontSize: "1.5rem" }}>
           <Amount minor={expense.cost_minor} currency={expense.currency_code} />
         </p>
-        {expense.details && (
+        {expense.details && !isImportRoundingExpense(expense) && (
           <p className="muted" style={{ marginBottom: 0 }}>
             {expense.details}
           </p>
@@ -144,27 +145,31 @@ export function GuestExpense() {
         />
       </div>
 
-      <h2>Who paid, who owes</h2>
-      <div className="list">
-        {expense.shares.map((share) => (
-          <FriendListItem
-            key={share.user_id}
-            avatar={avatarFor(share.user_id)}
-            title={nameOf(share.user_id)}
-          >
-            <div style={{ textAlign: "right" }}>
-              {share.paid_share_minor > 0 && (
-                <div className="muted">
-                  paid <Amount minor={share.paid_share_minor} currency={expense.currency_code} />
+      {!isPayment && (
+        <>
+          <h2>Who paid, who owes</h2>
+          <div className="list">
+            {expense.shares.map((share) => (
+              <FriendListItem
+                key={share.user_id}
+                avatar={avatarFor(share.user_id)}
+                title={nameOf(share.user_id)}
+              >
+                <div style={{ textAlign: "right" }}>
+                  {share.paid_share_minor > 0 && (
+                    <div className="muted">
+                      paid <Amount minor={share.paid_share_minor} currency={expense.currency_code} />
+                    </div>
+                  )}
+                  <div>
+                    owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
+                  </div>
                 </div>
-              )}
-              <div>
-                owes <Amount minor={share.owed_share_minor} currency={expense.currency_code} />
-              </div>
-            </div>
-          </FriendListItem>
-        ))}
-      </div>
+              </FriendListItem>
+            ))}
+          </div>
+        </>
+      )}
 
       <CommentThread
         expenseId={expense.id}

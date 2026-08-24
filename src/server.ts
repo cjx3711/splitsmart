@@ -1,9 +1,8 @@
 /**
  * SplitSmart server entry point.
  *
- * One Node process serves three things:
- *   /api/v1/*       native API (clean model, used by the React frontend)
- *   /api/sw/v3.0/*  Splitwise-compatible API (used by external tools)
+ * One Node process serves two things:
+ *   /api/v1/*       native API (used by the React frontend and external tools)
  *   /*              the built React app (production only; Vite handles dev)
  */
 import { serve } from "@hono/node-server";
@@ -20,8 +19,7 @@ import { purgeExpiredSignupEmails } from "./email/signup.ts";
 import { guestRoutes } from "./routes/native/guest.ts";
 import { nativeApi } from "./routes/native/v1.ts";
 import { startRecurringScheduler } from "./domain/scheduler.ts";
-import { compatV3 } from "./routes/compat/v3.ts";
-import { compatOpenApiDocument } from "./routes/compat/openapi.ts";
+import { startBackupScheduler } from "./backup/scheduler.ts";
 
 const app = new Hono<AppEnv>();
 
@@ -44,17 +42,6 @@ app.get("/accept/:code", (c) => c.redirect(`/guest/l/${c.req.param("code")}`, 30
 // wildcard requireAuth; that stays on each child, so guest auth cannot leak in.
 app.route("/api/v1/guest", guestRoutes);
 app.route("/api/v1", nativeApi);
-
-// --- Splitwise-compatible API ----------------------------------------------
-// Mounted at /api/sw/v3.0, distinct from Splitwise's own base URL
-// (https://secure.splitwise.com/api/v3.0) so it's clear this is a compat
-// shim, not the real thing. External clients (like splitwise-to-toshl) are
-// pointed at this base URL explicitly, so there is no dual mount.
-//
-// The OpenAPI document is public (it is the frozen wire, not anyone's ledger)
-// and lives outside the compat router's requireAuth wildcard.
-app.get("/api/sw/v3.0/openapi.json", (c) => c.json(compatOpenApiDocument()));
-app.route("/api/sw/v3.0", compatV3);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
@@ -127,10 +114,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     startRecurringScheduler().unref();
   }
 
+  // Daily S3 backups. Same "only when run as the server" gate: importing
+  // this module in a test must never vacuum the database. A missing or
+  // partial BACKUP_* config is a no-op, never a boot failure.
+  startBackupScheduler();
+
   serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log(`SplitSmart listening on http://localhost:${info.port}`);
-    console.log(`  native API   /api/v1`);
-    console.log(`  compat API   /api/sw/v3.0`);
+    console.log(`  API   /api/v1`);
   });
 }
 
