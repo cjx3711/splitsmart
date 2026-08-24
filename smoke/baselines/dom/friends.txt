@@ -111,3 +111,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
+  - text: v0.2.0

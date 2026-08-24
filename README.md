@@ -108,4 +108,18 @@ group invites by email. See [docs/PLAN.md](docs/PLAN.md).
 
 ## License
 
-Personal project. Not affiliated with Splitwise.
+[GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+
+Running SplitSmart for yourself or your household carries no obligations. The
+licence matters if you **distribute** a modified version, or **offer one to
+other people over a network**: then those users are entitled to its source. That
+is the whole reason for AGPL rather than MIT here - this is a self-hosted
+replacement for a paid service, and the one thing worth ruling out is somebody
+re-selling it as a closed hosted product.
+
+`fixtures/splitwise/` is not covered by that licence. Those files are verbatim
+captures of Splitwise's own API responses (their category tree and currency
+list), kept as read-only ground truth so imported ids resolve to the same
+categories; see [CLAUDE.md](CLAUDE.md). They belong to Splitwise.
+
+Not affiliated with, endorsed by, or connected to Splitwise.

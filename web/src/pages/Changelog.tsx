@@ -1,10 +1,12 @@
 /**
  * Public changelog. Hardcoded on purpose: this is a list of what shipped,
  * not a feed generated from git. Prepend a new ENTRIES object when something
- * user-visible lands.
+ * user-visible lands, and bump `APP_VERSION` / `package.json` to match.
  */
 type Entry = {
-  /** Display date, already formatted. Newest first. */
+  /** Semver, newest first. The latest entry should match `APP_VERSION`. */
+  version: string;
+  /** Display date, already formatted. */
   date: string;
   intro?: string;
   items: string[];
@@ -12,6 +14,7 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    version: "0.2.0",
     date: "24 August 2026",
     intro: "The actual first usable version.",
     items: [
@@ -26,6 +29,7 @@ const ENTRIES: Entry[] = [
     ],
   },
   {
+    version: "0.1.0",
     date: "18 August 2026",
     intro: "What I hoped was the first usable version",
     items: [
@@ -50,8 +54,10 @@ export function Changelog() {
     <article className="mkt-prose">
       <h1>Changelog</h1>
       {ENTRIES.map((entry) => (
-        <section key={entry.date} className="mkt-changelog-entry">
-          <h2>{entry.date}</h2>
+        <section key={entry.version} className="mkt-changelog-entry">
+          <h2>
+            {entry.version} <span className="mkt-changelog-date">{entry.date}</span>
+          </h2>
           {entry.intro ? <p>{entry.intro}</p> : null}
           <ul>
             {entry.items.map((item) => (

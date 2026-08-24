@@ -20,12 +20,13 @@ import { guestRoutes } from "./routes/native/guest.ts";
 import { nativeApi } from "./routes/native/v1.ts";
 import { startRecurringScheduler } from "./domain/scheduler.ts";
 import { startBackupScheduler } from "./backup/scheduler.ts";
+import { APP_VERSION } from "./version.ts";
 
 const app = new Hono<AppEnv>();
 
 if (env.NODE_ENV !== "test") app.use("*", logger());
 
-app.get("/health", (c) => c.json({ ok: true, version: "0.1.0" }));
+app.get("/health", (c) => c.json({ ok: true, version: APP_VERSION }));
 
 // --- Old doors ---------------------------------------------------------------
 // `/join/:token` was the group invite link and `/accept/:code` carried a ghost's

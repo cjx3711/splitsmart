@@ -1,3 +1,5 @@
+import { APP_VERSION } from "../../src/version.ts";
+
 /**
  * Plain anchors, not <Link>s, on purpose.
  *
@@ -15,6 +17,7 @@ export function Footer() {
       <a href="https://github.com/cjx3711/splitsmart" target="_blank" rel="noreferrer">
         GitHub
       </a>
+      <span className="footer-version">v{APP_VERSION}</span>
     </footer>
   );
 }
