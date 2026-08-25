@@ -21,7 +21,7 @@ import { db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
 import { destroySessionsForUser } from "../auth/session.ts";
-import { sendEmail } from "./send.ts";
+import { sendTrackedEmail } from "./sends.ts";
 import { resetPasswordEmail } from "./templates.ts";
 import { displayName } from "../domain/person.ts";
 
@@ -120,8 +120,13 @@ export async function issuePasswordReset(email: string): Promise<IssueResetOutco
     expiresInHours: TOKEN_TTL_HOURS,
   });
 
-  const result = await sendEmail({ to: user.email, ...message });
-  return { status: "sent", delivered: result.delivered };
+  const result = await sendTrackedEmail({
+    type: "reset",
+    message: { to: user.email, ...message },
+    actorUserId: user.id,
+    subjectUserId: user.id,
+  });
+  return { status: "sent", delivered: result.ok && result.delivered };
 }
 
 /**

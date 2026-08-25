@@ -1,7 +1,6 @@
 /**
- * Add a friend. A friend needs only a name. The email is optional and does
- * exactly one thing: sends them an invite. The form says so, and says when
- * the server can't send one, rather than silently doing nothing.
+ * Add a friend. A friend needs only a name. The email is optional: stored so
+ * you can send a guest-link invite later. Adding them does not send mail.
  */
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -25,7 +24,7 @@ export function NewFriend() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<
-    { id: string; name: string; existing: boolean; delivered: boolean; inviteUrl?: string } | null
+    { id: string; name: string; existing: boolean; inviteUrl?: string } | null
   >(null);
 
   async function handleSubmit(event: FormEvent) {
@@ -46,7 +45,6 @@ export function NewFriend() {
         id: response.friend.id,
         name: displayName(response.friend),
         existing: response.existingAccount,
-        delivered: response.emailDelivered,
         inviteUrl: "inviteUrl" in response ? response.inviteUrl : undefined,
       });
       setName("");
@@ -80,13 +78,11 @@ export function NewFriend() {
                 ? "already had an account and is now on your friends list."
                 : "is on your friends list."}
             </span>
-            {result.delivered && <span>The invite is on its way to their inbox.</span>}
             {result.inviteUrl && (
               <>
                 <span>
-                  {result.delivered
-                    ? "Their guest link, in case the email goes astray:"
-                    : "No invite was emailed. Send them this link yourself:"}{" "}
+                  Send them this guest link yourself, or email it from their page
+                  (once per person per 24 hours, 3 per day):{" "}
                   <HelpTip label="About this invite link">
                     Expires in 3 months. You can always copy it again from their page. If it is
                     compromised, turn it off and create a new one.
@@ -110,7 +106,7 @@ export function NewFriend() {
             id="friendName"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Grace Ng"
+            placeholder="Lim Ah Lian"
             autoFocus
             required
             autoComplete="name"
@@ -121,9 +117,9 @@ export function NewFriend() {
           <div className="label-with-help">
             <label htmlFor="friendEmail">Email (optional)</label>
             <HelpTip label="About the email">
-              Adding an email sends them a guest link. If this server has no mail provider
-              configured, the invite is written to the server log instead and the link is shown
-              here for you to pass on yourself.
+              Stored so you can send them a guest link later. Adding a friend
+              does not send mail. Use Send invite on their page; each person
+              once per 24 hours, 3 per account per day.
             </HelpTip>
           </div>
           <input
@@ -131,7 +127,7 @@ export function NewFriend() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="grace@example.com"
+            placeholder="ahlian@example.com"
           />
         </div>
 

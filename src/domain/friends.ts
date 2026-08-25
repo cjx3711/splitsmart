@@ -208,6 +208,28 @@ export async function findExplicitGhostByInviteEmail(
 }
 
 /**
+ * True if assigning `email` to `ghostId` would give a real-account owner two
+ * live friend-ghosts at the same address.
+ *
+ * `callerId` is included even when they have no friendship with the ghost yet
+ * (a group-mate editing a placeholder), so their own other invites still collide.
+ */
+export async function inviteEmailTaken(
+  database: DB,
+  ghostId: string,
+  email: string,
+  callerId: string,
+): Promise<boolean> {
+  const ownerIds = new Set(await listExplicitFriendIds(database, ghostId));
+  ownerIds.add(callerId);
+  for (const ownerId of ownerIds) {
+    const existing = await findExplicitGhostByInviteEmail(database, ownerId, email);
+    if (existing && existing.id !== ghostId) return true;
+  }
+  return false;
+}
+
+/**
  * Everyone this user can see: explicit friends, plus everyone they share a live
  * group membership or an expense with.
  *

@@ -27,6 +27,45 @@ export function PlusIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+export function MoreIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      className="icon-glyph"
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="8" cy="3" r="1.4" />
+      <circle cx="8" cy="8" r="1.4" />
+      <circle cx="8" cy="13" r="1.4" />
+    </svg>
+  );
+}
+
+export function CopyIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      className="icon-glyph"
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect x="5.5" y="5.5" width="8" height="8" rx="1.3" />
+      <path d="M10.5 5.5V4.3a1.3 1.3 0 0 0-1.3-1.3H3.8a1.3 1.3 0 0 0-1.3 1.3v5.4a1.3 1.3 0 0 0 1.3 1.3h1.2" />
+    </svg>
+  );
+}
+
 export function SwapIcon({ size = 15 }: { size?: number }) {
   return (
     <svg

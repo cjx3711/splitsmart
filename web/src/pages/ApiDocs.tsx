@@ -277,18 +277,31 @@ export function ApiDocs() {
       <Endpoint method="POST" path="/api/v1/friends">
         <Code>{`{ "name": "Hubert Lim", "email": "optional@example.com" }`}</Code>
         <p>
-          Name alone is enough to track a debt. An email creates a ghost and
-          sends (or returns) an invite. Ghosts cannot call this.
+          Name alone is enough to track a debt. An optional email is stored as
+          the invite address (never <code>users.email</code>) and the response
+          includes a guest link to copy. Nothing is emailed until{" "}
+          <code>POST /friends/:id/invite</code>. Ghosts cannot call this.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/friends/:id" />
       <Endpoint method="PATCH" path="/api/v1/friends/:id">
         <Code>{`{ "name": "Hubert", "nickname": "Hub", "iconLetters": null,
-  "iconEmoji": "🦊", "iconHue": 32 }`}</Code>
+  "iconEmoji": "🦊", "iconHue": 32, "email": "optional@example.com" }`}</Code>
         <p>
           Same identity fields as <code>PATCH /api/v1/auth/me</code>, but only
           for placeholder people (ghosts) you are related to. A real account
-          edits themselves. Guests cannot call this.
+          edits themselves. <code>email</code> writes the invite address
+          (never <code>users.email</code>); it does not send mail. Empty string
+          or <code>null</code> clears it. Guests cannot call this.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/friends/:id/invite">
+        <p>
+          Emails the live guest link to the placeholder&apos;s invite address.
+          Add or change the address with <code>PATCH</code>; this is the only
+          send. One send per friend per 24 hours, and 3 per account per UTC
+          day; further calls are <code>429</code>. <code>400</code> if they
+          have no email yet. Does not rotate the link.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/friends/:id/expenses" />
@@ -349,6 +362,18 @@ export function ApiDocs() {
         Paid-by and split are separate: <code>paidMinor</code> is who fronted
         the cash; the engine computes what each person owes. Both columns must
         sum to <code>costMinor</code> or the write is rejected.
+      </p>
+      <p>
+        <code>extra</code> is a client-owned bag: an object up to 4 KB
+        serialized, merged into the stored row rather than replacing it, so
+        omitting it on a PATCH leaves whatever was there alone. It is meant for
+        an external tool to stash its own identifiers or state on an expense
+        without asking this API to model them. Every read (list and{" "}
+        <code>GET /expenses/:id</code>) echoes it back as{" "}
+        <code>extra</code>, and also includes{" "}
+        <code>splitwise_id</code> - the original Splitwise integer on an
+        imported row, <code>null</code> otherwise, and read-only: there is no
+        way to set it over this API.
       </p>
       <Endpoint method="POST" path="/api/v1/expenses">
         <p>

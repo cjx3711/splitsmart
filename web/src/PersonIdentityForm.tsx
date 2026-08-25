@@ -93,11 +93,14 @@ export function PersonIdentityForm({
   value,
   onChange,
   idPrefix = "identity",
+  inviteEmail,
 }: {
   id: string;
   value: IdentityDraft;
   onChange: (next: IdentityDraft) => void;
   idPrefix?: string;
+  /** Invite address for a placeholder. Omitted when editing your own profile. */
+  inviteEmail?: { value: string; onChange: (next: string) => void };
 }) {
   const [patternOpen, setPatternOpen] = useState(false);
   const [iconOpen, setIconOpen] = useState(false);
@@ -164,6 +167,27 @@ export function PersonIdentityForm({
           placeholder="Optional. Shown in lists instead of the full name."
         />
       </div>
+
+      {inviteEmail && (
+        <div>
+          <div className="label-with-help">
+            <label htmlFor={`${idPrefix}-email`}>Email (optional)</label>
+            <HelpTip label="About the email">
+              The address we can send their guest link to. It does not give them
+              a login; they still join by opening the link or creating their own
+              account and claiming it. Saving does not send mail.
+            </HelpTip>
+          </div>
+          <input
+            id={`${idPrefix}-email`}
+            type="email"
+            value={inviteEmail.value}
+            onChange={(e) => inviteEmail.onChange(e.target.value)}
+            placeholder="grace@example.com"
+            autoComplete="off"
+          />
+        </div>
+      )}
 
       <div className="identity-row">
         <div className="label-with-help">

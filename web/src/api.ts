@@ -218,6 +218,10 @@ export interface ExpenseQuery {
   datedBefore?: string;
   categoryId?: number;
   isPayment?: boolean;
+  /** ISO 4217 code, exact match. */
+  currencyCode?: string;
+  /** Only expenses this person paid into. */
+  paidByUserId?: string;
 }
 
 export function expenseQueryString(filters: ExpenseQuery = {}): string {
@@ -235,6 +239,8 @@ function wireQuery(filters: ExpenseQuery = {}): Record<string, string> {
   if (filters.datedBefore) query.dated_before = filters.datedBefore;
   if (filters.categoryId !== undefined) query.category_id = String(filters.categoryId);
   if (filters.isPayment !== undefined) query.is_payment = String(filters.isPayment);
+  if (filters.currencyCode) query.currency_code = filters.currencyCode;
+  if (filters.paidByUserId) query.paid_by = filters.paidByUserId;
   return query;
 }
 
@@ -440,6 +446,12 @@ export const api = {
     id: string,
     input: InferRequestType<typeof client.friends[":id"]["$patch"]>["json"],
   ) => call(client.friends[":id"].$patch, client.friends[":id"].$patch({ param: { id }, json: input })),
+
+  inviteFriend: (id: string) =>
+    call(
+      client.friends[":id"].invite.$post,
+      client.friends[":id"].invite.$post({ param: { id } }),
+    ),
 
   addFriend: (input: InferRequestType<typeof client.friends.$post>["json"]) =>
     call(client.friends.$post, client.friends.$post({ json: input }), 201),

@@ -19,12 +19,8 @@
  * re-runs the file on next boot and fails loudly rather than corrupting
  * anything.
  *
- * There is currently only one migration file: this app has never been
- * deployed, so schema changes get folded back into
- * 001_initial_schema.sql instead of layered on top of it. Once a real
- * database exists somewhere, that stops being safe and new schema changes
- * become new numbered files, applied forward from whatever is already out
- * there.
+ * `001` was folded while the app had no deployed database. Live databases
+ * exist now, so later schema changes are new numbered files, applied forward.
  *
  * There is intentionally no `down` migration. Rolling back schema changes
  * against real financial data is more dangerous than fixing forward, and a

@@ -241,7 +241,7 @@ export function GroupOptions() {
               m.is_ghost === 1 || (isOwner && m.id !== user.id) ? (
                 <>
                   {m.is_ghost === 1 && (
-                    <OnlineOnly what="Editing a placeholder's name">
+                    <OnlineOnly what="Editing a placeholder">
                       <button
                         type="button"
                         className="link"

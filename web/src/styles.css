@@ -420,6 +420,57 @@ html.rail-open body {
   white-space: nowrap;
 }
 
+.nav-friend {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.nav-friend .nav-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-friend .nav-item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-friend:hover,
+.nav-friend:focus-within {
+  background: var(--surface-2);
+}
+
+.nav-friend:has(.nav-item.active) {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.nav-friend .nav-item:hover,
+.nav-friend .nav-item.active {
+  background: transparent;
+}
+
+.nav-hide {
+  flex: none;
+  margin-right: 0.15rem;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nav-friend:hover .nav-hide,
+.nav-friend:focus-within .nav-hide,
+.nav-hide:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .nav-hide {
+    opacity: 0.55;
+    pointer-events: auto;
+  }
+}
+
 .nav-empty {
   padding: 0.25rem 0.6rem 0;
   font-size: 0.8rem;
@@ -1586,8 +1637,7 @@ button.compact {
 }
 
 .filters-more-trigger {
-  padding: 0.4rem 0.6rem;
-  line-height: 1;
+  justify-content: center;
 }
 
 .filters-more-menu {
@@ -4116,13 +4166,66 @@ button.guest-pick.selected {
   margin-top: 0.5rem;
 }
 
-/* URL plus copy button on guest-link panels. */
+/* URL, an icon-only copy button, and the kebab menu on guest-link panels. */
 .link-url-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  padding: 0;
+  flex: none;
+}
+
+.link-slot-menu {
+  position: relative;
+  flex: none;
+}
+
+.link-slot-menu-list {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 0.3rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.3);
+}
+
+.link-slot-menu-list button {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.35rem;
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+}
+
+.link-slot-menu-list button:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.link-slot-menu-list button:disabled {
+  color: var(--muted);
+}
+
+.link-slot-menu-list button.danger {
+  color: var(--negative);
 }
 
 .link-url-row .link-url {

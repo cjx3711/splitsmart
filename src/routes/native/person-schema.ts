@@ -76,6 +76,29 @@ export const identityPatchSchema = z.object({
 
 export type IdentityPatch = z.infer<typeof identityPatchSchema>;
 
+/**
+ * Invite address on a ghost. Empty/null clears it. Absent leaves it alone.
+ *
+ * Not on identityPatchSchema: PATCH /auth/me must not be able to write
+ * invite_email (real accounts never have one), and a login email is a
+ * different column.
+ */
+const inviteEmail = emptyToNull(254).superRefine((value, ctx) => {
+  if (value === undefined || value === null) return;
+  if (!z.string().email().safeParse(value).success) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Invalid email address.",
+    });
+  }
+});
+
+export const friendPatchSchema = identityPatchSchema.extend({
+  email: inviteEmail,
+});
+
+export type FriendPatch = z.infer<typeof friendPatchSchema>;
+
 /** Columns to SET on `users` from a validated patch. Absent keys are left alone. */
 export function identityColumns(patch: IdentityPatch): {
   name?: string;
@@ -116,4 +139,8 @@ export function hasIdentityPatch(patch: IdentityPatch): boolean {
     patch.iconHue !== undefined ||
     patch.iconPattern !== undefined
   );
+}
+
+export function hasFriendPatch(patch: FriendPatch): boolean {
+  return hasIdentityPatch(patch) || patch.email !== undefined;
 }
