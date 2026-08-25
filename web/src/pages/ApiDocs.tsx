@@ -582,7 +582,10 @@ export function ApiDocs() {
       <Endpoint method="POST" path="/api/v1/claim/candidates">
         <Code>{`{ "linkToken": "link_…" }`}</Code>
         <p>
-          <code>{`{ status: "already_member" | "claimable" | "none", candidates }`}</code>.
+          <code>{`{ status: "already_member" | "already_claimed" | "claimable" | "none", candidates }`}</code>.
+          After a claim, only the account that absorbed the placeholder gets{" "}
+          <code>already_claimed</code>; anyone else holding the same token gets
+          400 <code>invalid</code>.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/claim/preview">

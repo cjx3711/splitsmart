@@ -280,7 +280,7 @@ function Standalone({ children }: { children: React.ReactNode }) {
 function DeadLink({ message, claimed }: { message: string; claimed: boolean }) {
   return (
     <Standalone>
-      <h1>{claimed ? "You have an account now" : "This link no longer works"}</h1>
+      <h1>This link no longer works</h1>
       <p className="muted">{message}</p>
       <p>
         {claimed ? (
