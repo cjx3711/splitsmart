@@ -305,6 +305,7 @@ export function GroupDetail() {
       <ExpenseFilters
         value={filters}
         onChange={setFilters}
+        payers={members}
         csvScope={{ groupId: group.id }}
         csvFilename={`splitsmart-${group.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
       />

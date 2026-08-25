@@ -22,7 +22,12 @@ import {
   type SplitType,
 } from "./split.ts";
 import { isUlid, ulid } from "./ulid.ts";
-import { parseMetadata, serializeMetadata, type EntityMetadata } from "./metadata.ts";
+import {
+  metadataWithExtra,
+  parseMetadata,
+  serializeMetadata,
+  type EntityMetadata,
+} from "./metadata.ts";
 import { recordExpenseEvent, snapshotExpense } from "./comments.ts";
 import { isRepeatInterval, nextOccurrence, nextOccurrenceOnOrAfter, type RepeatInterval } from "./recurring.ts";
 import { logChange, logExpenseAudience, participantIds } from "./sync-log.ts";
@@ -82,6 +87,13 @@ export interface CreateExpenseInput {
    * Splitwise repeating bill lands as a stopped series. Native creates omit it.
    */
   metadata?: EntityMetadata;
+  /**
+   * A client-owned bag, written to `metadata.extra` via `metadataWithExtra` -
+   * never merged into `metadata` above, or the replace semantics on an update
+   * (see `updateExpense`) would wipe `splitwise_id` or `repeat_paused`.
+   * Absent means "no extra bag on this create".
+   */
+  extra?: Record<string, unknown>;
   /**
    * Defaults to true. The Splitwise importer sets it false and writes one
    * summary entry per run instead (a thousand imported expenses would
@@ -203,13 +215,16 @@ export async function createExpense(input: CreateExpenseInput): Promise<string> 
     await assertParticipantsAreMembers(trx, input.groupId ?? null, shares.map((s) => s.userId));
 
     const id = input.id ?? ulid();
+    const baseMetadata = serializeMetadata(input.metadata ?? {});
+    const metadata =
+      input.extra !== undefined ? metadataWithExtra(baseMetadata, input.extra) : baseMetadata;
 
     try {
       await trx
         .insertInto("expenses")
         .values({
           id,
-          metadata: serializeMetadata(input.metadata ?? {}),
+          metadata,
           group_id: input.groupId ?? null,
           description: input.description,
           details: input.details ?? null,
@@ -396,8 +411,15 @@ export async function updateExpense(
     } else if (repeatInterval !== null) {
       delete nextMeta.repeat_paused;
     }
+    // Absent means "leave it alone" - an edit made through the web UI, which
+    // never sends `extra`, must not erase what a client like the finance
+    // toolkit wrote here.
+    if (input.extra !== undefined) {
+      nextMeta.extra = input.extra;
+    }
     const writeMetadata =
       input.metadata !== undefined ||
+      input.extra !== undefined ||
       nextMeta.repeat_paused !== existingMeta.repeat_paused;
 
     // `version = version + 1` in the statement, and `version = :expected` in the

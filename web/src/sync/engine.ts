@@ -929,6 +929,8 @@ export class SyncEngine {
             ? null
             : (options.base?.repeatPaused ?? null),
       importRounding: options.base?.importRounding ?? false,
+      extra: options.base?.extra ?? {},
+      splitwiseId: options.base?.splitwiseId ?? null,
       version: options.base?.version ?? 1,
       createdBy: options.base?.createdBy ?? this.selfId,
       updatedBy: this.selfId,

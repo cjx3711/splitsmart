@@ -77,9 +77,10 @@ Every screen produces both.
 a modal that opened off-screen, a sidebar that vanished on a phone.
 
 **A DOM dump** is Playwright's accessibility snapshot of the same page, run
-through the same normaliser as before (ULIDs, dates, link secrets, the live FX
-estimate) and diffed against `smoke/baselines/dom/`. This is the half that
-catches `3400 JPY` vs `34.00 JPY`, a lost heading, a missing "owes you".
+through the same normaliser as before (ULIDs, dates, link secrets, the app
+version, the live FX estimate) and diffed against `smoke/baselines/dom/`. This
+is the half that catches `3400 JPY` vs `34.00 JPY`, a lost heading, a missing
+"owes you".
 
 Values that legitimately churn are either hidden before the shutter
 (`scripts/smoke-screens.ts` `STABILISE_CSS`) or stripped by
@@ -119,6 +120,7 @@ Listed in `scripts/smoke-screens.ts`. Every id is captured twice: desktop
 | `jj-apartment` | JJ | Apartment 4B as the other roommate |
 | `guest-picker` | guest link | "Which one are you?" (Hana) |
 | `guest-group` | guest (Hana) | Tokyo with no Settings / other groups |
+| `claim-success` | new account via a spare friend link | "Link claimed" after merging the placeholder |
 
 ## Flows
 
@@ -130,7 +132,7 @@ run *after* the screenshots of the seeded state.
 | F1 | Book Club, equal split of 31.00 → 10.34 / 10.33 / 10.33, then save |
 | F2 | Incomplete percent and exact totals are named; form is discarded |
 | F3 | A comment on Trader Joe's appears without a reload; system comments stay |
-| F4 | Search `coffee` narrows; `50%` matches nothing; CSV button is enabled |
+| F4 | Search `coffee` narrows; `50%` matches nothing; CSV is enabled behind More actions |
 | F5 | Guest link: Tokyo only; nothing hits `/api/v1/` outside `/api/v1/guest/` |
 | F6 | 375×812, Show menu, no horizontal overflow on dashboard / group / expense |
 | F7 | Test User adds "Smoke test paint" in Apartment 4B; JJ's session lists it |

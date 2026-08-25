@@ -110,6 +110,18 @@ export const claimRoutes = new Hono<AppEnv>()
 
   const candidates = await listActablePeople(db, link);
 
+  // For a friend link, the group is null; what the picker should offer to
+  // open afterwards is the other side of the friendship, `link.createdBy`
+  // (the real account that shared the link), fetched the same way a group
+  // name is, so the frontend needs no follow-up call to show it.
+  const counterpart = link.kind === "friend"
+    ? await db
+        .selectFrom("users")
+        .select(["id", "name", "nickname", "icon_letters", "icon_emoji", "icon_hue", "icon_pattern"])
+        .where("id", "=", link.createdBy)
+        .executeTakeFirst()
+    : undefined;
+
   return c.json({
     status: candidates.length > 0 ? ("claimable" as const) : ("none" as const),
     kind: link.kind,
@@ -120,6 +132,7 @@ export const claimRoutes = new Hono<AppEnv>()
           .where("id", "=", link.groupId)
           .executeTakeFirst()
       : null,
+    counterpart: counterpart ? { id: counterpart.id, ...personCamel(counterpart) } : null,
     candidates,
   });
 })

@@ -31,6 +31,7 @@ const { app } = await import("../../server.ts");
 const { db } = await import("../../db/index.ts");
 const { createApiToken } = await import("../../auth/session.ts");
 const { updateExpense } = await import("../../domain/expenses.ts");
+const { metadataFromSplitwise } = await import("../../domain/metadata.ts");
 const { isUlid, ulid } = await import("../../domain/ulid.ts");
 
 let apiToken: string;
@@ -42,6 +43,22 @@ async function post(path: string, body: unknown) {
     method: "POST",
     headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json()) as any };
+}
+
+async function patch(path: string, body: unknown) {
+  const res = await app.request(`/api/v1${path}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: (await res.json()) as any };
+}
+
+async function get(path: string) {
+  const res = await app.request(`/api/v1${path}`, {
+    headers: { Authorization: `Bearer ${apiToken}` },
   });
   return { status: res.status, body: (await res.json()) as any };
 }
@@ -577,6 +594,83 @@ describe("client-minted expense ids", () => {
       headers: { Authorization: `Bearer ${apiToken}` },
     });
     assert.equal(res.status, 400);
+  });
+});
+
+describe("extra metadata", () => {
+  test("extra survives a PATCH that omits it", async () => {
+    const created = await post(`/groups/${groupId}/expenses`,
+      body({ splitType: "equal", participants: participants(), extra: { note: "toolkit" } }));
+    assert.equal(created.status, 201);
+    const id = created.body.id as string;
+    assert.deepEqual((await get(`/expenses/${id}`)).body.expense.extra, { note: "toolkit" });
+
+    const patched = await patch(`/expenses/${id}`,
+      body({ splitType: "equal", participants: participants(), description: "Dinner (edited)" }));
+    assert.equal(patched.status, 200);
+
+    const got = await get(`/expenses/${id}`);
+    assert.equal(got.body.expense.description, "Dinner (edited)");
+    assert.deepEqual(got.body.expense.extra, { note: "toolkit" });
+  });
+
+  test("a PATCH with extra preserves splitwise_id and a paused series' interval", async () => {
+    const created = await post(`/groups/${groupId}/expenses`,
+      body({ splitType: "equal", participants: participants(), repeatInterval: "monthly" }));
+    assert.equal(created.status, 201);
+    const id = created.body.id as string;
+
+    // Stamp splitwise_id the way the importer would - not reachable over the API.
+    await db.updateTable("expenses")
+      .set({ metadata: metadataFromSplitwise(998877, "confirmed") })
+      .where("id", "=", id)
+      .execute();
+
+    // Stop the series: metadata.repeat_paused becomes "monthly".
+    const stopped = await patch(`/expenses/${id}`,
+      body({ splitType: "equal", participants: participants(), repeatInterval: null }));
+    assert.equal(stopped.status, 200);
+
+    const beforeExtra = await get(`/expenses/${id}`);
+    assert.equal(beforeExtra.body.expense.repeat_paused, "monthly");
+    assert.equal(beforeExtra.body.expense.splitwise_id, 998877);
+
+    // Writing `extra` (repeatInterval absent, meaning "leave the schedule
+    // alone") must not disturb either.
+    const withExtra = await patch(`/expenses/${id}`,
+      body({ splitType: "equal", participants: participants(), extra: { synced: true } }));
+    assert.equal(withExtra.status, 200);
+
+    const final = await get(`/expenses/${id}`);
+    assert.deepEqual(final.body.expense.extra, { synced: true });
+    assert.equal(final.body.expense.repeat_paused, "monthly");
+    assert.equal(final.body.expense.splitwise_id, 998877);
+  });
+
+  test("an over-cap extra payload is rejected", async () => {
+    const { status } = await post(`/groups/${groupId}/expenses`,
+      body({
+        splitType: "equal",
+        participants: participants(),
+        extra: { blob: "x".repeat(4200) },
+      }));
+    assert.equal(status, 400);
+  });
+
+  test("a reserved key inside extra cannot reach the real metadata key", async () => {
+    const created = await post(`/groups/${groupId}/expenses`,
+      body({
+        splitType: "equal",
+        participants: participants(),
+        extra: { splitwise_id: 999, repeat_paused: "weekly" },
+      }));
+    assert.equal(created.status, 201);
+    const id = created.body.id as string;
+
+    const got = await get(`/expenses/${id}`);
+    assert.equal(got.body.expense.splitwise_id, null);
+    assert.equal(got.body.expense.repeat_paused, null);
+    assert.deepEqual(got.body.expense.extra, { splitwise_id: 999, repeat_paused: "weekly" });
   });
 });
 

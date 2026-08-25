@@ -103,15 +103,27 @@ export function Claim() {
   if (!user) return <SignInFirst linkToken={linkToken} person={suggested} />;
 
   if (done) {
+    const destination =
+      candidates?.status === "claimable" && candidates.group
+        ? { label: candidates.group.name, path: `/groups/${candidates.group.id}` }
+        : candidates?.status === "claimable" && candidates.counterpart
+          ? { label: displayName(candidates.counterpart), path: `/friends/${candidates.counterpart.id}` }
+          : null;
+
     return (
       <div className="auth stack">
-        <h1>Done</h1>
+        <h1>Link claimed</h1>
         <p className="muted">
           That person is you now. Everything they were part of is on this
           account, and the guest link that acted as them has stopped working.
         </p>
-        <p>
-          <button onClick={() => navigate("/")}>Go to your dashboard</button>
+        <p style={{ display: "flex", gap: "0.5rem" }}>
+          {destination && (
+            <button onClick={() => navigate(destination.path)}>Open {destination.label}</button>
+          )}
+          <button className={destination ? "secondary" : undefined} onClick={() => navigate("/")}>
+            Go to your dashboard
+          </button>
         </p>
       </div>
     );

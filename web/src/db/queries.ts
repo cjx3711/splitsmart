@@ -88,6 +88,8 @@ async function toFilters(db: LocalDb, query: ExpenseQuery = {}): Promise<Expense
     ...(query.datedAfter ? { datedAfter: bound(query.datedAfter) } : {}),
     ...(query.datedBefore ? { datedBefore: bound(query.datedBefore, true) } : {}),
     ...(query.isPayment !== undefined ? { isPayment: query.isPayment } : {}),
+    ...(query.currencyCode ? { currencyCode: query.currencyCode } : {}),
+    ...(query.paidByUserId ? { paidByUserId: query.paidByUserId } : {}),
   };
   if (query.categoryId !== undefined) {
     filters.categoryId = query.categoryId;
@@ -116,6 +118,8 @@ function keep(expense: LocalExpense, filters: ExpenseFilters): boolean {
       categoryId: expense.categoryId,
       isPayment: expense.isPayment,
       participantIds: expense.shares.map((s) => s.userId),
+      currencyCode: expense.currencyCode,
+      payerIds: expense.shares.filter((s) => s.paidShareMinor > 0).map((s) => s.userId),
     },
     filters,
   );
@@ -454,7 +458,11 @@ export type RelatedPerson = {
 export async function localRelatedPeople(
   db: LocalDb,
   selfId: string,
-): Promise<{ people: RelatedPerson[]; lastByGroup: Record<string, string> }> {
+): Promise<{
+  people: RelatedPerson[];
+  lastByGroup: Record<string, string>;
+  last: Record<string, string>;
+}> {
   // Subscribe to the rev so a recency write re-renders the rail without
   // this query opening the expense store.
   await getMeta(db, "friendRecencyRev");
@@ -469,7 +477,7 @@ export async function localRelatedPeople(
   const ids = await relatedUserIds(db, selfId, []);
   for (const id of cache.related) ids.add(id);
   for (const id of Object.keys(cache.last)) ids.add(id);
-  if (ids.size === 0) return { people: [], lastByGroup: cache.lastByGroup };
+  if (ids.size === 0) return { people: [], lastByGroup: cache.lastByGroup, last: cache.last };
 
   const lastByUser = new Map(Object.entries(cache.last));
   const users = (await db.users.bulkGet([...ids])).filter(
@@ -492,7 +500,7 @@ export async function localRelatedPeople(
       is_ghost: user.isGhost ? (1 as const) : (0 as const),
     }));
 
-  return { people, lastByGroup: cache.lastByGroup };
+  return { people, lastByGroup: cache.lastByGroup, last: cache.last };
 }
 
 // ---------------------------------------------------------------------------
@@ -594,6 +602,7 @@ export async function localGroup(
       id: m.userId,
       name: m.user?.name ?? "",
       nickname: m.user?.nickname ?? null,
+      email: m.user?.email ?? null,
       icon_letters: m.user?.iconLetters ?? null,
       icon_emoji: m.user?.iconEmoji ?? null,
       icon_hue: m.user?.iconHue ?? null,
@@ -634,6 +643,7 @@ export async function localGroupMembers(
       id: m.userId,
       name: m.user?.name ?? "",
       nickname: m.user?.nickname ?? null,
+      email: m.user?.email ?? null,
       icon_letters: m.user?.iconLetters ?? null,
       icon_emoji: m.user?.iconEmoji ?? null,
       icon_hue: m.user?.iconHue ?? null,
@@ -925,6 +935,10 @@ async function toSummaries(db: LocalDb, rows: LocalExpense[]): Promise<ExpenseSu
       expense_id: row.id,
     })),
     split_meta: row.splitMeta,
+    // `extra` is client-authored JSON we round-trip, not something we validate
+    // shape-wise offline; the server is authoritative on write.
+    extra: row.extra as ExpenseSummary["extra"],
+    splitwise_id: row.splitwiseId,
     syncState: row.syncState,
   }));
 }
@@ -1083,6 +1097,8 @@ export async function localExpense(
       repeat_of: row.repeatOf,
       repeat_paused: isRepeatInterval(row.repeatPaused) ? row.repeatPaused : null,
       series_count: seriesCount,
+      extra: row.extra as ExpenseDetail["extra"],
+      splitwise_id: row.splitwiseId,
       version: row.version,
       deleted_at: row.deletedAt,
       shares: row.shares.map((s) => ({

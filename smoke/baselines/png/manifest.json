@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-25T10:20:51.254Z",
+  "capturedAt": "2026-08-25T18:20:52.068Z",
   "base": "http://localhost:5644",
   "playwrightVersion": "1.62.1",
   "params": {
@@ -413,6 +413,20 @@
         "Hana"
       ],
       "auth": "guest:group"
+    },
+    {
+      "id": "claim-success",
+      "viewport": "desktop",
+      "path": "/",
+      "click": [],
+      "auth": "claim-success"
+    },
+    {
+      "id": "claim-success-mobile",
+      "viewport": "mobile",
+      "path": "/",
+      "click": [],
+      "auth": "claim-success"
     }
   ]
 }

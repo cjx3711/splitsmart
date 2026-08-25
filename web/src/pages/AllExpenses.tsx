@@ -29,6 +29,7 @@ export function AllExpenses() {
 
   const nameOf = makeLookup(friends, user.id);
   const filtering = Object.keys(filters).length > 0;
+  const payers = [{ id: user.id, name: user.name, nickname: user.nickname }, ...friends];
 
   return (
     <>
@@ -41,6 +42,7 @@ export function AllExpenses() {
         onChange={setFilters}
         groups={groups}
         people={friends}
+        payers={payers}
         csvFilename="splitsmart-expenses"
       />
 

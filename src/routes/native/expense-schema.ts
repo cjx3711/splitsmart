@@ -80,6 +80,16 @@ export const expenseBodyFields = {
   repeatInterval: z.enum(REPEAT_INTERVALS).nullable().optional(),
   /** Client-minted expense id. Absent: the server mints one. */
   id: ulidSchema.optional(),
+  /**
+   * A client-owned bag, merged into `metadata.extra` rather than replacing it
+   * (src/domain/metadata.ts: metadataWithExtra). Absent on a PATCH means
+   * "leave it alone" - every other web-UI edit must not erase what a client
+   * like the finance toolkit wrote here.
+   */
+  extra: z
+    .record(z.unknown())
+    .refine((v) => JSON.stringify(v).length <= 4096, "extra must serialize to 4KB or less")
+    .optional(),
 } as const;
 
 /**

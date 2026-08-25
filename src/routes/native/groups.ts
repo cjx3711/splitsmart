@@ -30,9 +30,9 @@ import { expenseBodySchema, genericExpenseBodySchema, ulidSchema } from "./expen
 import { expenseFilterWhere, expenseListQuerySchema, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
 import { GROUP_TYPES } from "../../domain/group-types.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
-import { MAX_NAME_LENGTH, MAX_NICKNAME_LENGTH, personSnake } from "../../domain/person.ts";
+import { knownEmail, MAX_NAME_LENGTH, MAX_NICKNAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
-import { repeatPausedOf } from "../../domain/metadata.ts";
+import { extraOf, repeatPausedOf, splitwiseIdOf } from "../../domain/metadata.ts";
 
 /**
  * True if the code is a currency we hold.
@@ -48,6 +48,21 @@ async function isKnownCurrency(code: string): Promise<boolean> {
     .where("code", "=", code)
     .executeTakeFirst();
   return row !== undefined;
+}
+
+/**
+ * Derives the public `extra`/`splitwise_id` fields from a row's raw
+ * `metadata` column, and strips that column from what goes on the wire.
+ * snake_case, matching every other read field here (rule: reads are
+ * snake_case, writes are camelCase). The one place every expense-list and
+ * expense-detail response shapes this, so "the expense shape" cannot drift
+ * between endpoints.
+ */
+function withExtraFields<T extends { metadata: string | null }>(
+  row: T,
+): Omit<T, "metadata"> & { extra: Record<string, unknown>; splitwise_id: number | null } {
+  const { metadata, ...rest } = row;
+  return { ...rest, extra: extraOf(metadata), splitwise_id: splitwiseIdOf(metadata) };
 }
 
 /** Throws a 403-shaped result if the caller isn't in the group. */
@@ -171,6 +186,8 @@ export const groupRoutes = new Hono<AppEnv>()
       "users.id",
       "users.name",
       "users.nickname",
+      "users.email",
+      "users.invite_email",
       "users.icon_letters",
       "users.icon_emoji",
       "users.icon_hue",
@@ -187,10 +204,14 @@ export const groupRoutes = new Hono<AppEnv>()
 
   return c.json({
     group,
-    members: members.map((m) => ({
-      ...m,
-      icon_pattern: parseAvatarPattern(m.icon_pattern),
-    })),
+    members: members.map((m) => {
+      const { email, invite_email, ...rest } = m;
+      return {
+        ...rest,
+        email: knownEmail({ email, invite_email }),
+        icon_pattern: parseAvatarPattern(m.icon_pattern),
+      };
+    }),
     balances,
     role: membership.role,
   });
@@ -317,7 +338,7 @@ export const groupRoutes = new Hono<AppEnv>()
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.repeat_interval",
-      "expenses.repeat_of", "categories.name as category_name",
+      "expenses.repeat_of", "expenses.metadata", "categories.name as category_name",
     ])
     .select(commentCountSql().as("comment_count"))
     .where("expenses.group_id", "=", groupId)
@@ -349,7 +370,7 @@ export const groupRoutes = new Hono<AppEnv>()
   }
 
   return c.json({
-    expenses: expenses.map((e) => ({ ...e, shares: sharesByExpense.get(e.id) ?? [] })),
+    expenses: expenses.map((e) => ({ ...withExtraFields(e), shares: sharesByExpense.get(e.id) ?? [] })),
   });
 })
   .post(
@@ -701,7 +722,7 @@ export const expenseRoutes = new Hono<AppEnv>()
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.group_id",
-      "expenses.repeat_interval", "expenses.repeat_of",
+      "expenses.repeat_interval", "expenses.repeat_of", "expenses.metadata",
       "categories.name as category_name", "groups.name as group_name",
     ])
     .select(commentCountSql().as("comment_count"))
@@ -732,7 +753,7 @@ export const expenseRoutes = new Hono<AppEnv>()
   }
 
   return c.json({
-    expenses: expenses.map((e) => ({ ...e, shares: byExpense.get(e.id) ?? [] })),
+    expenses: expenses.map((e) => ({ ...withExtraFields(e), shares: byExpense.get(e.id) ?? [] })),
   });
 })
 /**
@@ -801,6 +822,8 @@ export const expenseRoutes = new Hono<AppEnv>()
 
   const { metadata, ...publicExpense } = expense;
   const repeatPaused = repeatPausedOf(metadata);
+  const extra = extraOf(metadata);
+  const splitwise_id = splitwiseIdOf(metadata);
 
   // How many bills this series has produced, or where this one came from. The
   // template id plus `repeat_of` IS the bundle; there is no bundle table. A
@@ -825,6 +848,8 @@ export const expenseRoutes = new Hono<AppEnv>()
       shares,
       series_count: seriesCount,
       repeat_paused: repeatPaused,
+      extra,
+      splitwise_id,
     },
   });
 })

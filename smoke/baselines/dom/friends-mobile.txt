@@ -8,43 +8,43 @@
 - main:
   - heading "Friends" [level=1]
   - button "+ Add friend"
-  - link "Ah Beng ahbeng@example.com 149.25USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Ah Beng": ✕
-  - link "James No email · hasn't joined yet 15.00USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove James": ✕
-  - link "Jen No email · hasn't joined yet 35.00USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Jen": ✕
-  - link "John No email · hasn't joined yet 95.00USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove John": ✕
-  - link "JJ jj@example.com -1200JPY 3856.21USD shared":
-    - /url: /app/friends/<ULID>
-  - link "Danial danial@example.com 10.33USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Danial": ✕
-  - link "Jas jas@example.com -54.67USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Jas": ✕
   - link "Aisyah aisyah@example.com settled up":
     - /url: /app/friends/<ULID>
   - button "Remove Aisyah": ✕
   - link "Mel mel@example.com -71.10USD":
     - /url: /app/friends/<ULID>
   - button "Remove Mel": ✕
+  - link "JJ jj@example.com -1200JPY 3836.21USD shared":
+    - /url: /app/friends/<ULID>
+  - link "John No email guest 60.00USD":
+    - /url: /app/friends/<ULID>
+  - button "Remove John": ✕
+  - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
+    - /url: /app/friends/<ULID>
+  - button "Remove Ah Beng": ✕
   - link "Taro taro@example.com settled up shared":
     - /url: /app/friends/<ULID>
-  - link "Hana No email · hasn't joined yet 1200JPY shared":
+  - link "Danial danial@example.com settled up":
     - /url: /app/friends/<ULID>
-  - link "Ah Lian No email · hasn't joined yet settled up shared":
+  - button "Remove Danial": ✕
+  - link "Jas jas@example.com -65.00USD":
     - /url: /app/friends/<ULID>
-  - link "Gerry No email · hasn't joined yet settled up shared":
+  - button "Remove Jas": ✕
+  - link "Hana No email guest 1200JPY shared":
     - /url: /app/friends/<ULID>
-  - link "Priya No email · hasn't joined yet settled up shared":
+  - link "Ah Lian No email guest settled up shared":
     - /url: /app/friends/<ULID>
-  - link "Yuki No email · hasn't joined yet settled up shared":
+  - link "Gerry No email guest settled up shared":
+    - /url: /app/friends/<ULID>
+  - link "James No email guest settled up":
+    - /url: /app/friends/<ULID>
+  - button "Remove James": ✕
+  - link "Jen No email guest settled up":
+    - /url: /app/friends/<ULID>
+  - button "Remove Jen": ✕
+  - link "Priya No email guest settled up shared":
+    - /url: /app/friends/<ULID>
+  - link "Yuki No email guest settled up shared":
     - /url: /app/friends/<ULID>
 - contentinfo:
   - text: Created out of spite by cjx3711.
@@ -56,4 +56,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

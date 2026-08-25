@@ -32,7 +32,7 @@
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
   - button "Filters"
-  - button "Download CSV"
+  - button "More actions"
   - link "Test User paid You <DATE> received 50.00USD":
     - link "Test User":
       - /url: /app/friends/<ULID>
@@ -78,4 +78,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

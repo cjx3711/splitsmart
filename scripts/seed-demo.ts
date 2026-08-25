@@ -559,6 +559,14 @@ async function main(): Promise<void> {
   const friendLink = await transaction((trx) =>
     mintAccessLink(trx, { kind: "friend", userId: hanaId, createdBy: userId }),
   );
+  // Spare friend links for the claim-success capture (desktop + mobile). Each
+  // viewport consumes one; Hana's stays for F18.
+  await transaction((trx) =>
+    mintAccessLink(trx, { kind: "friend", userId: gerryId, createdBy: userId }),
+  );
+  await transaction((trx) =>
+    mintAccessLink(trx, { kind: "friend", userId: ahLianId, createdBy: userId }),
+  );
 
   console.log(`Seeded demo data for ${email} (${user.name}):`);
   console.log(`  Login:    ${email} / ${DEFAULT_PASSWORD}`);

@@ -68,21 +68,23 @@
     - /url: /app/expenses
   - link "Usage":
     - /url: /app/admin
+  - link "Get the app":
+    - /url: /app/install
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
   - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
-    - /url: /app/groups/<ULID>
-  - link "Yosemite Camping":
+  - link "Office Lunch Club":
     - /url: /app/groups/<ULID>
   - link "Apartment 4B":
     - /url: /app/groups/<ULID>
-  - link "Book Club":
+  - link "Jess & Marco's Wedding":
     - /url: /app/groups/<ULID>
-  - link "Office Lunch Club":
+  - link "Ski Trip 2026":
+    - /url: /app/groups/<ULID>
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -90,26 +92,36 @@
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "JJ":
-    - /url: /app/friends/<ULID>
-  - link "Danial":
-    - /url: /app/friends/<ULID>
-  - link "Jas":
-    - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
+  - button "Hide Aisyah from sidebar": ✕
   - link "Mel":
     - /url: /app/friends/<ULID>
+  - button "Hide Mel from sidebar": ✕
+  - link "JJ":
+    - /url: /app/friends/<ULID>
+  - button "Hide JJ from sidebar": ✕
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - button "Hide John from sidebar": ✕
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - button "Hide Ah Beng from sidebar": ✕
   - link "Taro":
     - /url: /app/friends/<ULID>
+  - button "Hide Taro from sidebar": ✕
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - button "Hide Danial from sidebar": ✕
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - button "Hide Jas from sidebar": ✕
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - button "Hide Hana from sidebar": ✕
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - button "Hide Ah Lian from sidebar": ✕
   - link "Show all":
     - /url: /app/friends
 - main:
@@ -122,9 +134,11 @@
   - link "Add a friend":
     - /url: /app/friends/new
     - button "Add a friend"
-  - text: Net position 4035.02USD You owe
+  - text: Net position ≈3916.90USD*
   - group: JPY · USD▼
-  - text: You are owed
+  - text: You owe ≈143.64USD*
+  - group: JPY · USD▼
+  - text: You are owed ≈4060.54USD*
   - group: JPY · USD▼
   - paragraph:
     - text: "* Converted to USD, your default currency, using"
@@ -135,27 +149,19 @@
       - /url: /app/settings
     - text: .
   - heading "You owe" [level=2]
-  - link "Jas you owe 54.67USD":
-    - /url: /app/friends/<ULID>
-  - group: Book Club · Jess & Marco's Wedding▼
   - link "Mel you owe 71.10USD":
     - /url: /app/friends/<ULID>
+  - link "Jas you owe 65.00USD":
+    - /url: /app/friends/<ULID>
   - heading "You are owed" [level=2]
-  - link "Ah Beng owes you 149.25USD":
-    - /url: /app/friends/<ULID>
-  - group: Ski Trip 2026 · one-on-one▼
-  - link "James owes you 15.00USD":
-    - /url: /app/friends/<ULID>
-  - link "Jen owes you 35.00USD":
-    - /url: /app/friends/<ULID>
-  - link "John owes you 95.00USD":
-    - /url: /app/friends/<ULID>
-  - group: Yosemite Camping · one-on-one▼
-  - link "JJ":
+  - link "JJ ≈owes you 3828.67USD*":
     - /url: /app/friends/<ULID>
   - group: JPY · USD▼
-  - link "Danial owes you 10.33USD":
+  - link "John owes you 60.00USD":
     - /url: /app/friends/<ULID>
+  - link "Ah Beng ≈owes you 156.79USD*":
+    - /url: /app/friends/<ULID>
+  - group: JPY · USD▼
   - link "Hana owes you 1200JPY":
     - /url: /app/friends/<ULID>
 - contentinfo:
@@ -168,4 +174,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

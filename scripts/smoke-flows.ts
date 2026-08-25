@@ -19,6 +19,7 @@ import {
   DEFAULT_BASE,
   arg,
   chooseCurrency,
+  claimFriendLinkAsNewAccount,
   chromiumHint,
   clickNamed,
   expectedConversion,
@@ -288,9 +289,10 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await page.getByRole("button", { name: "Clear" }).click();
       await page.getByText("Trader Joe's run").waitFor({ timeout: 5_000 });
 
-      const csv = page.getByRole("button", { name: "Download CSV" });
+      await page.getByRole("button", { name: "More actions" }).click();
+      const csv = page.getByRole("menuitem", { name: "Download CSV" });
       if (!(await csv.isEnabled())) throw new Error("Download CSV was disabled");
-      return "coffee narrowed to coffee expenses; 50% matched nothing (literal percent); CSV button enabled.";
+      return "coffee narrowed to coffee expenses; 50% matched nothing (literal percent); CSV item enabled in the more menu.";
     },
   },
   {
@@ -919,6 +921,29 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
         throw new Error(`admin API answered ${statuses.join(", ")} for a non-admin, expected 403s`);
       }
       return `JJ saw no Admin link, /app/admin sent them to the dashboard, and /api/v1/admin/{users,backups} answered ${statuses.join(", ")}.`;
+    },
+  },
+  {
+    id: "F18",
+    title: "Registering while holding a friend guest link lands on a named success screen",
+    run: async (page, ctx) => {
+      await stubExchangeRates(page);
+      await claimFriendLinkAsNewAccount(page, guestUrl("friend", ctx.base), {
+        email: "smoke-claim@example.com",
+        name: "Smoke Claimant",
+      });
+
+      const openButton = page.getByRole("button", { name: "Open Test User" });
+      await openButton.waitFor({ timeout: 10_000 });
+      await openButton.click();
+
+      await page.getByRole("heading", { name: "Test User", exact: true }).waitFor({ timeout: 15_000 });
+      const url = page.url();
+      if (!/\/friends\/[^/]+$/.test(url.replace(ctx.base, ""))) {
+        throw new Error(`claim success button landed on ${url}, expected /friends/:id`);
+      }
+
+      return "Registering from a friend link's \"Make it mine\" banner reached a named \"Link claimed\" screen with an \"Open Test User\" button, which opened the right friend page.";
     },
   },
 ];

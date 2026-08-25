@@ -13,6 +13,15 @@
  *                  back without guessing weekly vs monthly. Not a column: the
  *                  CHECK on repeat_interval/next_repeat cannot represent
  *                  "interval set, nothing scheduled".
+ *   extra        - a CLIENT-OWNED sub-bag, exposed on the wire as `extra` and
+ *                  merged rather than replaced (metadataWithExtra). This is
+ *                  the one key an API caller may write directly; everything
+ *                  else in RESERVED_METADATA_KEYS is internal and reachable
+ *                  only through the helpers below, because a caller-supplied
+ *                  `metadata` on a PATCH wholly replaces the stored bag
+ *                  (see updateExpense) and could otherwise collide with the
+ *                  unique indexes on `$.splitwise_id` or clobber a paused
+ *                  series' interval.
  *
  * Extra keys are allowed. Do not put anything here that needs an index or a
  * JOIN; those stay as real columns. The unique expression indexes on
@@ -53,8 +62,26 @@ export interface EntityMetadata {
   splitwise_comments_synced_at?: string;
   /** Legacy comments-import rule revision. No longer written. */
   splitwise_comments_import_rev?: number;
+  /** A client-owned bag. See the key-level comment above. */
+  extra?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+/**
+ * Every internal key, named in one place so a future one is added here and
+ * nowhere else has to remember the list. `extra` is deliberately absent: it is
+ * the one key a client may write.
+ */
+export const RESERVED_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "splitwise_id",
+  "splitwise_registration_status",
+  "notes",
+  "repeat_paused",
+  "import_rounding",
+  "splitwise_comments_count",
+  "splitwise_comments_synced_at",
+  "splitwise_comments_import_rev",
+]);
 
 /**
  * Legacy `expenses.details` on an `import_rounding` settle-up. New rounding
@@ -103,6 +130,29 @@ export function repeatPausedOf(raw: string | null | undefined): RepeatInterval |
 export function splitwiseIdOf(raw: string | null | undefined): number | null {
   const id = parseMetadata(raw).splitwise_id;
   return typeof id === "number" && Number.isInteger(id) ? id : null;
+}
+
+/** The client-owned bag, `{}` when absent or malformed. */
+export function extraOf(raw: string | null | undefined): Record<string, unknown> {
+  const extra = parseMetadata(raw).extra;
+  return extra != null && typeof extra === "object" && !Array.isArray(extra)
+    ? (extra as Record<string, unknown>)
+    : {};
+}
+
+/**
+ * Replaces only the `extra` key, reusing every other key untouched. Mirrors
+ * metadataWithSplitwiseIdentity: existing is parsed, one key is set, and the
+ * whole bag is reserialized - never a raw merge of caller JSON, which is what
+ * would let a client reach a reserved key by writing `metadata` directly.
+ */
+export function metadataWithExtra(
+  existing: string | null | undefined,
+  extra: Record<string, unknown>,
+): string {
+  const parsed = parseMetadata(existing);
+  parsed.extra = extra;
+  return serializeMetadata(parsed);
 }
 
 export function metadataFromSplitwise(

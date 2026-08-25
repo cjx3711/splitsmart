@@ -15,21 +15,23 @@
     - /url: /app/expenses
   - link "Usage":
     - /url: /app/admin
+  - link "Get the app":
+    - /url: /app/install
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
   - link "Groups (10)":
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
-    - /url: /app/groups/<ULID>
-  - link "Yosemite Camping":
+  - link "Office Lunch Club":
     - /url: /app/groups/<ULID>
   - link "Apartment 4B":
     - /url: /app/groups/<ULID>
-  - link "Book Club":
+  - link "Jess & Marco's Wedding":
     - /url: /app/groups/<ULID>
-  - link "Office Lunch Club":
+  - link "Ski Trip 2026":
+    - /url: /app/groups/<ULID>
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -37,26 +39,36 @@
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
-  - link "James":
-    - /url: /app/friends/<ULID>
-  - link "Jen":
-    - /url: /app/friends/<ULID>
-  - link "John":
-    - /url: /app/friends/<ULID>
-  - link "JJ":
-    - /url: /app/friends/<ULID>
-  - link "Danial":
-    - /url: /app/friends/<ULID>
-  - link "Jas":
-    - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
+  - button "Hide Aisyah from sidebar": ✕
   - link "Mel":
     - /url: /app/friends/<ULID>
+  - button "Hide Mel from sidebar": ✕
+  - link "JJ":
+    - /url: /app/friends/<ULID>
+  - button "Hide JJ from sidebar": ✕
+  - link "John":
+    - /url: /app/friends/<ULID>
+  - button "Hide John from sidebar": ✕
+  - link "Ah Beng":
+    - /url: /app/friends/<ULID>
+  - button "Hide Ah Beng from sidebar": ✕
   - link "Taro":
     - /url: /app/friends/<ULID>
+  - button "Hide Taro from sidebar": ✕
+  - link "Danial":
+    - /url: /app/friends/<ULID>
+  - button "Hide Danial from sidebar": ✕
+  - link "Jas":
+    - /url: /app/friends/<ULID>
+  - button "Hide Jas from sidebar": ✕
+  - link "Hana":
+    - /url: /app/friends/<ULID>
+  - button "Hide Hana from sidebar": ✕
+  - link "Ah Lian":
+    - /url: /app/friends/<ULID>
+  - button "Hide Ah Lian from sidebar": ✕
   - link "Show all":
     - /url: /app/friends
 - main:
@@ -86,16 +98,18 @@
       - listitem:
         - button "You → JJ 1200JPY"
       - listitem:
+        - button "Ah Beng → You 1200JPY"
+      - listitem:
         - button "Hana → You 1200JPY"
     - paragraph:
-      - text: 4 payments, one per recorded debt.
+      - text: 5 payments, one per recorded debt.
       - button "Turn on simplify debts"
       - text: to collapse them into the fewest that clear the group.
     - heading "Balances" [level=2]
-    - text: You settled up
+    - text: You get back 1200JPY
     - link "JJ gets back 6000JPY":
       - /url: /app/friends/<ULID>
-    - link "Ah Beng owes 2400JPY":
+    - link "Ah Beng owes 3600JPY":
       - /url: /app/friends/<ULID>
     - link "Hana guest owes 3600JPY":
       - /url: /app/friends/<ULID>
@@ -110,11 +124,7 @@
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
   - button "Filters"
-  - button "Download CSV"
-  - link "Ah Beng paid You <DATE> · 1 comment received 1200JPY":
-    - link "Ah Beng":
-      - /url: /app/friends/<ULID>
-    - text: paid You <DATE> · 1 comment received 1200JPY
+  - button "More actions"
   - link "TeamLab tickets <DATE> · Life · JJ paid borrowed 2400JPY 9600JPY":
     - text: TeamLab tickets <DATE> · Life ·
     - link "JJ":
@@ -126,16 +136,15 @@
   - strong:
     - text: Anyone with the link
     - button "About Anyone with the link": "?"
-  - text: Expires <DATE> · Last opened <DATE>
+  - text: Expires <DATE> · Never opened
   - code: http://localhost:5644/guest/l/<LINK_SECRET>
   - button "Copy link"
-  - button "Replace with a new link"
-  - button "Turn off"
+  - button "Link options"
   - strong:
     - text: Hana only
     - button "About Hana only": "?"
   - text: No link
-  - button "Create a link"
+  - button "Link options"
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":
@@ -146,4 +155,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>
