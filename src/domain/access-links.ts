@@ -451,7 +451,9 @@ export async function buildScope(
  *
  * Two ways in, and no third:
  *
- *   1. it belongs to a group the link covers, and the guest is on it;
+ *   1. it belongs to a group the link covers — every bill in that group,
+ *      whether the guest is named on it or not, so a member can edit anyone's
+ *      expense the way a logged-in member can;
  *   2. it belongs to no group, and BOTH the guest and the friend link's owner
  *      are on it.
  *
@@ -463,12 +465,12 @@ export function expenseInScope(
   scope: GuestScope,
   expense: { groupId: string | null; participantIds: string[] },
 ): boolean {
-  if (!expense.participantIds.includes(scope.actingAs)) return false;
-
   if (expense.groupId !== null) return scope.groupIds.includes(expense.groupId);
 
   return (
-    scope.counterpartId !== null && expense.participantIds.includes(scope.counterpartId)
+    scope.counterpartId !== null &&
+    expense.participantIds.includes(scope.actingAs) &&
+    expense.participantIds.includes(scope.counterpartId)
   );
 }
 

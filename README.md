@@ -3,10 +3,25 @@
 A self-hosted Splitwise replacement. One Node process, one SQLite file, a JSON
 API at `/api/v1`.
 
+A public instance is at **[splitsmart.cjx3711.com](https://splitsmart.cjx3711.com)**
+if you want to try it without running anything. Treat it as a convenient copy
+of a spreadsheet, not a bank.
+
+<p align="center">
+  <a href="SCREENSHOTS.md"><img src="web/src/assets/gallery/dashboard.png" alt="Dashboard" width="720"></a>
+</p>
+<p align="center">
+  <a href="SCREENSHOTS.md"><img src="web/src/assets/gallery/group-tokyo.png" alt="Weekend in Tokyo" width="360"></a>
+  <a href="SCREENSHOTS.md"><img src="web/src/assets/gallery/add-expense-dialog.png" alt="Adding a bill" width="360"></a>
+</p>
+
+<p align="center"><a href="SCREENSHOTS.md">More screenshots</a> — groups, friends, a guest link, desktop and phone.</p>
+
 ## Why
 
 Splitwise is moving API access behind a paywall. This keeps the data, the
-splitting, and the API surface under your own control.
+splitting, and the API surface under your own control. The longer write-up is
+[I built a Splitwise clone out of spite](https://chaijiaxun.com/blog/i-built-a-splitwise-clone-out-of-spite/).
 
 Two differences from Splitwise, both deliberate:
 
@@ -87,12 +102,13 @@ yarn build           # production build
 
 ## Documentation
 
+- **[SCREENSHOTS.md](SCREENSHOTS.md)**: what the app looks like
+- **[I built a Splitwise clone out of spite](https://chaijiaxun.com/blog/i-built-a-splitwise-clone-out-of-spite/)**: why this exists
 - **[CLAUDE.md](CLAUDE.md)**: how the repo works, and the four rules that keep
   financial data correct. Read this before changing anything.
-- [docs/PLAN.md](docs/PLAN.md): roadmap
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md): schema reasoning
 - [docs/GUEST.md](docs/GUEST.md): guest links, the two shells, and claiming
-- [docs/OFFLINE.md](docs/OFFLINE.md): the offline-first plan for `/app`
+- [docs/OFFLINE.md](docs/OFFLINE.md): the Dexie mirror, outbox, and what stays online-only
 - The HTTP API is documented in the app at `/docs`
 
 ## Status
@@ -101,10 +117,11 @@ Working: accounts, groups, friends, all six split types with an editor, one-on-o
 expenses, per-currency balances, settle-up suggestions, comments (including the
 automatic ones written when a bill is edited), recurring expenses, expense search
 and filters, CSV export, undo for a deleted expense, guest links and claiming,
-the Splitwise importer, email verification, password reset, and API tokens.
+the Splitwise importer, email verification, password reset, API tokens, and
+offline reads and writes for `/app` (see [docs/OFFLINE.md](docs/OFFLINE.md)).
 
-Not yet: offline writes and sync for `/app` (see [docs/OFFLINE.md](docs/OFFLINE.md)),
-group invites by email. See [docs/PLAN.md](docs/PLAN.md).
+Not yet: changing the account email, group invites by email. Adding a friend,
+creating a group, and guest-link visitors stay online-only on purpose.
 
 ## License
 

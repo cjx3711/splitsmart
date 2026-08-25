@@ -16,7 +16,7 @@ What is deliberately still open:
 The Splitwise-compatible shim at `/api/sw/v3.0` was dropped. Native `/api/v1`
 is the API.
 
-Status checklists live in `docs/PLAN.md` phase 2. This document is the how.
+This document is the how. Remaining product gaps are listed under Status in the README.
 
 ---
 
@@ -176,12 +176,9 @@ List returns live user *and* system comments, oldest first, with author
 the person the link acts as, and may delete only their own user comments.
 System comments are not deletable.
 
-Worth knowing, because it surprised the tests: **guest visibility is stricter
-than the logged-in rule.** A logged-in group member can comment on a group bill
-they are not on (the "why am I not on this?" case); a link holder cannot, because
-`expenseInScope` requires them to be a participant. Both are correct, they are
-just not the same rule, and the guest routes check theirs *before* calling the
-domain writer.
+In a group the link covers, a guest sees every bill, not only the ones they
+are named on — the same rule as a logged-in member. A group link still cannot
+reach a 1:1 expense.
 
 ### UI
 

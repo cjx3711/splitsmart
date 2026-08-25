@@ -18,6 +18,7 @@ const ENTRIES: Entry[] = [
     date: "25 August 2026",
     items: [
       "Fixes a bunch of UX issues around groups and friend pages.",
+      "Anyone in a group can edit any expense in it, including through a guest link.",
     ],
   },
   {

@@ -1090,6 +1090,79 @@ describe("push", () => {
       assert.equal(row, undefined);
     });
 
+    test("a group member can push a bill they are not on, and comment on it", async () => {
+      const trio = await makeGroup("Trio", [aliceId, bobId, carolId]);
+      const expenseId = ulid();
+      const commentId = ulid();
+      const { body } = await as(aliceToken, "/sync/push", {
+        method: "POST",
+        body: JSON.stringify({
+          ops: [
+            {
+              kind: "payment.create",
+              id: expenseId,
+              payload: {
+                ...expenseBody([bobId, carolId], { description: "Balance conversion" }),
+                groupId: trio,
+              },
+            },
+            {
+              kind: "comment.create",
+              id: commentId,
+              payload: { expenseId, content: "Automatic balance conversion" },
+            },
+          ],
+        }),
+      });
+      assert.equal(body.results[0].status, "applied");
+      assert.equal(body.results[1].status, "applied");
+    });
+
+    test("a group member can update, delete, and restore a bill they are not on", async () => {
+      const trio = await makeGroup("Kitchen", [aliceId, bobId, carolId]);
+      const id = ulid();
+      await createExpense({
+        ...(expenseBody([bobId, carolId], { description: "Milk" }) as any),
+        id,
+        groupId: trio,
+        createdBy: bobId,
+      });
+
+      const updated = await as(aliceToken, "/sync/push", {
+        method: "POST",
+        body: JSON.stringify({
+          ops: [
+            {
+              kind: "expense.update",
+              id,
+              baseVersion: 1,
+              payload: {
+                ...expenseBody([bobId, carolId], { description: "Milk and eggs" }),
+                groupId: trio,
+              },
+            },
+          ],
+        }),
+      });
+      assert.equal(updated.body.results[0].status, "applied");
+
+      const deleted = await as(aliceToken, "/sync/push", {
+        method: "POST",
+        body: JSON.stringify({
+          ops: [{ kind: "expense.delete", id, baseVersion: 2 }],
+        }),
+      });
+      assert.equal(deleted.body.results[0].status, "applied");
+
+      const restored = await as(aliceToken, "/sync/push", {
+        method: "POST",
+        body: JSON.stringify({
+          ops: [{ kind: "expense.restore", id, baseVersion: 3 }],
+        }),
+      });
+      assert.equal(restored.body.results[0].status, "applied");
+    });
+
     test("a stranger on a group bill is refused", async () => {
       const { body } = await as(aliceToken, "/sync/push", {
         method: "POST",

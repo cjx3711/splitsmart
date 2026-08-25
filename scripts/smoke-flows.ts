@@ -519,11 +519,12 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
   },
   {
     id: "F10",
-    title: "Signed-in marketing offers Open app, not Log in",
+    title: "Signed-in marketing offers Open app and Log out, not Log in",
     run: async (page, ctx) => {
       await signIn(page, "user", ctx.base);
       await page.goto(`${ctx.base}/`, { waitUntil: "domcontentloaded" });
       await page.getByRole("link", { name: "Open app" }).first().waitFor({ timeout: 10_000 });
+      await page.getByRole("button", { name: "Log out" }).waitFor({ timeout: 10_000 });
       if ((await page.getByRole("link", { name: "Log in" }).count()) > 0) {
         throw new Error("homepage still offered Log in after sign-in");
       }
@@ -534,7 +535,20 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       if ((await page.getByRole("heading", { name: "Log in" }).count()) > 0) {
         throw new Error("/app/login still showed the form while signed in");
       }
-      return "Homepage said Open app; /app/login redirected to the dashboard.";
+
+      await page.goto(`${ctx.base}/`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("button", { name: "Log out" }).click();
+      await page.getByRole("link", { name: "Log in" }).first().waitFor({ timeout: 10_000 });
+      if ((await page.getByRole("button", { name: "Log out" }).count()) > 0) {
+        throw new Error("homepage still offered Log out after logging out");
+      }
+      if ((await page.getByRole("link", { name: "Open app" }).count()) > 0) {
+        throw new Error("homepage still offered Open app after logging out");
+      }
+      await page.goto(`${ctx.base}/app/login`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "Log in" }).waitFor({ timeout: 15_000 });
+
+      return "Homepage said Open app and Log out; /app/login redirected while signed in; Log out returned the homepage to Log in.";
     },
   },
   {

@@ -9,3 +9,10 @@ test("package.json version matches APP_VERSION", () => {
   };
   assert.equal(pkg.version, APP_VERSION);
 });
+
+test("changelog latest version matches APP_VERSION", () => {
+  const changelog = readFileSync(new URL("../web/src/pages/Changelog.tsx", import.meta.url), "utf8");
+  const match = changelog.match(/version:\s*"(\d+\.\d+\.\d+)"/);
+  assert.ok(match, "changelog has a version");
+  assert.equal(match[1], APP_VERSION);
+});

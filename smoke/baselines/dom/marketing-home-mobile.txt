@@ -44,6 +44,8 @@
     - tablist "Screenshots":
       - tab "Dashboard" [selected]
       - tab "A trip"
+      - tab "Suggested payments"
+      - tab "Friends"
       - tab "Adding a bill"
       - tab "A bill"
       - tab "Every expense"

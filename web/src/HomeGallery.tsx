@@ -18,7 +18,17 @@ const SHOTS: { file: string; caption: string; alt: string }[] = [
   {
     file: "group-tokyo.png",
     caption: "A trip",
-    alt: "Weekend in Tokyo group: balances in JPY, suggested settle-up transfers, and the trip's expenses.",
+    alt: "Weekend in Tokyo group: balances in JPY, suggested payments, and the trip's expenses.",
+  },
+  {
+    file: "group-apartment.png",
+    caption: "Suggested payments",
+    alt: "Apartment 4B group: member balances, suggested payments, and a recurring rent series.",
+  },
+  {
+    file: "friends.png",
+    caption: "Friends",
+    alt: "Friends list with per-currency balances and who has not joined yet.",
   },
   {
     file: "add-expense-dialog.png",

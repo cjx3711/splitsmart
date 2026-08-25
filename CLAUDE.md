@@ -567,8 +567,9 @@ Three things worth keeping:
   next to it.
 
 Guests get the same three routes under `/api/v1/guest/*`, scoped with
-`expenseInScope`. Guest visibility is **stricter** than the logged-in rule: a
-link holder sees bills they are a participant of, not everything in the group.
+`expenseInScope`. In a group the link covers, that is every bill — a guest can
+edit and comment the same way a logged-in member can. A group link still cannot
+reach a 1:1 expense.
 
 ## Recurring expenses
 
@@ -628,8 +629,9 @@ cannot mean one thing on a screen and another in a download.
 
 ## Restore
 
-`POST /api/v1/expenses/:id/restore` undoes a soft delete, participant-only, and
-is the reason tombstones were worth keeping. It goes through the expense writer,
+`POST /api/v1/expenses/:id/restore` undoes a soft delete — you are on the bill,
+or you are currently in its group — and is the reason tombstones were worth
+keeping. It goes through the expense writer,
 **rebuilds `expense_repayments`** from `expense_users` (the cache has been
 outside every balance query since the delete), writes `expense.restored` to the
 feed and a system comment to the bill. Restoring twice is a no-op.
@@ -649,9 +651,12 @@ Three endpoints write expenses, and the newest one is what the web UI uses:
 
 The narrow two are unchanged and still used; the generic one exists because the
 add-expense dialog can name several people with no group at all, which neither
-of the others can express. It requires the caller to be a participant: a
-non-group expense between two other people creates a balance neither of them can
-see and there is no screen for it.
+of the others can express. A non-group expense still requires the caller to be
+a participant: a bill between two other people creates a balance neither of
+them can see and there is no screen for. In a group, any current member may
+write, including a payment between two other members — converting the group's
+remaining debts is that case. The same rule applies to edit, delete, restore,
+and to the sync push those screens go through.
 
 On the client, `web/src/ExpenseDialog.tsx` wraps the form for both shells.
 The logged-in `AddExpenseDialog` is the only place that knows where people

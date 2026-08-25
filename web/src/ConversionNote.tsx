@@ -42,6 +42,23 @@ export function ConversionNote({
 }
 
 /**
+ * Converted total in the preferred currency, or null when conversion is not
+ * needed / not possible. Shared by the ≈ footnote and by collapsed headlines
+ * so a missing rate never becomes a 1:1 stand-in.
+ */
+export function useConvertedTotal(
+  balances: CurrencyAmount[],
+  preferredCurrency: string,
+): number | null {
+  const { decimalsFor } = useCurrencies();
+  const needed = needsConversion(balances, preferredCurrency);
+  const symbols = needed ? balances.map((b) => b.currencyCode) : [];
+  const { rates, loading, error } = useExchangeRates(preferredCurrency, symbols);
+  if (!needed || loading || error || !rates) return null;
+  return convertBalances(balances, preferredCurrency, rates, decimalsFor);
+}
+
+/**
  * The "≈ … *" line. Renders nothing unless some amount is not already in the
  * preferred currency and rates loaded successfully - never a stale or 1:1 stand-in.
  */
@@ -54,12 +71,7 @@ export function EstimatedTotal({
   preferredCurrency: string;
   compact?: boolean;
 }) {
-  const { decimalsFor } = useCurrencies();
-  const needed = needsConversion(balances, preferredCurrency);
-  const symbols = needed ? balances.map((b) => b.currencyCode) : [];
-  const { rates, loading, error } = useExchangeRates(preferredCurrency, symbols);
-  if (!needed || loading || error || !rates) return null;
-  const total = convertBalances(balances, preferredCurrency, rates, decimalsFor);
+  const total = useConvertedTotal(balances, preferredCurrency);
   if (total === null) return null;
   return (
     <div className={compact ? "estimate estimate-compact" : "estimate"}>

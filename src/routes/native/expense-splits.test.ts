@@ -413,7 +413,7 @@ describe("POST /expenses: the generic endpoint", () => {
     assert.equal(expense.details, "Split after the ferry");
   });
 
-  test("refuses an expense the caller is not on", async () => {
+  test("refuses a non-group expense the caller is not on", async () => {
     // A non-group expense between two other people creates a balance neither of
     // them can see and this app has no screen for.
     const { status } = await post("/expenses",
@@ -425,6 +425,60 @@ describe("POST /expenses: the generic endpoint", () => {
         ],
       }));
     assert.equal(status, 400);
+  });
+
+  test("a group member can manage an expense they are not on", async () => {
+    // Converting remaining debts records payments between other members.
+    const created = await post(
+      "/expenses",
+      body({
+        groupId,
+        description: "Balance conversion",
+        splitType: "exact",
+        participants: [
+          { userId: userIds[1]!, paidMinor: 3000, input: 0 },
+          { userId: userIds[2]!, paidMinor: 0, input: 3000 },
+        ],
+      }),
+    );
+    assert.equal(created.status, 201);
+    const id = created.body.id as string;
+
+    const got = await app.request(`/api/v1/expenses/${id}`, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    assert.equal(got.status, 200);
+
+    const patched = await app.request(`/api/v1/expenses/${id}`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(
+        body({
+          groupId,
+          description: "Balance conversion",
+          details: "quoted rate",
+          splitType: "exact",
+          participants: [
+            { userId: userIds[1]!, paidMinor: 3000, input: 0 },
+            { userId: userIds[2]!, paidMinor: 0, input: 3000 },
+          ],
+        }),
+      ),
+    });
+    assert.equal(patched.status, 200);
+
+    const deleted = await app.request(`/api/v1/expenses/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${apiToken}` },
+    });
+    assert.equal(deleted.status, 200);
+
+    const restored = await app.request(`/api/v1/expenses/${id}/restore`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(restored.status, 200);
   });
 
   test("refuses a stranger on a non-group expense", async () => {

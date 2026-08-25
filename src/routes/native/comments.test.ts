@@ -198,6 +198,7 @@ describe("writing and reading a thread", () => {
       body: JSON.stringify({ content: "Was this for the flat?" }),
     });
     assert.equal(posted.status, 201);
+    assert.equal((await as(aliceToken, `/expenses/${ghostExpense}`)).status, 200);
   });
 
   test("empty or whitespace content is a 400, not a row", async () => {
@@ -504,13 +505,11 @@ describe("describeExpenseChange", () => {
 
 describe("through a guest link", () => {
   /**
-   * A bill the ghost is actually on.
+   * A bill the ghost is actually on, plus the group dinner they are not on.
    *
-   * Guest visibility is stricter than the logged-in rule on purpose: a link
-   * holder sees expenses they are a PARTICIPANT of inside the link's groups, not
-   * everything in the group (docs/GUEST.md, `expenseInScope`). So the group
-   * dinner above is invisible to this link even though the ghost is a member,
-   * and the thread has to follow the expense, not the group.
+   * Guest visibility for a group is the same as logged-in: every bill in the
+   * groups the link covers, not only the ones the ghost is named on. 1:1 bills
+   * stay out of a group link (`expenseInScope`).
    */
   let ghostExpenseId: string;
 
@@ -563,9 +562,13 @@ describe("through a guest link", () => {
     );
   });
 
-  test("a guest cannot reach the thread of a group bill they are not on", async () => {
-    // Same rule as every other guest read: in the group, but not on this bill.
-    assert.equal((await asGuest(`/expenses/${expenseId}/comments`)).status, 404);
+  test("a guest can read and write the thread of a group bill they are not on", async () => {
+    assert.equal((await asGuest(`/expenses/${expenseId}/comments`)).status, 200);
+    const posted = await asGuest(`/expenses/${expenseId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content: "Was this for the flat?" }),
+    });
+    assert.equal(posted.status, 201);
   });
 
   test("a guest cannot reach a thread outside the link's scope", async () => {

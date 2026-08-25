@@ -74,15 +74,15 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Office Lunch Club":
+  - link "Weekend in Tokyo":
+    - /url: /app/groups/<ULID>
+  - link "Yosemite Camping":
     - /url: /app/groups/<ULID>
   - link "Apartment 4B":
     - /url: /app/groups/<ULID>
-  - link "Jess & Marco's Wedding":
+  - link "Book Club":
     - /url: /app/groups/<ULID>
-  - link "Ski Trip 2026":
-    - /url: /app/groups/<ULID>
-  - link "Weekend in Tokyo":
+  - link "Office Lunch Club":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -90,25 +90,25 @@
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "Aisyah":
+  - link "Ah Beng":
     - /url: /app/friends/<ULID>
-  - link "Mel":
+  - link "James":
     - /url: /app/friends/<ULID>
-  - link "JJ":
+  - link "Jen":
     - /url: /app/friends/<ULID>
   - link "John":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
-  - link "Taro":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "Danial":
     - /url: /app/friends/<ULID>
   - link "Jas":
     - /url: /app/friends/<ULID>
-  - link "Hana":
+  - link "Aisyah":
     - /url: /app/friends/<ULID>
-  - link "Ah Lian":
+  - link "Mel":
+    - /url: /app/friends/<ULID>
+  - link "Taro":
     - /url: /app/friends/<ULID>
   - link "Show all":
     - /url: /app/friends
@@ -122,7 +122,10 @@
   - link "Add a friend":
     - /url: /app/friends/new
     - button "Add a friend"
-  - text: Net position 1200JPY 3909.36USD You owe 1200JPY 136.10USD You are owed 2400JPY 4045.46USD
+  - text: Net position 4035.02USD You owe
+  - group: JPY · USD▼
+  - text: You are owed
+  - group: JPY · USD▼
   - paragraph:
     - text: "* Converted to USD, your default currency, using"
     - link "Rates By Exchange Rate API":
@@ -132,27 +135,27 @@
       - /url: /app/settings
     - text: .
   - heading "You owe" [level=2]
+  - link "Jas you owe 54.67USD":
+    - /url: /app/friends/<ULID>
+  - group: Book Club · Jess & Marco's Wedding▼
   - link "Mel you owe 71.10USD":
     - /url: /app/friends/<ULID>
-  - link "Jas you owe 65.00USD":
-    - /url: /app/friends/<ULID>
   - heading "You are owed" [level=2]
-  - link "JJ you owe 1200JPY owes you 3836.21USD 3696.21USD ·Apartment 4B 140.00USD ·Ski Trip 2026 -1200JPY ·Weekend in Tokyo":
+  - link "Ah Beng owes you 149.25USD":
     - /url: /app/friends/<ULID>
-    - text: JJ you owe 1200JPY owes you 3836.21USD
-    - list:
-      - listitem: 3696.21USD ·Apartment 4B
-      - listitem: 140.00USD ·Ski Trip 2026
-      - listitem: "-1200JPY ·Weekend in Tokyo"
-  - link "John owes you 60.00USD":
+  - group: Ski Trip 2026 · one-on-one▼
+  - link "James owes you 15.00USD":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng owes you 1200JPY 149.25USD 140.00USD ·Ski Trip 2026 1200JPY ·Weekend in Tokyo 9.25USD ·one-on-one":
+  - link "Jen owes you 35.00USD":
     - /url: /app/friends/<ULID>
-    - text: Ah Beng owes you 1200JPY 149.25USD
-    - list:
-      - listitem: 140.00USD ·Ski Trip 2026
-      - listitem: 1200JPY ·Weekend in Tokyo
-      - listitem: 9.25USD ·one-on-one
+  - link "John owes you 95.00USD":
+    - /url: /app/friends/<ULID>
+  - group: Yosemite Camping · one-on-one▼
+  - link "JJ":
+    - /url: /app/friends/<ULID>
+  - group: JPY · USD▼
+  - link "Danial owes you 10.33USD":
+    - /url: /app/friends/<ULID>
   - link "Hana owes you 1200JPY":
     - /url: /app/friends/<ULID>
 - contentinfo:

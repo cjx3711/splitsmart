@@ -352,10 +352,11 @@ export function ApiDocs() {
       </p>
       <Endpoint method="POST" path="/api/v1/expenses">
         <p>
-          Create anywhere: a group, or no group. You must be a participant. A
-          non-group expense may only include people you already share history
-          with. <code>groupId</code> may be <code>null</code>.{" "}
-          <code>201</code> with <code>{`{ id }`}</code>.
+          Create anywhere: a group, or no group. In a group, any current member
+          may write, including a payment between two other members. A non-group
+          expense requires you to be a participant, and may only include people
+          you already share history with. <code>groupId</code> may be{" "}
+          <code>null</code>. <code>201</code> with <code>{`{ id }`}</code>.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/expenses">
@@ -403,8 +404,9 @@ export function ApiDocs() {
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/expenses/:id/restore">
         <p>
-          Undoes a delete. Participant-only, rebuilds the repayment cache, and is
-          a no-op if the expense is already live.
+          Undoes a delete. You are on the bill, or you are currently in its
+          group. Rebuilds the repayment cache, and is a no-op if the expense is
+          already live.
         </p>
       </Endpoint>
 
@@ -537,9 +539,9 @@ export function ApiDocs() {
         <p>
           The thread on an expense in scope, plus <code>POST</code> to add one
           and <code>DELETE /api/v1/guest/comments/:id</code> to remove your own.
-          A guest speaks as the person the link acts as. Guest visibility is
-          stricter than the logged-in rule: it needs you to be a participant of
-          that bill, not merely in its group.
+          A guest speaks as the person the link acts as. In a group the link
+          covers, that is every bill, not only the ones they are named on. A
+          group link still cannot reach a 1:1 expense.
         </p>
       </Endpoint>
       <Endpoint method="GET" path="/api/v1/guest/expenses.csv" auth="guest link">

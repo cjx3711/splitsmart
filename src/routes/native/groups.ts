@@ -22,7 +22,7 @@ import {
   restoreExpense,
   createPayment,
 } from "../../domain/expenses.ts";
-import { commentCountSql } from "../../domain/comments.ts";
+import { canSeeExpense, commentCountSql } from "../../domain/comments.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { logChange } from "../../domain/sync-log.ts";
 import { revokeMemberLinks } from "../../domain/access-links.ts";
@@ -623,16 +623,6 @@ export const groupRoutes = new Hono<AppEnv>()
     }
   },
 );
-/** Throws a 404-shaped result unless the caller is on this expense. */
-async function assertParticipant(expenseId: string, userId: string) {
-  return db
-    .selectFrom("expense_users")
-    .select("user_id")
-    .where("expense_id", "=", expenseId)
-    .where("user_id", "=", userId)
-    .executeTakeFirst();
-}
-
 export const expenseRoutes = new Hono<AppEnv>()
   .use("*", requireAuth)
 /**
@@ -655,15 +645,16 @@ export const expenseRoutes = new Hono<AppEnv>()
  *   no group   (you, plus anyone you already share money history with
  *                (src/domain/friends.ts is the ONE definition of that)
  *
- * The caller must be on the expense either way. A non-group expense between two
- * other people would create a balance neither of them can see and this app has
- * no screen for.
+ * In a group, any current member may write — converting remaining debts records
+ * payments between other people. A non-group expense still requires the caller
+ * to be on it: a bill between two other people creates a balance neither of
+ * them can see and this app has no screen for.
  */
   .post("/", zValidator("json", genericExpenseBodySchema), async (c) => {
   const auth = c.get("user");
   const { groupId = null, ...input } = c.req.valid("json");
 
-  if (!input.participants.some((p) => p.userId === auth.id)) {
+  if (groupId === null && !input.participants.some((p) => p.userId === auth.id)) {
     return c.json({ error: "You have to be one of the people on this expense." }, 400);
   }
 
@@ -779,7 +770,7 @@ export const expenseRoutes = new Hono<AppEnv>()
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
-  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+  if (!(await canSeeExpense(db, expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
 
   const expense = await db
     .selectFrom("expenses")
@@ -843,11 +834,11 @@ export const expenseRoutes = new Hono<AppEnv>()
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
-  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+  if (!(await canSeeExpense(db, expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
 
   const { groupId = null, ...input } = c.req.valid("json");
 
-  if (!input.participants.some((p) => p.userId === auth.id)) {
+  if (groupId === null && !input.participants.some((p) => p.userId === auth.id)) {
     return c.json({ error: "You have to be one of the people on this expense." }, 400);
   }
 
@@ -884,8 +875,9 @@ export const expenseRoutes = new Hono<AppEnv>()
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
-  // Only a participant may delete an expense.
-  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+  if (!(await canSeeExpense(db, expenseId, auth.id, { includeDeleted: true }))) {
+    return c.json({ error: "Not found" }, 404);
+  }
 
   await deleteExpense(expenseId, auth.id);
   return c.json({ ok: true });
@@ -893,17 +885,19 @@ export const expenseRoutes = new Hono<AppEnv>()
 /**
  * Undoes a delete.
  *
- * Participant-only, exactly like delete, and deliberately reachable for a row
- * that is already a tombstone: `assertParticipant` reads `expense_users`, which a
- * soft delete never touches. That is the whole reason soft deletes were worth
- * having, and until now there was no way to use it.
+ * Same access as delete: you are on the bill, or you are currently in its group.
+ * Deliberately reachable for a row that is already a tombstone — `canSeeExpense`
+ * with `includeDeleted` still finds `expense_users` and the group, which a soft
+ * delete never touches. That is the whole reason soft deletes were worth having.
  */
   .post("/:id/restore", async (c) => {
   const auth = c.get("user");
   const expenseId = c.req.param("id");
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
-  if (!(await assertParticipant(expenseId, auth.id))) return c.json({ error: "Not found" }, 404);
+  if (!(await canSeeExpense(db, expenseId, auth.id, { includeDeleted: true }))) {
+    return c.json({ error: "Not found" }, 404);
+  }
 
   try {
     await restoreExpense(expenseId, auth.id);

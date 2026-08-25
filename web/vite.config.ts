@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyAppOrigin } from "../src/open-graph.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +23,21 @@ const here = dirname(fileURLToPath(import.meta.url));
  * Vite's history fallback only knows about index.html, so the middleware below
  * points /app and /guest at their own documents.
  */
+function fillAppOrigin(): Plugin {
+  return {
+    name: "splitsmart-app-origin",
+    transformIndexHtml(html, ctx) {
+      // Production HTML keeps `__APP_ORIGIN__` so Hono can fill APP_ORIGIN at
+      // request time (the Docker image is built without the public URL). Dev
+      // has no Hono in front of this document, so fill it here.
+      if (ctx.server == null) return html;
+      const origin =
+        process.env.APP_ORIGIN ?? `http://localhost:${process.env.WEB_PORT ?? 5444}`;
+      return applyAppOrigin(html, origin);
+    },
+  };
+}
+
 function shells(): Plugin {
   return {
     name: "splitsmart-shells",
@@ -45,7 +61,7 @@ function shells(): Plugin {
 
 export default defineConfig({
   root: here,
-  plugins: [react(), shells()],
+  plugins: [react(), shells(), fillAppOrigin()],
   build: {
     outDir: resolve(here, "dist"),
     emptyOutDir: true,

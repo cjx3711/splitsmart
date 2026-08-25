@@ -1,6 +1,7 @@
 /**
  * One expense, seen through a guest link. Editable and deletable, like the
- * logged-in screen: a guest is a participant in the ledger, not a spectator.
+ * logged-in screen: a guest in a group can manage any bill in that group, not
+ * only the ones they are named on.
  *
  * The edit dialog is seeded exactly as EditExpenseDialog seeds it, from
  * split_type / split_input / split_meta, so the split reopens as it was typed

@@ -21,6 +21,7 @@ import { nativeApi } from "./routes/native/v1.ts";
 import { startRecurringScheduler } from "./domain/scheduler.ts";
 import { startBackupScheduler } from "./backup/scheduler.ts";
 import { APP_VERSION } from "./version.ts";
+import { applyAppOrigin } from "./open-graph.ts";
 
 const app = new Hono<AppEnv>();
 
@@ -78,6 +79,9 @@ if (env.NODE_ENV === "production") {
   app.use("/guest/sw.js", serveStatic({ root: "./web/dist" }));
   app.use("/favicon.svg", serveStatic({ root: "./web/dist" }));
   app.use("/splitsmart.svg", serveStatic({ root: "./web/dist" }));
+  // Share-card image named by the marketing document's og:image. Same reason
+  // as favicon: the catch-all below would otherwise hand back index.html.
+  app.use("/og.png", serveStatic({ root: "./web/dist" }));
   // web/public/telemetry.js: a committed no-op stub. deploy.sh optionally
   // swaps in a local, gitignored .telemetry.js for the production build.
   // See scripts/deploy/README.md.
@@ -85,7 +89,15 @@ if (env.NODE_ENV === "production") {
 
   const shell = async (c: Context, file: string) => {
     try {
-      return c.html(await readFile(`./web/dist/${file}`, "utf8"));
+      // Open Graph requires an absolute og:image. The frontend is built once
+      // into the Docker image, so APP_ORIGIN cannot be baked in at
+      // `yarn build:web`; each deploy fills it in here. A document with no
+      // placeholder is unchanged.
+      const html = applyAppOrigin(
+        await readFile(`./web/dist/${file}`, "utf8"),
+        env.APP_ORIGIN,
+      );
+      return c.html(html);
     } catch {
       return c.text("Frontend not built. Run `yarn build:web`.", 503);
     }

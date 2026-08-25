@@ -292,16 +292,14 @@ function OweageChart() {
         <h2>You owe</h2>
         <div className="list">
           <OweRow
-            id="mkt-ahbeng"
-            name="Tan Ah Beng"
-            direction="negative"
-            amounts={["71.10 USD"]}
-          />
-          <OweRow
             id="mkt-jas"
             name="Jasmine Lim Jia Hui"
-            direction="negative"
-            amounts={["65.00 USD"]}
+            youOwe={["54.67 USD"]}
+          />
+          <OweRow
+            id="mkt-mel"
+            name="Melvin Tan Wei Ming"
+            youOwe={["71.10 USD"]}
           />
         </div>
       </section>
@@ -309,20 +307,18 @@ function OweageChart() {
         <h2>You are owed</h2>
         <div className="list">
           <OweRow
-            id="mkt-jj"
-            name="Lee Jin Jie"
-            direction="positive"
-            amounts={["1200 JPY", "140.00 USD"]}
+            id="mkt-ahbeng"
+            name="Tan Ah Beng"
+            theyOwe={["149.25 USD"]}
             breakdown={[
               { amount: "140.00 USD", where: "Ski Trip 2026" },
-              { amount: "1200 JPY", where: "Weekend in Tokyo" },
+              { amount: "9.25 USD", where: "one-on-one" },
             ]}
           />
           <OweRow
-            id="mkt-taro"
-            name="Tanaka Taro"
-            direction="positive"
-            amounts={["39.10 USD"]}
+            id="mkt-james"
+            name="James Smith"
+            theyOwe={["15.00 USD"]}
           />
         </div>
       </section>
@@ -330,17 +326,29 @@ function OweageChart() {
   );
 }
 
+function AmountsLine({ values }: { values: string[] }) {
+  return (
+    <span className="amounts">
+      {values.map((value) => (
+        <span key={value} className="amount">
+          {value}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function OweRow({
   id,
   name,
-  direction,
-  amounts,
+  youOwe,
+  theyOwe,
   breakdown,
 }: {
   id: string;
   name: string;
-  direction: "positive" | "negative";
-  amounts: string[];
+  youOwe?: string[];
+  theyOwe?: string[];
   breakdown?: { amount: string; where: string }[];
 }) {
   return (
@@ -348,16 +356,16 @@ function OweRow({
       <Avatar id={id} name={name} />
       <div className="list-item-body">
         <div className="list-item-title">{name}</div>
-        <div className={direction}>
-          {direction === "positive" ? "owes you " : "you owe "}
-          <span className="amounts">
-            {amounts.map((value) => (
-              <span key={value} className="amount">
-                {value}
-              </span>
-            ))}
-          </span>
-        </div>
+        {youOwe && youOwe.length > 0 ? (
+          <div className="negative">
+            you owe <AmountsLine values={youOwe} />
+          </div>
+        ) : null}
+        {theyOwe && theyOwe.length > 0 ? (
+          <div className="positive">
+            owes you <AmountsLine values={theyOwe} />
+          </div>
+        ) : null}
         {breakdown && breakdown.length > 1 ? (
           <ul className="breakdown">
             {breakdown.map((entry) => (

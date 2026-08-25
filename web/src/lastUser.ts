@@ -10,12 +10,25 @@ import { useEffect, useState } from "react";
  */
 export const LAST_USER_KEY = "splitsmart.lastUserId";
 
+/** Same-tab companion to the `storage` event, which only fires in other tabs. */
+const LAST_USER_CHANGE = "splitsmart:last-user";
+
 export function readLastUserId(): string | null {
   try {
     return localStorage.getItem(LAST_USER_KEY);
   } catch {
     return null;
   }
+}
+
+/** Drop the local hint. Does not touch the session cookie; callers do that. */
+export function clearLastUserId(): void {
+  try {
+    localStorage.removeItem(LAST_USER_KEY);
+  } catch {
+    // private mode / quota
+  }
+  window.dispatchEvent(new Event(LAST_USER_CHANGE));
 }
 
 /** True when this browser has a cached account and has not logged out. */
@@ -28,7 +41,11 @@ export function useHasLocalAccount(): boolean {
       if (event.key === LAST_USER_KEY || event.key === null) sync();
     };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(LAST_USER_CHANGE, sync);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(LAST_USER_CHANGE, sync);
+    };
   }, []);
 
   return has;

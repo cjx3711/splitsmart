@@ -32,7 +32,11 @@
     - /url: /app/friends/<ULID>
   - heading "Comments" [level=2]
   - strong: JJ
-  - text: "Did this include the laundry stuff? Test User updated this expense: - Amount: 87.43 USD → 92.43 USD - Notes added: \"Includes the laundry detergent\" - JJ's share: 43.71 USD → 46.21 USD - Test User's share: 43.72 USD → 46.22 USD Add a comment"
+  - text: "Did this include the laundry stuff? Test User updated this expense: - Amount: 87.43 USD → 92.43 USD - Notes added: \"Includes the laundry detergent\" - JJ's share: 43.71 USD → 46.21 USD - Test User's share: 43.72 USD → 46.22 USD"
+  - strong: You
+  - text: smoke test comment
+  - button "Delete"
+  - text: Add a comment
   - textbox "Add a comment"
   - button "Post" [disabled]
 - contentinfo:

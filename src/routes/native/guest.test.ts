@@ -572,7 +572,7 @@ describe("guest writes", () => {
     assert.equal(res.status, 403);
   });
 
-  test("cannot write an expense it is not on", async () => {
+  test("a guest can write a group expense they are not on", async () => {
     const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
 
     const res = await guest(secret, "/expenses", {
@@ -590,7 +590,87 @@ describe("guest writes", () => {
         ],
       }),
     });
-    assert.equal(res.status, 403);
+    assert.equal(res.status, 201);
+  });
+
+  test("a guest can edit and delete a group expense they are not on", async () => {
+    const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
+    const others = await createExpense({
+      groupId: sharedGroupId,
+      description: "Between the others",
+      costMinor: 400,
+      currencyCode: "USD",
+      date: "2026-04-17",
+      splitType: "equal",
+      participants: [
+        { userId: ownerId, paidMinor: 400 },
+        { userId: bobId, paidMinor: 0 },
+      ],
+      createdBy: ownerId,
+    });
+
+    assert.equal((await guest(secret, `/expenses/${others}`)).status, 200);
+
+    const listed = await json<{ expenses: ExpenseRow[] }>(await guest(secret, `/groups/${sharedGroupId}`));
+    assert.ok(
+      listed.expenses.some((e) => e.id === others),
+      "the group page lists every bill, not only the guest's",
+    );
+
+    const edited = await guest(secret, `/expenses/${others}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "Between the others, corrected",
+        costMinor: 400,
+        currencyCode: "USD",
+        date: "2026-04-17",
+        splitType: "equal",
+        participants: [
+          { userId: ownerId, paidMinor: 400 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(edited.status, 200);
+
+    assert.equal((await guest(secret, `/expenses/${others}`, { method: "DELETE" })).status, 200);
+  });
+
+  test("a friend-link guest can edit a group bill they are not on", async () => {
+    const secret = await mint({ kind: "friend", userId: aliceId });
+    const others = await createExpense({
+      groupId: sharedGroupId,
+      description: "Owner and Bob",
+      costMinor: 250,
+      currencyCode: "USD",
+      date: "2026-04-18",
+      splitType: "equal",
+      participants: [
+        { userId: ownerId, paidMinor: 250 },
+        { userId: bobId, paidMinor: 0 },
+      ],
+      createdBy: ownerId,
+    });
+
+    assert.equal((await guest(secret, `/expenses/${others}`)).status, 200);
+
+    const edited = await guest(secret, `/expenses/${others}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        groupId: sharedGroupId,
+        description: "Owner and Bob, corrected",
+        costMinor: 250,
+        currencyCode: "USD",
+        date: "2026-04-18",
+        splitType: "equal",
+        participants: [
+          { userId: ownerId, paidMinor: 250 },
+          { userId: bobId, paidMinor: 0 },
+        ],
+      }),
+    });
+    assert.equal(edited.status, 200);
   });
 
   test("an edit cannot move an expense out of the scope that authorised it", async () => {
@@ -676,7 +756,7 @@ describe("guest writes", () => {
     assert.equal(res.status, 403);
   });
 
-  test("cannot record a settle-up between two other people", async () => {
+  test("a guest can record a settle-up between two other people", async () => {
     const secret = await mint({ kind: "group_member", groupId: sharedGroupId, userId: aliceId });
 
     const res = await guest(secret, "/payments", {
@@ -689,7 +769,13 @@ describe("guest writes", () => {
         currencyCode: "USD",
       }),
     });
-    assert.equal(res.status, 403, "Alice has to be on the payment, not just in the group");
+    assert.equal(res.status, 201);
+    const { id } = await json<{ id: string }>(res);
+    const noted = await guest(secret, `/expenses/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ content: "Automatic balance conversion" }),
+    });
+    assert.equal(noted.status, 201);
   });
 });
 

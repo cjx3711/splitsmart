@@ -45,7 +45,7 @@ import {
   updateExpense,
   ExpenseConflictError,
 } from "../../domain/expenses.ts";
-import { createComment, deleteComment, CommentError } from "../../domain/comments.ts";
+import { canSeeExpense, createComment, deleteComment, CommentError } from "../../domain/comments.ts";
 import { listRelatedUserIds } from "../../domain/friends.ts";
 import { currentSeq } from "../../domain/sync-log.ts";
 import { isUlid } from "../../domain/ulid.ts";
@@ -569,21 +569,21 @@ async function applyPushOp(userId: string, op: PushOp): Promise<PushResult> {
 }
 
 /**
- * The same participant rules as `POST /api/v1/expenses`.
+ * The same write rules as `POST /api/v1/expenses`.
  *
  * Not a lighter version of them. Push is a batching wrapper over the same
  * writers, so it has to be a batching wrapper over the same authorisation too -
  * otherwise the queue is a way around a check the online form enforces.
+ *
+ * In a group, membership is enough: converting remaining debts records payments
+ * between other members. A non-group expense still requires the caller to be on
+ * it, or it would create a balance neither of them can see.
  */
 async function assertMayWrite(
   userId: string,
   groupId: string | null,
   participants: Array<{ userId: string }>,
 ): Promise<void> {
-  if (!participants.some((p) => p.userId === userId)) {
-    throw new Error("You have to be one of the people on this expense.");
-  }
-
   if (groupId !== null) {
     const membership = await db
       .selectFrom("group_members")
@@ -599,21 +599,21 @@ async function assertMayWrite(
     return;
   }
 
+  if (!participants.some((p) => p.userId === userId)) {
+    throw new Error("You have to be one of the people on this expense.");
+  }
+
   const allowed = new Set([userId, ...(await listRelatedUserIds(db, userId))]);
   if (participants.some((p) => !allowed.has(p.userId))) {
     throw new Error("A non-group expense can only involve you and people you share history with.");
   }
 }
 
-/** Whether the caller is on this bill. Deletes and restores are participant-only. */
-async function assertParticipant(userId: string, expenseId: string): Promise<void> {
-  const row = await db
-    .selectFrom("expense_users")
-    .select("user_id")
-    .where("expense_id", "=", expenseId)
-    .where("user_id", "=", userId)
-    .executeTakeFirst();
-  if (!row) throw new Error("Not found");
+/** Whether the caller may edit, delete, or restore this bill. Same rule as GET. */
+async function assertMayManage(userId: string, expenseId: string): Promise<void> {
+  if (!(await canSeeExpense(db, expenseId, userId, { includeDeleted: true }))) {
+    throw new Error("Not found");
+  }
 }
 
 async function pushCreate(
@@ -666,7 +666,7 @@ async function pushUpdate(
   userId: string,
   op: Extract<PushOp, { kind: "expense.update" }>,
 ): Promise<PushResult> {
-  await assertParticipant(userId, op.id);
+  await assertMayManage(userId, op.id);
 
   const { groupId = null, ...input } = op.payload;
   await assertMayWrite(userId, groupId, input.participants);
@@ -687,7 +687,7 @@ async function pushDelete(
   userId: string,
   op: Extract<PushOp, { kind: "expense.delete" }>,
 ): Promise<PushResult> {
-  await assertParticipant(userId, op.id);
+  await assertMayManage(userId, op.id);
 
   const result = await deleteExpense(op.id, userId, { expectedVersion: op.baseVersion });
   if (result.noop) {
@@ -717,7 +717,7 @@ async function pushRestore(
   userId: string,
   op: Extract<PushOp, { kind: "expense.restore" }>,
 ): Promise<PushResult> {
-  await assertParticipant(userId, op.id);
+  await assertMayManage(userId, op.id);
 
   const restored = await restoreExpense(op.id, userId, { expectedVersion: op.baseVersion });
 

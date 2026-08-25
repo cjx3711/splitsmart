@@ -74,21 +74,20 @@ export interface CommentRecord {
  * or you are currently in the group it belongs to. A group member who is not a
  * participant can still comment, which is the "why am I not on this?" case.
  *
- * A deleted expense is invisible, so its thread is too. The rows stay in the
- * table (soft delete, like everything else) so merge and re-import matching
- * still find them.
+ * A deleted expense is invisible, so its thread is too — unless `includeDeleted`
+ * is set, which restore and delete need: `expense_users` survives a soft delete,
+ * and a group member has to be able to undo a conversion they recorded between
+ * two other people.
  */
 export async function canSeeExpense(
   database: DB,
   expenseId: string,
   userId: string,
+  opts?: { includeDeleted?: boolean },
 ): Promise<boolean> {
-  const expense = await database
-    .selectFrom("expenses")
-    .select(["id", "group_id"])
-    .where("id", "=", expenseId)
-    .where("deleted_at", "is", null)
-    .executeTakeFirst();
+  let query = database.selectFrom("expenses").select(["id", "group_id"]).where("id", "=", expenseId);
+  if (!opts?.includeDeleted) query = query.where("deleted_at", "is", null);
+  const expense = await query.executeTakeFirst();
 
   if (!expense) return false;
 

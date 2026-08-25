@@ -136,7 +136,7 @@ run *after* the screenshots of the seeded state.
 | F7 | Test User adds "Smoke test paint" in Apartment 4B; JJ's session lists it |
 | F8 | Stop Rent warns (cancel is a no-op); resume starts from today and does not backfill |
 | F9 | Group balances, group members, and expense participants open `/friends/:id` |
-| F10 | Signed-in homepage says Open app; `/app/login` redirects to the dashboard |
+| F10 | Signed-in homepage says Open app and Log out; `/app/login` redirects to the dashboard; Log out returns the homepage to Log in |
 | F11 | A two-currency group names its default in the nudge and dialog; 3000 JPY → 20.00 USD; settle-up collapses to 3 × 35.00 USD |
 | F12 | Tokyo's 5 recorded debts + simplify nudge → 3 on, 5 again off; nets never grow |
 | F13 | Ah Beng's page carries the group's convert offer, naming USD as *your* default; previews 1200 JPY → 8.00 USD, cancels |

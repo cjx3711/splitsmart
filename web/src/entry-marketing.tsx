@@ -2,7 +2,8 @@
  * The public shell: landing, about, changelog, API docs.
  *
  * Nothing here registers a service worker. A peek at `splitsmart.lastUserId`
- * is enough to swap "Log in" for "Open app"; there is no `/auth/me` and no Dexie.
+ * is enough to swap "Log in" for "Open app" and offer Log out; there is no
+ * `/auth/me` and no Dexie.
  * The app is a separate document at /app, so moving between them is an
  * ordinary navigation rather than a client-side route. See docs/GUEST.md.
  */

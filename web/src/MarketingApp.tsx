@@ -1,6 +1,7 @@
 /**
  * The public site. No sidebar, no service worker, no Dexie. A last-user hint
- * is enough to offer "Open app" instead of "Log in".
+ * is enough to offer "Open app" instead of "Log in", and a Log out control
+ * next to it.
  *
  * Split out of the app shell when /app and /guest became their own documents
  * (docs/GUEST.md, "Two shells"): the marketing pages have no business shipping
@@ -9,7 +10,7 @@
 import { Routes, Route, Link } from "react-router-dom";
 import { Logo } from "./Logo.tsx";
 import { Footer } from "./Footer.tsx";
-import { useHasLocalAccount } from "./lastUser.ts";
+import { clearLastUserId, useHasLocalAccount } from "./lastUser.ts";
 import { Home } from "./pages/Home.tsx";
 import { About } from "./pages/About.tsx";
 import { Changelog } from "./pages/Changelog.tsx";
@@ -52,14 +53,32 @@ export function MarketingApp() {
 
 function HeaderAuthLink() {
   const signedIn = useHasLocalAccount();
-  return signedIn ? (
-    <a href="/app" className="mkt-btn mkt-btn-ghost mkt-btn-sm">
-      Open app
-    </a>
-  ) : (
-    <a href="/app/login" className="mkt-btn mkt-btn-ghost mkt-btn-sm">
-      Log in
-    </a>
+
+  async function logOut() {
+    try {
+      await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    } catch {
+      // Best-effort, same as Settings: drop the local hint either way.
+    }
+    clearLastUserId();
+  }
+
+  return (
+    <>
+      {signedIn && (
+        <button type="button" className="topbar-auth-action" onClick={() => void logOut()}>
+          Log out
+        </button>
+      )}
+      <a
+        href={signedIn ? "/app" : "/app/login"}
+        className="mkt-btn mkt-btn-ghost mkt-btn-sm">
+        {signedIn ? "Open app" : "Log in"}
+      </a>
+    </>
   );
 }
 

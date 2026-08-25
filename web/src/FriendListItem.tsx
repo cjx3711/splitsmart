@@ -43,9 +43,9 @@ export function oweVerb(isYou: boolean): string {
 /**
  * One person in a list: avatar, name, optional subtitle, optional right slot.
  *
- * When `to` is set the whole row is the link (hover included). Interactive
- * `actions` sit beside that link so a Remove/Edit control is not nested in
- * an `<a>`.
+ * When `to` is set the identity is the link (hover included). Interactive
+ * `actions` and `extra` (a currency/group dropdown) sit outside that `<a>`
+ * so a Remove control or `<details>` is not nested in a link.
  */
 export function FriendListItem({
   to,
@@ -70,19 +70,20 @@ export function FriendListItem({
       <div className="list-item-body">
         <div className="list-item-title">{title}</div>
         {subtitle != null && <div className="list-item-sub">{subtitle}</div>}
-        {extra}
+        {to ? null : extra}
       </div>
       {children}
     </>
   );
 
-  if (to && actions) {
+  if (to && (actions || extra)) {
     return (
       <div className="list-item list-item-clickable">
         <Link to={to} className="list-item-main">
           {main}
         </Link>
-        <div className="list-item-actions">{actions}</div>
+        {extra != null ? <div className="list-item-extra">{extra}</div> : null}
+        {actions != null && <div className="list-item-actions">{actions}</div>}
       </div>
     );
   }

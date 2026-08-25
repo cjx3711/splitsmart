@@ -1,3 +1,4 @@
+import type { ReactNode, SyntheticEvent } from "react";
 import type { CurrencyAmount } from "./api.ts";
 import { Amount, useCurrencies } from "./money.tsx";
 import { convertBalances, needsConversion, useExchangeRates } from "./exchangeRates.ts";
@@ -5,6 +6,28 @@ import { ConvertBalancesHint } from "./ConversionNote.tsx";
 import { ledgerVerb } from "./FriendListItem.tsx";
 import { HelpTip } from "./HelpTip.tsx";
 import { settleChoiceId } from "./SettleUpDialog.tsx";
+
+/**
+ * Fold the real per-currency rows (and any extra breakdown) under a labelled
+ * summary. Clicks stay on the toggle even when the row is an `<a>`.
+ */
+export function BalanceDetail({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  const keepOnToggle = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+  return (
+    <details className="balance-detail" onClick={keepOnToggle} onKeyDown={keepOnToggle}>
+      <summary>{label}</summary>
+      {children}
+    </details>
+  );
+}
 
 /**
  * The headline figure for one person in a group roster.
@@ -79,10 +102,9 @@ export function RosterBalance({
         <Amount minor={estimate} currency={preferredCurrency} absolute />
         <span className="balance-approx">*</span>
       </div>
-      <details className="balance-detail">
-        <summary>{balances.map((b) => b.currencyCode).join(" · ")}</summary>
+      <BalanceDetail label={balances.map((b) => b.currencyCode).join(" · ")}>
         {rows}
-      </details>
+      </BalanceDetail>
     </div>
   );
 }

@@ -156,42 +156,48 @@ function scopeOf(c: Context<GuestEnv>): GuestScope {
 // Reads
 // ---------------------------------------------------------------------------
 
-/** The ids of every expense inside the scope. One definition, four callers. */
+/**
+ * The ids of every expense inside the scope. One definition, four callers.
+ *
+ * The list form of `expenseInScope`: every live bill in a group the link
+ * covers, plus 1:1 expenses that name both the guest and the friend-link
+ * counterpart. Do not re-derive that at a call site.
+ */
 async function visibleExpenseIds(scope: GuestScope): Promise<string[]> {
-  const mine = await db
-    .selectFrom("expense_users")
-    .innerJoin("expenses", "expenses.id", "expense_users.expense_id")
-    .select(["expenses.id", "expenses.group_id"])
-    .where("expense_users.user_id", "=", scope.actingAs)
-    .where("expenses.deleted_at", "is", null)
-    .execute();
+  const ids = new Set<string>();
 
-  const groupIds = new Set(scope.groupIds);
-  const candidates = mine.filter((e) =>
-    e.group_id === null ? scope.counterpartId !== null : groupIds.has(e.group_id),
-  );
+  if (scope.groupIds.length > 0) {
+    const inGroups = await db
+      .selectFrom("expenses")
+      .select("id")
+      .where("group_id", "in", scope.groupIds)
+      .where("deleted_at", "is", null)
+      .execute();
+    for (const row of inGroups) ids.add(row.id);
+  }
 
-  if (candidates.length === 0) return [];
+  if (scope.counterpartId !== null) {
+    const mine = await db
+      .selectFrom("expense_users")
+      .innerJoin("expenses", "expenses.id", "expense_users.expense_id")
+      .select("expenses.id")
+      .where("expense_users.user_id", "=", scope.actingAs)
+      .where("expenses.group_id", "is", null)
+      .where("expenses.deleted_at", "is", null)
+      .execute();
+    const mineIds = mine.map((r) => r.id);
+    if (mineIds.length > 0) {
+      const shared = await db
+        .selectFrom("expense_users")
+        .select("expense_id")
+        .where("expense_id", "in", mineIds)
+        .where("user_id", "=", scope.counterpartId)
+        .execute();
+      for (const row of shared) ids.add(row.expense_id);
+    }
+  }
 
-  // The non-group ones still have to have the counterpart on them; a friend
-  // link is "you and me", not "everything you ever split with anyone".
-  const nonGroupIds = candidates.filter((e) => e.group_id === null).map((e) => e.id);
-  const shared = nonGroupIds.length
-    ? new Set(
-        (
-          await db
-            .selectFrom("expense_users")
-            .select("expense_id")
-            .where("expense_id", "in", nonGroupIds)
-            .where("user_id", "=", scope.counterpartId!)
-            .execute()
-        ).map((r) => r.expense_id),
-      )
-    : new Set<string>();
-
-  return candidates
-    .filter((e) => e.group_id !== null || shared.has(e.id))
-    .map((e) => e.id);
+  return [...ids];
 }
 
 async function loadExpenses(ids: string[], limit: number, filters: ExpenseFilters = {}) {
@@ -306,19 +312,20 @@ async function inScope(scope: GuestScope, expenseId: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 /**
- * The guest must be ON any expense they write, and everyone on it must be
- * someone this link may name.
+ * Everyone on the expense must be someone this link may name, and a non-group
+ * expense still requires the guest to be on it.
  *
- * The first rule stops a guest creating a balance between two other people
- * (which they could then not see and neither could the owner's UI); the second
- * stops a group link reaching outside its group.
+ * In a group, membership (the link's scope) is enough: converting remaining
+ * debts records payments between other members. A 1:1 expense between two other
+ * people would create a balance this link cannot see and the owner's UI has no
+ * screen for.
  */
 async function checkWrite(
   scope: GuestScope,
   groupId: string | null,
   participantIds: string[],
 ): Promise<string | null> {
-  if (!participantIds.includes(scope.actingAs)) {
+  if (groupId === null && !participantIds.includes(scope.actingAs)) {
     return "You have to be one of the people on this expense.";
   }
 
@@ -450,7 +457,8 @@ export const guestRoutes = new Hono<GuestEnv>()
 })
 /**
  * The same download the logged-in app offers, over the same builder, with the
- * link's scope as the row set. A guest gets their own history, not the owner's.
+ * link's scope as the row set: every bill in the groups the link covers, plus
+ * 1:1 expenses with the counterpart on a friend link.
  */
   .get("/expenses.csv", async (c) => {
   const scope = scopeOf(c);
@@ -612,7 +620,8 @@ export const guestRoutes = new Hono<GuestEnv>()
   if (!isUlid(expenseId)) return c.json({ error: "Invalid expense id" }, 400);
 
   // Checked against the expense AS IT IS, before the edit is considered: you
-  // may only edit something you can already see.
+  // may only edit something this link can already see. In a group that is every
+  // bill, not only the ones the guest is named on.
   if (!(await inScope(scope, expenseId))) return c.json({ error: "Not found" }, 404);
 
   // Same reasoning as the create above, and here dropping it is what LEAVES an
@@ -695,7 +704,7 @@ export const guestRoutes = new Hono<GuestEnv>()
 //
 // A guest who can see a bill can talk about it. The scope question is the same
 // one every read here asks (`inScope`), so a group link still cannot reach a 1:1
-// expense, and the person speaking is always the name the link acts as.
+// expense, and a group member can comment on any bill in that group.
 //
 // What a guest cannot do: write a system comment (there is no `kind` on the
 // wire anywhere), or delete somebody else's note. Both are enforced in
