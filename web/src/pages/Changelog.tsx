@@ -14,6 +14,13 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    version: "0.2.1",
+    date: "25 August 2026",
+    items: [
+      "Fixes a bunch of UX issues around groups and friend pages.",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "24 August 2026",
     intro: "The actual first usable version.",
