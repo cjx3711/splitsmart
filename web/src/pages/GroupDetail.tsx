@@ -17,7 +17,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { displayName, type ExpenseQuery } from "../api.ts";
 import { LinkPanel, type LinkSlot } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
-import { Amount, useFormatMoney } from "../money.tsx";
+import { useFormatMoney } from "../money.tsx";
 import { AddExpenseDialog } from "../AddExpenseDialog.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseFilters } from "../ExpenseFilters.tsx";
@@ -29,15 +29,18 @@ import {
 import { GroupTypeIcon, groupTypeLabel } from "../groupTypes.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { useAuth } from "../App.tsx";
-import { OnlineOnly } from "../OnlineOnly.tsx";
+import { OnlineOnly, useOnline } from "../OnlineOnly.tsx";
 import { useGroupExpenses, useGroupView, useSettleSuggestions } from "../localData.ts";
+import { setGroupSimplify } from "../groupSettings.ts";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { ulid } from "../../../src/domain/ulid.ts";
-import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { ConversionFootnote } from "../ConversionNote.tsx";
+import { RosterBalance, SettleSuggestion } from "../GroupBalances.tsx";
 import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
-import { HelpTip } from "../HelpTip.tsx";
-import { FriendListItem, friendHref, groupRosterBalances, ledgerVerb } from "../FriendListItem.tsx";
+import { enqueuePayment } from "../recordPayment.ts";
+import { FriendListItem, friendHref, groupRosterBalances } from "../FriendListItem.tsx";
 import { Skeleton } from "../Skeleton.tsx";
+import { PlusIcon } from "../Icons.tsx";
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>();
@@ -45,13 +48,18 @@ export function GroupDetail() {
   const { user } = useAuth();
 
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | null>(null);
+  // Which suggested transfer the dialog should open on. Cleared when Settle up
+  // is pressed from the header, which starts at the picker.
+  const [settleChoice, setSettleChoice] = useState<string | undefined>(undefined);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
-  const { engine } = useSync();
+  const { engine, db, syncNow } = useSync();
+  const online = useOnline();
 
   useEffect(() => {
     setFilters({});
     setOpenDialog(null);
+    setSettleChoice(undefined);
   }, [id]);
 
   // Live queries: a sync landing, or a queued write, re-renders this screen
@@ -92,6 +100,7 @@ export function GroupDetail() {
     ...new Set(balances.flatMap((e) => e.balances.map((b) => b.currencyCode))),
   ];
   const hasSettle = settle.some((s) => s.transfers.length > 0);
+  const simplified = group.simplify_by_default === 1;
   const canConvert = outstandingCurrencies.length > 1;
   const roster = groupRosterBalances(
     members.map((m) => m.id),
@@ -154,40 +163,43 @@ export function GroupDetail() {
           >
             Options
           </button>
-          <button className="secondary" onClick={() => setOpenDialog("settle")}>
-            Settle up
+          <button
+            className="secondary"
+            onClick={() => {
+              setSettleChoice(undefined);
+              setOpenDialog("settle");
+            }}
+          >
+            <PlusIcon /> Payment
           </button>
-          <button onClick={() => setOpenDialog("expense")}>Add Expense</button>
+          <button onClick={() => setOpenDialog("expense")}>
+            <PlusIcon /> Expense
+          </button>
         </div>
       </div>
 
       <AddExpenseDialog
         open={openDialog === "expense"}
-        title={`Add Expense to ${group.name}`}
+        title={`New expense in ${group.name}`}
         initialGroupId={group.id}
         onClose={() => setOpenDialog(null)}
       />
 
       <SettleUpDialog
         open={openDialog === "settle"}
-        title={`Settle up in ${group.name}`}
+        title={`New payment in ${group.name}`}
         people={people}
         currencies={currenciesInPlay}
-        preferredCurrency={user.defaultCurrency}
         allowManual
         choices={groupSettleChoices(settle, nameOf, formatMoney)}
+        initialChoiceId={settleChoice}
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payment) => {
           // A payment is an ordinary expense with is_payment set: the payer
           // fronts the whole cost and the recipient owes all of it, which is
           // what cancels an equivalent slice of the balance. Queued like any
           // other write, so settling up works at the table.
-          if (!engine) throw new Error("Not ready to save yet.");
-          await engine.enqueue({
-            kind: "payment.create",
-            id: ulid(),
-            payload: paymentAsExpense(payment, group.id),
-          });
+          await enqueuePayment(engine, payment, group.id);
         }}
       />
 
@@ -196,6 +208,7 @@ export function GroupDetail() {
         nameOf={nameOf}
         transfers={convertTransfers}
         preferredCurrency={group.default_currency}
+        defaultLabel="this group's default currency"
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payments) => {
           if (!engine) throw new Error("Not ready to save yet.");
@@ -217,7 +230,33 @@ export function GroupDetail() {
 
       <div className="split-page">
           <aside className="split-aside">
-            <h2 style={{ marginTop: 0 }}>Balances</h2>
+            {hasSettle && (
+              <SettleSuggestion
+                settle={settle}
+                nameOf={nameOf}
+                currentUserId={user.id}
+                simplified={simplified}
+                onPick={(choiceId) => {
+                  setSettleChoice(choiceId);
+                  setOpenDialog("settle");
+                }}
+                // Both shortcuts need the network, so offline they are not
+                // offered rather than offered and refused.
+                onSimplify={
+                  simplified || !online || !db
+                    ? undefined
+                    : () => {
+                        void setGroupSimplify(db, group.id, true)
+                          .then(() => syncNow())
+                          .catch(() => undefined);
+                      }
+                }
+                onConvert={online ? () => setOpenDialog("convert") : undefined}
+                convertTo={{ code: group.default_currency, label: "this group's default currency" }}
+              />
+            )}
+
+            <h2 style={hasSettle ? undefined : { marginTop: 0 }}>Balances</h2>
               <div className="list">
                 {roster.map((entry) => (
                   <FriendListItem
@@ -225,34 +264,24 @@ export function GroupDetail() {
                     to={friendHref(entry.userId, user.id)}
                     avatar={avatarFor(entry.userId)}
                     title={nameOf(entry.userId)}
+                    subtitle={
+                      members.find((m) => m.id === entry.userId)?.is_ghost === 1 ? (
+                        <span className="tag muted">guest</span>
+                      ) : undefined
+                    }
                   >
-                    {entry.balances.length === 0 ? (
-                      <span className="muted">settled up</span>
-                    ) : (
-                    <div>
-                      <div className="ledger">
-                        {entry.balances.map((b) => (
-                          <div
-                            key={b.currencyCode}
-                            className={b.amountMinor >= 0 ? "positive" : "negative"}
-                          >
-                            {ledgerVerb(entry.userId === user.id, b.amountMinor)}
-                            <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                          </div>
-                        ))}
-                      </div>
-                      <EstimatedTotal
-                        balances={entry.balances}
-                        preferredCurrency={user.defaultCurrency}
-                      />
-                    </div>
-                    )}
+                    <RosterBalance
+                      balances={entry.balances}
+                      isYou={entry.userId === user.id}
+                      preferredCurrency={user.defaultCurrency}
+                    />
                   </FriendListItem>
                 ))}
               </div>
             <ConversionFootnote
               sets={roster.map((e) => e.balances)}
               preferredCurrency={user.defaultCurrency}
+              settingsHref="/settings"
             />
             {canConvert && (
               <div className="ledger-actions">
@@ -266,35 +295,6 @@ export function GroupDetail() {
                   </button>
                 </OnlineOnly>
               </div>
-            )}
-            {hasSettle && (
-              <>
-                <h2 className="with-help">
-                  Suggested settle-up
-                  <HelpTip label="About suggested settle-up">
-                    The fewest transfers that clear this group, one set per currency. Nothing is recorded
-                    until someone actually pays. Use Settle up above, which starts prefilled with the
-                    first of these.
-                  </HelpTip>
-                </h2>
-                <div className="card stack">
-                  {settle
-                    .filter((s) => s.transfers.length > 0)
-                    .map((s) => (
-                      <div key={s.currencyCode}>
-                        <span className="eyebrow">{s.currencyCode}</span>
-                        <ul className="breakdown">
-                          {s.transfers.map((t, i) => (
-                            <li key={i}>
-                              {nameOf(t.fromUserId)} → {nameOf(t.toUserId)}{" "}
-                              <Amount minor={t.amountMinor} currency={s.currencyCode} />
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                </div>
-              </>
             )}
           </aside>
 

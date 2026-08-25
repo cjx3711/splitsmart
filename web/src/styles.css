@@ -4462,3 +4462,307 @@ a.sync-status:hover {
   flex-direction: column;
   gap: 0.45rem;
 }
+
+/* Group balances: the overall figure leads, the per-currency ledgers - still
+   the only real numbers - fold underneath. See RosterBalance in
+   GroupBalances.tsx for why an estimate may be absent. */
+.balance-cell {
+  text-align: right;
+  min-width: 0;
+}
+
+.balance-headline {
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+/* The verb is a label, not the figure: it reads smaller so the amount and its
+   currency carry the row, both in the ledger colour. */
+.balance-verb {
+  font-size: 0.78em;
+  font-weight: 550;
+}
+
+.balance-headline .amount .code {
+  color: inherit;
+}
+
+.balance-approx {
+  color: var(--muted);
+  font-weight: 500;
+  margin-right: 0.15rem;
+}
+
+.balance-headline .balance-approx:last-child {
+  margin: 0 0 0 0.1rem;
+}
+
+.balance-detail > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.balance-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The caret is the only affordance saying the per-currency rows are still
+   there. Sized and coloured to be SEEN rather than matched to the currency
+   codes it sits next to: a footnote-sized muted glyph reads as punctuation. */
+.balance-detail > summary::after {
+  content: "\25bc";
+  margin-left: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 0;
+  vertical-align: -0.1em;
+  color: var(--text);
+}
+
+.balance-detail[open] > summary::after {
+  content: "\25b2";
+}
+
+.balance-detail > summary:hover {
+  color: var(--text);
+}
+
+.balance-detail .ledger {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.balance-detail .ledger .positive,
+.balance-detail .ledger .negative {
+  font-weight: 500;
+}
+
+/* Suggested settle-up leads the panel, so it is read at list size, not
+   footnote size. */
+.settle-suggest .eyebrow {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.settle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.settle-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.2rem 0.75rem;
+}
+
+/* A one-line gloss under a form control, for saying what the value that is
+   already selected MEANS - "USD is your default currency" - rather than
+   leaving a bare code to be interpreted. */
+.field-note {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+/* Footnote-sized advice with an ordinary link inside it: the two shortcuts
+   under a group's payment list, and the "these cancel out" note under a
+   friend's balance. */
+.settle-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+}
+
+.settle-hints p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* A suggested transfer is a button: reading it and recording it are the same
+   gesture. The row keeps the li's layout, so the plain (guest, no-action) form
+   above still lines up with it. */
+.settle-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.2rem 0.75rem;
+  width: 100%;
+  cursor: pointer;
+  padding: 0.3rem 0.4rem;
+  margin: -0.3rem -0.4rem;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+}
+
+.settle-row:hover {
+  background: var(--surface-2);
+}
+
+.settle-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settle-people {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.settle-you {
+  font-weight: 600;
+}
+
+.settle-arrow {
+  color: var(--muted);
+}
+
+/* --- inline glyphs ---------------------------------------------------------
+   Kept inline (not flex) so a button that was centring text still centres it,
+   and so the glyph rides the text baseline in the header, the page head and a
+   full-width submit alike. */
+.icon-glyph {
+  vertical-align: -0.14em;
+  margin-right: 0.1em;
+}
+
+/* The direction of a two-person payment. It is a control, not a caption: the
+   whole row swaps on click, and the glyph on the right says so. Reading it and
+   correcting it are the same gesture, which is why there is no second button
+   nested inside this one. */
+.label-text {
+  display: block;
+  font-size: 0.813rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  color: var(--text);
+}
+
+.settle-direction {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-weight: 400;
+  text-align: left;
+}
+
+.settle-direction:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.settle-direction-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settle-swap {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.settle-direction:hover .settle-swap {
+  color: var(--text);
+}
+
+/* Who a header-opened payment is with. Same shape as the friend rail: an
+   avatar and a name, nothing else, because the amount is the next question
+   rather than this one. */
+.payee-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+.payee-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.payee-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.payee-row:hover {
+  background: var(--surface-2);
+}
+
+.payee-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.payee-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two actions live in the header now, so they must neither wrap nor push the
+   brand off the bar. The word is what makes the "+" mean anything, so padding
+   gives way first and only on the narrowest phones does the logotype go. */
+.topbar-right button.inline {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .topbar-right {
+    gap: 0.4rem;
+  }
+
+  .topbar-right button.inline {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .topbar .logo-word {
+    display: none;
+  }
+}
