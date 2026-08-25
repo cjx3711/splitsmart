@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { CurrencyAmount, ExpenseSummary } from "../api.ts";
-import { Amount, useFormatMoney } from "../money.tsx";
+import { useFormatMoney } from "../money.tsx";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
 import { ExpenseDialog } from "../ExpenseDialog.tsx";
 import {
@@ -21,15 +21,16 @@ import {
   groupSettleChoices,
 } from "../SettleUpDialog.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
-import { FriendListItem, groupRosterBalances, ledgerVerb } from "../FriendListItem.tsx";
+import { FriendListItem, groupRosterBalances } from "../FriendListItem.tsx";
 import { groupTypeLabel } from "../groupTypes.tsx";
-import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { ConversionFootnote } from "../ConversionNote.tsx";
+import { RosterBalance, SettleSuggestion } from "../GroupBalances.tsx";
 import { ConvertGroupBalanceDialog } from "../ConvertBalanceDialog.tsx";
+import { PlusIcon } from "../Icons.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { groupCrumbs } from "./guestCrumbs.ts";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestMember } from "./guestApi.ts";
-import { HelpTip } from "../HelpTip.tsx";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function GuestGroup() {
@@ -43,6 +44,7 @@ export function GuestGroup() {
     name: string;
     group_type: string;
     default_currency: string;
+    simplify_by_default: number;
   } | null>(null);
   const [members, setMembers] = useState<GuestMember[]>([]);
   const [balances, setBalances] = useState<Array<{ userId: string; balances: CurrencyAmount[] }>>([]);
@@ -55,6 +57,8 @@ export function GuestGroup() {
   >([]);
   const [error, setError] = useState<string | null>(null);
   const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | null>(null);
+  // The suggested transfer the dialog opens on, when one was clicked.
+  const [settleChoice, setSettleChoice] = useState<string | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -125,16 +129,24 @@ export function GuestGroup() {
           </p>
         </div>
         <div className="page-actions">
-          <button className="secondary" onClick={() => setOpenDialog("settle")}>
-            Settle up
+          <button
+            className="secondary"
+            onClick={() => {
+              setSettleChoice(undefined);
+              setOpenDialog("settle");
+            }}
+          >
+            <PlusIcon /> Payment
           </button>
-          <button onClick={() => setOpenDialog("expense")}>Add an expense</button>
+          <button onClick={() => setOpenDialog("expense")}>
+            <PlusIcon /> Expense
+          </button>
         </div>
       </div>
 
       <ExpenseDialog
         open={openDialog === "expense"}
-        title={`Add an expense to ${group.name}`}
+        title={`New expense in ${group.name}`}
         onClose={() => setOpenDialog(null)}
         candidates={people}
         initialParticipantIds={people.map((p) => p.id)}
@@ -149,15 +161,18 @@ export function GuestGroup() {
 
       <SettleUpDialog
         open={openDialog === "settle"}
-        title={`Settle up in ${group.name}`}
+        title={`New payment in ${group.name}`}
         people={people}
         currencies={currenciesInPlay}
-        preferredCurrency={me.defaultCurrency}
         allowManual
         choices={groupSettleChoices(settle, nameOf, formatMoney)}
+        initialChoiceId={settleChoice}
         onClose={() => setOpenDialog(null)}
-        onSubmit={async (payment) => {
-          await guestApi.createPayment({ ...payment, groupId: group.id });
+        onSubmit={async ({ note, ...payment }) => {
+          // The note is not a column on the payment: it is posted as a comment
+          // on it, the same as the logged-in screens do.
+          const { id } = await guestApi.createPayment({ ...payment, groupId: group.id });
+          if (note) await guestApi.addComment(id, note);
           await load();
         }}
       />
@@ -167,6 +182,7 @@ export function GuestGroup() {
         nameOf={nameOf}
         transfers={convertTransfers}
         preferredCurrency={group.default_currency}
+        defaultLabel="this group's default currency"
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payments) => {
           for (const payment of payments) {
@@ -179,7 +195,23 @@ export function GuestGroup() {
 
       <div className="split-page">
           <aside className="split-aside">
-            <h2 style={{ marginTop: 0 }}>Balances</h2>
+            {hasSettle && (
+              <SettleSuggestion
+                settle={settle}
+                nameOf={nameOf}
+                currentUserId={me.id}
+                simplified={group.simplify_by_default === 1}
+                onPick={(choiceId) => {
+                  setSettleChoice(choiceId);
+                  setOpenDialog("settle");
+                }}
+                // No onSimplify: a link holder cannot change group settings.
+                onConvert={() => setOpenDialog("convert")}
+                convertTo={{ code: group.default_currency, label: "this group's default currency" }}
+              />
+            )}
+
+            <h2 style={hasSettle ? undefined : { marginTop: 0 }}>Balances</h2>
               <div className="list">
                 {roster.map((entry) => {
                   const member = members.find((m) => m.id === entry.userId);
@@ -192,28 +224,17 @@ export function GuestGroup() {
                           : { id: entry.userId, name: nameOf(entry.userId) }
                       }
                       title={nameOf(entry.userId)}
+                      subtitle={
+                        member?.is_ghost === 1 ? (
+                          <span className="tag muted">guest</span>
+                        ) : undefined
+                      }
                     >
-                      {entry.balances.length === 0 ? (
-                        <span className="muted">settled up</span>
-                      ) : (
-                      <div>
-                        <div className="ledger">
-                          {entry.balances.map((b) => (
-                            <div
-                              key={b.currencyCode}
-                              className={b.amountMinor >= 0 ? "positive" : "negative"}
-                            >
-                              {ledgerVerb(entry.userId === me.id, b.amountMinor)}
-                              <Amount minor={b.amountMinor} currency={b.currencyCode} absolute />
-                            </div>
-                          ))}
-                        </div>
-                        <EstimatedTotal
-                          balances={entry.balances}
-                          preferredCurrency={me.defaultCurrency}
-                        />
-                      </div>
-                      )}
+                      <RosterBalance
+                        balances={entry.balances}
+                        isYou={entry.userId === me.id}
+                        preferredCurrency={me.defaultCurrency}
+                      />
                     </FriendListItem>
                   );
                 })}
@@ -232,35 +253,6 @@ export function GuestGroup() {
                   Convert balance
                 </button>
               </div>
-            )}
-            {hasSettle && (
-              <>
-                <h2 className="with-help">
-                  Suggested settle-up
-                  <HelpTip label="About suggested settle-up">
-                    The fewest transfers that clear this group, one set per currency. Nothing is recorded
-                    until someone actually pays. Use Settle up above, which starts prefilled with the
-                    first of these.
-                  </HelpTip>
-                </h2>
-                <div className="card stack">
-                  {settle
-                    .filter((s) => s.transfers.length > 0)
-                    .map((s) => (
-                      <div key={s.currencyCode}>
-                        <span className="eyebrow">{s.currencyCode}</span>
-                        <ul className="breakdown">
-                          {s.transfers.map((t, i) => (
-                            <li key={i}>
-                              {nameOf(t.fromUserId)} → {nameOf(t.toUserId)}{" "}
-                              <Amount minor={t.amountMinor} currency={s.currencyCode} />
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
-                </div>
-              </>
             )}
           </aside>
 

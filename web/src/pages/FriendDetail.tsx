@@ -13,12 +13,23 @@
  * as before: totals, groups, guest link, expenses.
  *
  * Adding and settling live in dialogs off the header rather than inline, so the
- * page stays a view of the balance instead of a stack of forms.
+ * page stays a view of the balance instead of a stack of forms. Settle-all is
+ * the exception, and is offered as a note under the balance it explains: it
+ * only exists when simplify has left cancelling amounts in separate buckets,
+ * which is confusing enough that a bare button would raise more questions than
+ * it answers.
+ *
+ * Recording a settle-up here can CREATE that state rather than find it: the
+ * payment is one-on-one, so bringing a currency to zero between the two of you
+ * leaves any shared group still reading as owed. The page offers to close those
+ * out in the same breath, but ASKS first - those are real rows in someone
+ * else's group, and writing them unannounced is the kind of surprise that makes
+ * a ledger untrustworthy even when every number is right.
  *
  * Read from the mirror and written through the outbox, so both dialogs work with
  * no network. Only the guest-link panel is online-only.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, Link } from "react-router-dom";
 import { displayName, api, type ExpenseQuery, type GroupMember } from "../api.ts";
 import { Amount, Amounts, useFormatMoney } from "../money.tsx";
@@ -43,23 +54,43 @@ import { GroupTypeIcon, groupTypeLabel } from "../groupTypes.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { patchPerson, revertPerson } from "../sync/localFirst.ts";
 import { ulid } from "../../../src/domain/ulid.ts";
-import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import { planSettleAll, type SettleAllTransfer } from "../../../src/domain/settle.ts";
+import {
+  ConversionFootnote,
+  ConvertBalancesHint,
+  EstimatedTotal,
+} from "../ConversionNote.tsx";
 import { ConvertBalanceDialog } from "../ConvertBalanceDialog.tsx";
+import { ConfirmDialog } from "../ConfirmDialog.tsx";
+import {
+  applyBalanceDelta,
+  cancellingCurrencies,
+  SETTLE_ALL_NOTE,
+  settleAllHint,
+} from "../settleAll.ts";
+import { enqueuePayment } from "../recordPayment.ts";
 import { LinkPanel } from "../LinkPanel.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { HelpTip } from "../HelpTip.tsx";
+import { PlusIcon } from "../Icons.tsx";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function FriendDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
-  const [openDialog, setOpenDialog] = useState<"expense" | "settle" | "convert" | "identity" | null>(
-    null,
-  );
+  const [openDialog, setOpenDialog] = useState<
+    "expense" | "settle" | "convert" | "settleAll" | "cascade" | "identity" | null
+  >(null);
+  // Filled by the settle-up dialog's submit and read by its close, which run
+  // back to back in the same tick - so this is a ref, not state. A `useState`
+  // here would have the close handler reading the previous render's value and
+  // dropping the follow-up question entirely.
+  const pendingCascade = useRef<SettleAllTransfer[]>([]);
   const [showSettledGroups, setShowSettledGroups] = useState(false);
+  const [settlingAll, setSettlingAll] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
   const formatMoney = useFormatMoney();
   const { engine, syncNow, db } = useSync();
@@ -68,6 +99,7 @@ export function FriendDetail() {
     setFilters({});
     setShowSettledGroups(false);
     setOpenDialog(null);
+    pendingCascade.current = [];
   }, [id]);
 
   const loaded = useFriend(id);
@@ -123,12 +155,50 @@ export function FriendDetail() {
     (entry) => entry.groupId !== null && !sharedById.has(entry.groupId),
   );
   const oneOnOne = friend.breakdown.find((entry) => entry.groupId === null);
+  // Simplify-debts can leave "Between you" reading zero while a group and the
+  // one-on-one bucket still show opposite, cancelling amounts in the same
+  // currency. This is the fix for that specific state, not a general settle-up.
+  const settleAllTransfers = planSettleAll(user.id, friend.id, friend.breakdown);
+  const groupNameForTransfer = (groupId: string | null) =>
+    groupId === null ? "One-on-one" : friend.breakdown.find((e) => e.groupId === groupId)?.groupName?.trim() || "Unnamed group";
   const listingGroups = visibleSharedGroups.length > 0 || leftoverGroups.length > 0;
   const showOneOnOne = Boolean(oneOnOne && oneOnOne.balances.length > 0 && listingGroups);
   const showGroupsSection = listingGroups || settledSharedGroups.length > 0;
 
   const othersOn = (groupId: string) =>
     (membersByGroup.get(groupId) ?? []).filter((m) => m.id !== user.id && m.id !== friend.id);
+
+  // Every no-money-moved payment goes out the same way: the payment, then a
+  // comment saying why it exists. Written once so the two dialogs offering it
+  // cannot start explaining themselves differently.
+  const recordSettleAll = async (transfers: SettleAllTransfer[]) => {
+    if (!engine) throw new Error("Not ready to save yet.");
+    for (const transfer of transfers) {
+      const id = ulid();
+      await engine.enqueue({
+        kind: "payment.create",
+        id,
+        payload: paymentAsExpense(transfer, transfer.groupId),
+      });
+      await engine.enqueue({
+        kind: "comment.create",
+        id: ulid(),
+        payload: { expenseId: id, content: SETTLE_ALL_NOTE },
+      });
+    }
+  };
+
+  const transferList = (transfers: SettleAllTransfer[]) => (
+    <div className="ledger">
+      {transfers.map((t, i) => (
+        <div key={i} className="ledger-row">
+          <span className="muted">{groupNameForTransfer(t.groupId)}: </span>
+          {nameOf(t.fromUserId)} → {nameOf(t.toUserId)}{" "}
+          <Amount minor={t.amountMinor} currency={t.currencyCode} />
+        </div>
+      ))}
+    </div>
+  );
 
   const sourceRow = (
     key: string,
@@ -186,15 +256,17 @@ export function FriendDetail() {
             </OnlineOnly>
           )}
           <button className="secondary" onClick={() => setOpenDialog("settle")}>
-            Settle up
+            <PlusIcon /> Payment
           </button>
-          <button onClick={() => setOpenDialog("expense")}>Add Expense</button>
+          <button onClick={() => setOpenDialog("expense")}>
+            <PlusIcon /> Expense
+          </button>
         </div>
       </div>
 
       <AddExpenseDialog
         open={openDialog === "expense"}
-        title={`Add Expense with ${name}`}
+        title={`New expense with ${name}`}
         initialFriendId={friend.id}
         onClose={() => setOpenDialog(null)}
       />
@@ -222,25 +294,111 @@ export function FriendDetail() {
 
       <SettleUpDialog
         open={openDialog === "settle"}
-        title={`Settle up with ${name}`}
+        title={`New payment with ${name}`}
         people={people}
         currencies={currenciesInPlay}
-        preferredCurrency={user.defaultCurrency}
         choices={friendSettleChoices(owed, user.id, friend.id, name, formatMoney)}
-        onClose={() => setOpenDialog(null)}
+        // The dialog closes itself once onSubmit resolves. If that payment left
+        // groups that now cancel out, this is where the follow-up question
+        // opens - so the answer is asked for on top of a settled balance the
+        // reader can already see, not inside the form that caused it.
+        onClose={() => {
+          const cascade = pendingCascade.current;
+          setOpenDialog(cascade.length > 0 ? "cascade" : null);
+        }}
         onSubmit={async (payment) => {
           // A payment is an expense with is_payment set, so the outbox carries
           // it like any other. The pair is spelled out rather than sent as a
           // direction: the queue is a batch of writes, not a set of endpoints,
           // and "you_paid" would need the recipient inferred at replay time.
-          if (!engine) throw new Error("Not ready to save yet.");
-          await engine.enqueue({
-            kind: "payment.create",
-            id: ulid(),
-            payload: paymentAsExpense(payment, null),
-          });
+          await enqueuePayment(engine, payment, null);
+
+          // This settle-up is always one-on-one (groupId null) from this page.
+          // If it brings the friend's total for this currency to zero, a shared
+          // group can still show the opposite amount. Work out what closing
+          // those out would take, but do NOT write it: those payments land in
+          // groups with other people in them, so they are offered, not assumed.
+          const delta = payment.fromUserId === user.id ? payment.amountMinor : -payment.amountMinor;
+          const projected = friend.breakdown.map((entry) =>
+            entry.groupId === null
+              ? { groupId: entry.groupId, balances: applyBalanceDelta(entry.balances, payment.currencyCode, delta) }
+              : entry,
+          );
+          pendingCascade.current = planSettleAll(user.id, friend.id, projected);
         }}
       />
+
+      {/* The follow-up to a settle-up that zeroed a currency overall. Declining
+          is a real answer and leaves the payment just made untouched, which is
+          why the other button says so rather than "Cancel". */}
+      <ConfirmDialog
+        open={openDialog === "cascade"}
+        title={`Also settle your groups with ${name}?`}
+        confirmLabel="Settle those too"
+        cancelLabel="Leave them for now"
+        busyLabel="Settling…"
+        busy={settlingAll}
+        onClose={() => {
+          pendingCascade.current = [];
+          setOpenDialog(null);
+        }}
+        onConfirm={async () => {
+          setSettlingAll(true);
+          try {
+            await recordSettleAll(pendingCascade.current);
+            pendingCascade.current = [];
+            setOpenDialog(null);
+          } finally {
+            setSettlingAll(false);
+          }
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          {/* Per currency, like the plan itself: a payment cannot settle a
+              debt in a currency it is not denominated in (rule 2). */}
+          That payment settles your{" "}
+          {cancellingCurrencies(pendingCascade.current).join(" and ")} balance with {name} overall.
+          But{" "}
+          {pendingCascade.current.length === 1
+            ? "one balance below"
+            : `${pendingCascade.current.length} balances below`}{" "}
+          still {pendingCascade.current.length === 1 ? "reads" : "read"} as unsettled on{" "}
+          {pendingCascade.current.length === 1 ? "its" : "their"} own, because{" "}
+          {pendingCascade.current.length === 1 ? "it cancels" : "they cancel"} out against what you
+          just paid rather than being cleared. Settle{" "}
+          {pendingCascade.current.length === 1 ? "it" : "them"} at the same time?
+        </p>
+        {transferList(pendingCascade.current)}
+        <p className="muted" style={{ margin: 0 }}>
+          No money moves either way - these are payments recorded to match what is already true.
+          Leave them and nothing changes; you can close them out later from this page.
+        </p>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={openDialog === "settleAll"}
+        title={`Settle all with ${name}`}
+        confirmLabel="Settle all"
+        busyLabel="Settling…"
+        busy={settlingAll}
+        onClose={() => setOpenDialog(null)}
+        onConfirm={async () => {
+          setSettlingAll(true);
+          try {
+            await recordSettleAll(settleAllTransfers);
+            setOpenDialog(null);
+          } finally {
+            setSettlingAll(false);
+          }
+        }}
+      >
+        <p className="muted" style={{ margin: 0 }}>
+          No money moves. Each of these already nets to zero once every group and one-on-one
+          balance with {name} in the same currency is added together - this closes them out to
+          match.
+        </p>
+        {transferList(settleAllTransfers)}
+      </ConfirmDialog>
 
       <ConvertBalanceDialog
         open={openDialog === "convert"}
@@ -297,20 +455,52 @@ export function FriendDetail() {
               </div>
             )}
             <EstimatedTotal balances={friend.balances} preferredCurrency={user.defaultCurrency} />
-            {friend.balances.length > 1 && (
-              <div className="ledger-actions">
-                <OnlineOnly what="Converting a balance">
-                  <button
-                    type="button"
-                    className="secondary inline"
-                    onClick={() => setOpenDialog("convert")}
-                  >
-                    Convert balance
-                  </button>
-                </OnlineOnly>
+            {/* The same offer a multi-currency group makes, in the same words:
+                several ledgers between two people is the same problem, and
+                meeting it phrased differently on the two screens reads like two
+                different features. */}
+            {/* Both notes share one block, so the card gets one divider rather
+                than a stack of rules. Read where the puzzle is: the balance
+                just above, not a button under a heading further down. */}
+            {(friend.balances.length > 1 || settleAllTransfers.length > 0) && (
+              <div className="settle-hints">
+                {friend.balances.length > 1 && (
+                  <ConvertBalancesHint
+                    lead={`${friend.balances.length} currencies to settle separately.`}
+                    target={{ code: user.defaultCurrency, label: "your default currency" }}
+                    action={
+                      <OnlineOnly what="Converting a balance">
+                        <button
+                          type="button"
+                          className="link"
+                          onClick={() => setOpenDialog("convert")}
+                        >
+                          Convert the balances
+                        </button>
+                      </OnlineOnly>
+                    }
+                  />
+                )}
+                {settleAllTransfers.length > 0 && (
+                  <p>
+                    {settleAllHint(settleAllTransfers)}{" "}
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => setOpenDialog("settleAll")}
+                    >
+                      Close them out
+                    </button>{" "}
+                    to zero them with payments that move no money.
+                  </p>
+                )}
               </div>
             )}
-            <ConversionFootnote sets={[friend.balances]} preferredCurrency={user.defaultCurrency} />
+            <ConversionFootnote
+              sets={[friend.balances]}
+              preferredCurrency={user.defaultCurrency}
+              settingsHref="/settings"
+            />
           </div>
 
           {showGroupsSection && (

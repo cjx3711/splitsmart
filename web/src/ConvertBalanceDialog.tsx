@@ -4,6 +4,12 @@
  * The picker is the choice; the rest is a preview of the payments that will
  * be written. Rates come from the same client-side fetch as the ≈ estimate.
  * Nothing is stored as a rate — only the resulting payments land in the ledger.
+ *
+ * It OPENS on a default currency and says whose, rather than showing a bare
+ * code. Which default differs by screen - yours on a friend page, the group's
+ * inside a group - and a target currency nobody chose, presented without that
+ * word, reads like the app converting to something arbitrary. `defaultLabel`
+ * is that phrase; `preferredCurrency` is the code it refers to.
  */
 import { useEffect, useState } from "react";
 import { Modal } from "./Modal.tsx";
@@ -20,6 +26,7 @@ export function ConvertBalanceDialog({
   themId,
   balances,
   preferredCurrency,
+  defaultLabel = "your default currency",
   onClose,
   onSubmit,
 }: {
@@ -28,7 +35,10 @@ export function ConvertBalanceDialog({
   youId: string;
   themId: string;
   balances: CurrencyAmount[];
+  /** The currency the picker opens on. Named by `defaultLabel` in the copy. */
   preferredCurrency: string;
+  /** Whose default `preferredCurrency` is, as it reads mid-sentence. */
+  defaultLabel?: string;
   onClose: () => void;
   onSubmit: (payments: ConversionPayment[]) => Promise<void>;
 }) {
@@ -86,13 +96,19 @@ export function ConvertBalanceDialog({
     <Modal open={open} title="Convert balance" onClose={onClose}>
       <div className="stack">
         <p className="muted" style={{ margin: 0 }}>
-          Other currencies are settled and reopened in the one you pick, at
-          today's rate. Group bills are left in their original currencies.
+          Everything between you is settled and reopened in {preferredCurrency}, {defaultLabel}, at
+          today's rate. Pick a different one below if you would rather. Group bills are left in
+          their original currencies.
         </p>
 
         <div>
           <label htmlFor="convertTarget">Convert to</label>
           <CurrencySelect id="convertTarget" value={target} onChange={setTarget} />
+          <p className="field-note muted">
+            {target === preferredCurrency
+              ? `${preferredCurrency} is ${defaultLabel}.`
+              : `Not ${defaultLabel} - that is ${preferredCurrency}.`}
+          </p>
         </div>
 
         {error && <p className="error">{error}</p>}
@@ -114,7 +130,10 @@ export function ConvertBalanceDialog({
         )}
 
         {plan?.ok && plan.legs.length === 0 && (
-          <p className="muted">Everything between you is already in {target}.</p>
+          <p className="muted">
+            Everything between you is already in {target}
+            {target === preferredCurrency ? `, ${defaultLabel}` : ""}.
+          </p>
         )}
 
         {plan?.ok && plan.legs.length > 0 && (
@@ -175,6 +194,7 @@ export function ConvertGroupBalanceDialog({
   nameOf,
   transfers,
   preferredCurrency,
+  defaultLabel = "this group's default currency",
   onClose,
   onSubmit,
 }: {
@@ -186,7 +206,10 @@ export function ConvertGroupBalanceDialog({
     toUserId: string;
     amountMinor: number;
   }>;
+  /** The currency the picker opens on. Named by `defaultLabel` in the copy. */
   preferredCurrency: string;
+  /** Whose default `preferredCurrency` is, as it reads mid-sentence. */
+  defaultLabel?: string;
   onClose: () => void;
   onSubmit: (payments: ConversionPayment[]) => Promise<void>;
 }) {
@@ -242,14 +265,19 @@ export function ConvertGroupBalanceDialog({
     <Modal open={open} title="Convert balance" onClose={onClose}>
       <div className="stack">
         <p className="muted" style={{ margin: 0 }}>
-          Other currencies in this group are settled and reopened in the one you
-          pick, at today's rate. Existing bills stay in the currency they were
-          recorded in.
+          Every remaining debt in this group is settled and reopened in {preferredCurrency},{" "}
+          {defaultLabel}, at today's rate. Pick a different one below if you would rather. Existing
+          bills stay in the currency they were recorded in.
         </p>
 
         <div>
           <label htmlFor="groupConvertTarget">Convert to</label>
           <CurrencySelect id="groupConvertTarget" value={target} onChange={setTarget} />
+          <p className="field-note muted">
+            {target === preferredCurrency
+              ? `${preferredCurrency} is ${defaultLabel}.`
+              : `Not ${defaultLabel} - that is ${preferredCurrency}.`}
+          </p>
         </div>
 
         {error && <p className="error">{error}</p>}
@@ -271,7 +299,10 @@ export function ConvertGroupBalanceDialog({
         )}
 
         {plan?.ok && plan.legs.length === 0 && (
-          <p className="muted">Every remaining debt in this group is already in {target}.</p>
+          <p className="muted">
+            Every remaining debt in this group is already in {target}
+            {target === preferredCurrency ? `, ${defaultLabel}` : ""}.
+          </p>
         )}
 
         {plan?.ok && plan.legs.length > 0 && (
@@ -290,7 +321,12 @@ export function ConvertGroupBalanceDialog({
                 </div>
               ))}
             </div>
-            <p style={{ margin: 0 }}>Afterwards every remaining debt in this group is in {target}.</p>
+            {/* Not "…, this group's default currency" again: the intro and the
+                note under the picker both say it, and the note is the one that
+                tracks what is actually selected. */}
+            <p style={{ margin: 0 }}>
+              Afterwards every remaining debt in this group is in {target}.
+            </p>
             {date && (
               <p className="muted" style={{ margin: 0 }}>
                 Rates as of {date}.{" "}

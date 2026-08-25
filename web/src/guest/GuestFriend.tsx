@@ -18,8 +18,13 @@ import {
 } from "../SettleUpDialog.tsx";
 import { Avatar, avatarFromRow } from "../Avatar.tsx";
 import { GroupTypeIcon } from "../groupTypes.tsx";
-import { ConversionFootnote, EstimatedTotal } from "../ConversionNote.tsx";
+import {
+  ConversionFootnote,
+  ConvertBalancesHint,
+  EstimatedTotal,
+} from "../ConversionNote.tsx";
 import { ConvertBalanceDialog } from "../ConvertBalanceDialog.tsx";
+import { PlusIcon } from "../Icons.tsx";
 import { useGuest } from "./GuestApp.tsx";
 import { guestApi, guestFullName, type GuestVisiblePerson } from "./guestApi.ts";
 import { Skeleton } from "../Skeleton.tsx";
@@ -104,9 +109,11 @@ export function GuestFriend() {
         </div>
         <div className="page-actions">
           <button className="secondary" onClick={() => setOpenDialog("settle")}>
-            Settle up
+            <PlusIcon /> Payment
           </button>
-          <button onClick={() => setOpenDialog("expense")}>Add an expense</button>
+          <button onClick={() => setOpenDialog("expense")}>
+            <PlusIcon /> Expense
+          </button>
         </div>
       </div>
 
@@ -117,7 +124,7 @@ export function GuestFriend() {
       */}
       <ExpenseDialog
         open={openDialog === "expense"}
-        title={`Add an expense with ${name}`}
+        title={`New expense with ${name}`}
         onClose={() => setOpenDialog(null)}
         candidates={pair}
         initialParticipantIds={[me.id, counterpart.id]}
@@ -132,14 +139,16 @@ export function GuestFriend() {
 
       <SettleUpDialog
         open={openDialog === "settle"}
-        title={`Settle up with ${name}`}
+        title={`New payment with ${name}`}
         people={pair}
         currencies={currenciesInPlay}
-        preferredCurrency={me.defaultCurrency}
         choices={friendSettleChoices(owed, me.id, counterpart.id, name, formatMoney)}
         onClose={() => setOpenDialog(null)}
-        onSubmit={async (payment) => {
-          await guestApi.createPayment({ ...payment, groupId: null });
+        onSubmit={async ({ note, ...payment }) => {
+          // The note is not a column on the payment: it is posted as a comment
+          // on it, the same as the logged-in screens do.
+          const { id } = await guestApi.createPayment({ ...payment, groupId: null });
+          if (note) await guestApi.addComment(id, note);
           await load();
         }}
       />
@@ -182,15 +191,23 @@ export function GuestFriend() {
               </div>
             )}
             <EstimatedTotal balances={balances} preferredCurrency={me.defaultCurrency} />
+            {/* Word for word the logged-in friend page's offer. A link holder
+                reading the same balance should meet the same sentence. */}
             {balances.length > 1 && (
-              <div className="ledger-actions">
-                <button
-                  type="button"
-                  className="secondary inline"
-                  onClick={() => setOpenDialog("convert")}
-                >
-                  Convert balance
-                </button>
+              <div className="settle-hints">
+                <ConvertBalancesHint
+                  lead={`${balances.length} currencies to settle separately.`}
+                  target={{ code: me.defaultCurrency, label: "your default currency" }}
+                  action={
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => setOpenDialog("convert")}
+                    >
+                      Convert the balances
+                    </button>
+                  }
+                />
               </div>
             )}
             <ConversionFootnote sets={[balances]} preferredCurrency={me.defaultCurrency} />
