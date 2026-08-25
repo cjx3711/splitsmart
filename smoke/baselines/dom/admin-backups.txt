@@ -23,13 +23,13 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Apartment 4B":
-    - /url: /app/groups/<ULID>
   - link "Office Lunch Club":
     - /url: /app/groups/<ULID>
-  - link "Ski Trip 2026":
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Jess & Marco's Wedding":
+    - /url: /app/groups/<ULID>
+  - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
   - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
@@ -39,15 +39,15 @@
     - /url: /app/friends
   - link "+ add":
     - /url: /app/friends/new
-  - link "JJ":
-    - /url: /app/friends/<ULID>
   - link "Aisyah":
     - /url: /app/friends/<ULID>
   - link "Mel":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng":
+  - link "JJ":
     - /url: /app/friends/<ULID>
   - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng":
     - /url: /app/friends/<ULID>
   - link "Taro":
     - /url: /app/friends/<ULID>
@@ -170,4 +170,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.0
+  - text: v0.2.1

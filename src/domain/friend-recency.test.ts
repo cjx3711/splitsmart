@@ -2,10 +2,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { compareByLastExpense, lastSharedExpenseIdByUser } from "./friend-recency.ts";
 import { IMPORT_ROUNDING_DETAILS } from "./metadata.ts";
+import { ulid } from "./ulid.ts";
 
-const older = "01ARZ3NDEKTSV4RRFFQ69G5FAA";
-const newer = "01ARZ3NDEKTSV4RRFFQ69G5FAB";
-const newest = "01ARZ3NDEKTSV4RRFFQ69G5FAC";
+const t0 = Date.parse("2020-01-15T12:00:00.000Z");
+const older = ulid(t0);
+const newer = ulid(t0 + 1);
+const newest = ulid(t0 + 2);
 
 describe("lastSharedExpenseIdByUser", () => {
   test("keeps the newest bill both people are on", () => {
@@ -112,5 +114,25 @@ describe("compareByLastExpense", () => {
       ["b", newer],
     ]);
     assert.ok(compareByLastExpense("a", "b", last, "Ann", "Bob") < 0);
+  });
+
+  test("same-millisecond last expenses break by name, not the random suffix", () => {
+    const sameMsA = newer.slice(0, 10) + "AAAAAAAAAAAAAAAZ";
+    const sameMsB = newer.slice(0, 10) + "0000000000000000";
+    const last = new Map([
+      ["z", sameMsA],
+      ["a", sameMsB],
+    ]);
+    // Zzz would sort first if the random ULID suffix counted as recency.
+    assert.ok(compareByLastExpense("a", "z", last, "Ann", "Zzz") < 0);
+  });
+
+  test("equal recency and name break by id", () => {
+    const last = new Map([
+      ["b", newer],
+      ["a", newer],
+    ]);
+    assert.ok(compareByLastExpense("a", "b", last, "Ann", "Ann") < 0);
+    assert.ok(compareByLastExpense("b", "a", last, "Ann", "Ann") > 0);
   });
 });

@@ -39,8 +39,10 @@ export function lastSharedExpenseIdByUser(
 }
 
 /**
- * Newest shared expense first. Friends you have never been on a bill with
- * sort last, then by display name so the order is stable.
+ * Newest shared expense first. Recency is the ULID timestamp prefix, not the
+ * random suffix: two bills minted in the same millisecond are a tie. Friends
+ * you have never been on a bill with sort last. Ties break by display name,
+ * then id, so a fresh seed cannot shuffle the list.
  */
 export function compareByLastExpense(
   aId: string,
@@ -51,6 +53,12 @@ export function compareByLastExpense(
 ): number {
   const ta = lastByUser.get(aId) ?? "";
   const tb = lastByUser.get(bId) ?? "";
-  if (ta !== tb) return ta < tb ? 1 : -1;
-  return nameA.localeCompare(nameB);
+  if (ta !== tb) {
+    const timeA = ta.slice(0, 10);
+    const timeB = tb.slice(0, 10);
+    if (timeA !== timeB) return timeA < timeB ? 1 : -1;
+  }
+  const byName = nameA.localeCompare(nameB);
+  if (byName !== 0) return byName;
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
 }

@@ -971,6 +971,7 @@ export async function createPayment(params: {
   details?: string | null;
   paymentMethod?: string | null;
   createdBy: string;
+  id?: string;
 }): Promise<string> {
   if (params.fromUserId === params.toUserId) {
     throw new ExpenseError("Cannot record a payment to yourself");
@@ -980,6 +981,7 @@ export async function createPayment(params: {
   }
 
   return createExpense({
+    id: params.id,
     groupId: params.groupId ?? null,
     description: params.description ?? "Payment",
     details: params.details ?? null,

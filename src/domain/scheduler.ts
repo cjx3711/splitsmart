@@ -30,6 +30,7 @@ import { db } from "../db/index.ts";
 import { advanceRepeatSchedule, createExpense } from "./expenses.ts";
 import { isRepeatInterval, type RepeatInterval } from "./recurring.ts";
 import type { SplitItem, SplitType } from "./split.ts";
+import { ulid } from "./ulid.ts";
 
 /** How often the interval below fires. Hourly: a bill is never urgent to the minute. */
 export const SCHEDULER_INTERVAL_MS = 3_600_000;
@@ -53,7 +54,10 @@ export interface SchedulerRun {
  *
  * `now` is injectable so a test can drive a clock jump without waiting a month.
  */
-export async function runDueRecurrences(now: Date = new Date()): Promise<SchedulerRun> {
+export async function runDueRecurrences(
+  now: Date = new Date(),
+  mintId: () => string = ulid,
+): Promise<SchedulerRun> {
   const result: SchedulerRun = { generated: [], skipped: 0, failures: [] };
 
   const due = await db
@@ -92,7 +96,7 @@ export async function runDueRecurrences(now: Date = new Date()): Promise<Schedul
     }
 
     try {
-      const outcome = await generateOccurrence(template, interval, dueAt);
+      const outcome = await generateOccurrence(template, interval, dueAt, mintId);
       if (outcome === null) result.skipped++;
       else result.generated.push({ templateId: template.id, expenseId: outcome, date: dueAt });
     } catch (err) {
@@ -132,6 +136,7 @@ async function generateOccurrence(
   template: TemplateRow,
   interval: RepeatInterval,
   dueAt: string,
+  mintId: () => string,
 ): Promise<string | null> {
   // Normalised the same way createExpense will normalise it, so the
   // already-generated lookup below compares like with like.
@@ -164,6 +169,7 @@ async function generateOccurrence(
   const meta = parseSplitMeta(template.split_meta);
 
   return createExpense({
+    id: mintId(),
     groupId: template.group_id,
     description: template.description,
     details: template.details,

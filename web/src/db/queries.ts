@@ -127,6 +127,11 @@ function byDateDesc(a: LocalExpense, b: LocalExpense): number {
   return a.id < b.id ? 1 : -1;
 }
 
+/** Name, then id. The id tiebreak keeps two equally-named rows stable across seeds. */
+function byNameThenId(a: { name: string; id: string }, b: { name: string; id: string }): number {
+  return a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
 /** Oldest first. A series is a timeline, so the starting bill sits at the top. */
 function byDateAsc(a: LocalExpense, b: LocalExpense): number {
   return -byDateDesc(a, b);
@@ -524,7 +529,7 @@ export async function localGroups(
 
   const groups = (await db.groups.toArray())
     .filter((g) => mine.has(g.id) && g.deletedAt === null)
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort(byNameThenId)
     .map(toApiGroup);
 
   // Membership only. A combined total here used to re-derive every expense
@@ -711,7 +716,7 @@ export async function localFriends(
     (u): u is SyncUser => u !== undefined && u.deletedAt === null,
   );
 
-  // Same order as GET /api/v1/friends: last shared expense, then name.
+  // Same order as GET /api/v1/friends: last shared expense, then name, then id.
   const friends = users
     .sort((a, b) =>
       compareByLastExpense(a.id, b.id, lastByUser, displayName(a), displayName(b)),
@@ -865,7 +870,7 @@ export async function localSharedGroups(
 
   const groups = (await db.groups.bulkGet(sharedIds))
     .filter((g): g is NonNullable<typeof g> => g != null && g.deletedAt === null)
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort(byNameThenId)
     .map(toApiGroup);
 
   return { groups };

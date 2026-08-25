@@ -313,6 +313,44 @@ describe("GET /api/v1/admin/users", () => {
     assert.equal(byEmail.users[0]!.id, aliceId);
   });
 
+  test("same created_at breaks by name, then id", async () => {
+    const stamp = "2020-01-01 00:00:00";
+    const zedId = ulid();
+    const amyId = ulid();
+    await db
+      .insertInto("users")
+      .values([
+        {
+          id: zedId,
+          email: "zed-tie@example.com",
+          password_hash: "scrypt$131072$8$1$AAAA$AAAA",
+          name: "Zed Tie",
+          default_currency: "USD",
+          is_ghost: 0,
+          created_at: stamp,
+        },
+        {
+          id: amyId,
+          email: "amy-tie@example.com",
+          password_hash: "scrypt$131072$8$1$AAAA$AAAA",
+          name: "Amy Tie",
+          default_currency: "USD",
+          is_ghost: 0,
+          created_at: stamp,
+        },
+      ])
+      .execute();
+
+    const res = await authed(aliceToken, "/api/v1/admin/users?q=Tie&as_of=2026-08-18");
+    const body = (await res.json()) as { users: Array<{ id: string; name: string }> };
+    assert.deepEqual(
+      body.users.map((u) => u.name),
+      ["Amy Tie", "Zed Tie"],
+    );
+
+    await db.deleteFrom("users").where("id", "in", [zedId, amyId]).execute();
+  });
+
   test("counts and series for alice", async () => {
     const res = await authed(
       aliceToken,

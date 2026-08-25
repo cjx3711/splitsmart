@@ -353,6 +353,7 @@ export async function listActablePeople(
     .where("users.is_ghost", "=", 1)
     .where("users.deleted_at", "is", null)
     .orderBy("users.name")
+    .orderBy("users.id")
     .execute();
 
   return rows.map((r) => ({ id: r.id, ...personCamel(r) }));

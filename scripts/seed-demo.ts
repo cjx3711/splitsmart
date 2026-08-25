@@ -49,15 +49,21 @@ if (Number.isNaN(SEED_NOW)) {
 }
 
 /**
- * ULIDs encode a millisecond timestamp. Creating a dozen groups in the same
- * millisecond makes their sort order random, and the sidebar shows the five
- * newest - so a smoke snapshot would shuffle every reset. Tick the clock once
- * per id so oldest-first insertion is also oldest-first in ULID order.
+ * ULIDs encode a millisecond timestamp. Creating a dozen rows in the same
+ * millisecond makes their sort order random: the sidebar shows the five newest
+ * groups/friends by last expense, and the admin list is newest account first,
+ * so a smoke snapshot would shuffle every reset. Tick the clock once per id
+ * (and stamp users.created_at from it) so oldest-first insertion is also
+ * oldest-first in ULID and created_at order.
  */
 let seedClock = SEED_NOW;
 function seedUlid(): string {
   seedClock += 1;
   return ulid(seedClock);
+}
+
+function seedCreatedAt(): string {
+  return new Date(seedClock).toISOString();
 }
 
 function daysAgo(days: number): string {
@@ -93,6 +99,7 @@ async function ensureUser(
       default_currency: profile.defaultCurrency ?? "USD",
       is_ghost: 0,
       email_verified_at: new Date().toISOString(),
+      created_at: seedCreatedAt(),
     })
     .returning("id")
     .executeTakeFirstOrThrow();
@@ -114,6 +121,7 @@ async function createGhost(
       nickname,
       default_currency: defaultCurrency,
       is_ghost: 1,
+      created_at: seedCreatedAt(),
     })
     .execute();
   return id;
@@ -292,6 +300,7 @@ async function main(): Promise<void> {
 
   // Tokyo trip
   const ramenId = await createExpense({
+    id: seedUlid(),
     groupId: tokyoId,
     description: "Ramen at Ichiran",
     costMinor: 4800,
@@ -308,6 +317,7 @@ async function main(): Promise<void> {
     ],
   });
   await createExpense({
+    id: seedUlid(),
     groupId: tokyoId,
     description: "TeamLab tickets",
     costMinor: 9600,
@@ -326,6 +336,7 @@ async function main(): Promise<void> {
 
   // Apartment
   const groceriesId = await createExpense({
+    id: seedUlid(),
     groupId: apartmentId,
     description: "Trader Joe's run",
     costMinor: 8743,
@@ -340,6 +351,7 @@ async function main(): Promise<void> {
     ],
   });
   await createPayment({
+    id: seedUlid(),
     fromUserId: userId,
     toUserId: jjId,
     amountMinor: 5000,
@@ -352,6 +364,7 @@ async function main(): Promise<void> {
 
   // Ski trip
   await createExpense({
+    id: seedUlid(),
     groupId: skiTripId,
     description: "Lift tickets",
     costMinor: 42000,
@@ -369,6 +382,7 @@ async function main(): Promise<void> {
 
   // Wedding
   await createExpense({
+    id: seedUlid(),
     groupId: weddingId,
     description: "Hotel block deposit",
     costMinor: 32500,
@@ -388,6 +402,7 @@ async function main(): Promise<void> {
 
   // Lunch club
   const sushiId = await createExpense({
+    id: seedUlid(),
     groupId: lunchClubId,
     description: "Team sushi lunch",
     costMinor: 15640,
@@ -406,6 +421,7 @@ async function main(): Promise<void> {
 
   // Non-group expense with an explicit friend
   await createExpense({
+    id: seedUlid(),
     groupId: null,
     description: "Coffee catch-up",
     costMinor: 1850,
@@ -422,6 +438,7 @@ async function main(): Promise<void> {
 
   // One-on-one with a guest explicit friend
   await createExpense({
+    id: seedUlid(),
     groupId: null,
     description: "Concert tickets",
     costMinor: 12000,
@@ -443,6 +460,7 @@ async function main(): Promise<void> {
   // demo should show what the app actually produces, including the cap of one
   // occurrence per template per tick.
   const rentTemplateId = await createExpense({
+    id: seedUlid(),
     groupId: apartmentId,
     description: "Rent",
     costMinor: 180_000,
@@ -459,6 +477,7 @@ async function main(): Promise<void> {
   });
 
   const coffeeTemplateId = await createExpense({
+    id: seedUlid(),
     groupId: lunchClubId,
     description: "Friday coffee round",
     costMinor: 2400,
@@ -482,7 +501,7 @@ async function main(): Promise<void> {
   const schedulerTicks = process.env.SEED_TODAY ? 3 : 2;
   let generated = 0;
   for (let i = 0; i < schedulerTicks; i++) {
-    const run = await runDueRecurrences(SEED_SCHEDULER_NOW);
+    const run = await runDueRecurrences(SEED_SCHEDULER_NOW, seedUlid);
     generated += run.generated.length;
   }
 

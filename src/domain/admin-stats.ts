@@ -183,7 +183,8 @@ const LIST_CAP = 50;
 
 /**
  * Real, live accounts. Empty q → most recently created, capped.
- * q matches name or email via instr(lower(...)).
+ * q matches name or email via instr(lower(...)). Ties break by name, then id,
+ * so a seed that stamps the same `created_at` does not shuffle the list.
  */
 export async function listAdminUsers(
   q: string | undefined,
@@ -207,6 +208,8 @@ export async function listAdminUsers(
 
   const rows = await query
     .orderBy("created_at", "desc")
+    .orderBy("name")
+    .orderBy("id")
     .limit(LIST_CAP)
     .execute();
 

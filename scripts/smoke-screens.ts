@@ -85,6 +85,9 @@ export const STABILISE_CSS = `
      from layout rather than hiding it in place, or a late fetch shifts pixels. */
   .estimate { display: none !important; }
   .comment-time, .sync-badge, .sync-icon, .syncbar { visibility: hidden !important; }
+  /* Guest link URL is a fresh secret every smoke:reset. Keep the box so layout
+     still compares; the characters are the only thing that must not. */
+  .link-url { color: transparent !important; }
   /* New in the header: hide from layout so existing PNG baselines stay put. */
   .sync-status { display: none !important; }
 `;

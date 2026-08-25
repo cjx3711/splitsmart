@@ -395,6 +395,7 @@ export const guestRoutes = new Hono<GuestEnv>()
         .where("id", "in", scope.groupIds)
         .where("deleted_at", "is", null)
         .orderBy("name")
+        .orderBy("id")
         .execute()
     : [];
 

@@ -200,6 +200,53 @@ describe("who counts as a friend", () => {
     assert.ok(ids.indexOf(newerId) < ids.indexOf(olderId));
   });
 
+  test("same-millisecond last expenses break by name, then id", async () => {
+    const annId = ulid();
+    const bobIdFriend = ulid();
+    await db
+      .insertInto("users")
+      .values([
+        { id: bobIdFriend, name: "Bob SameMs", default_currency: "USD", is_ghost: 1 },
+        { id: annId, name: "Ann SameMs", default_currency: "USD", is_ghost: 1 },
+      ])
+      .execute();
+    await addFriendship(aliceId, bobIdFriend);
+    await addFriendship(aliceId, annId);
+
+    const t = Date.now();
+    await createExpense({
+      id: ulid(t),
+      description: "Ann coffee",
+      costMinor: 400,
+      currencyCode: "USD",
+      date: "2026-08-01",
+      splitType: "equal",
+      createdBy: aliceId,
+      participants: [
+        { userId: aliceId, paidMinor: 400 },
+        { userId: annId, paidMinor: 0 },
+      ],
+    });
+    await createExpense({
+      id: ulid(t),
+      description: "Bob coffee",
+      costMinor: 500,
+      currencyCode: "USD",
+      date: "2026-08-01",
+      splitType: "equal",
+      createdBy: aliceId,
+      participants: [
+        { userId: aliceId, paidMinor: 500 },
+        { userId: bobIdFriend, paidMinor: 0 },
+      ],
+    });
+
+    const res = await authed("/api/v1/friends");
+    const body = (await res.json()) as { friends: Array<{ id: string; name: string }> };
+    const ids = body.friends.map((f) => f.id);
+    assert.ok(ids.indexOf(annId) < ids.indexOf(bobIdFriend));
+  });
+
   test("an import rounding settle-up does not bump a friend to the top", async () => {
     const settledId = ulid();
     const recentId = ulid();

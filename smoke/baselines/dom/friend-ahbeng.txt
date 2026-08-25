@@ -25,9 +25,9 @@
     - /url: /app/groups/<ULID>
   - link "Apartment 4B":
     - /url: /app/groups/<ULID>
-  - link "Ski Trip 2026":
-    - /url: /app/groups/<ULID>
   - link "Jess & Marco's Wedding":
+    - /url: /app/groups/<ULID>
+  - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
   - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
@@ -129,4 +129,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.0
+  - text: v0.2.1

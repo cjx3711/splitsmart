@@ -78,6 +78,7 @@ export const groupRoutes = new Hono<AppEnv>()
     .where("group_members.left_at", "is", null)
     .where("groups.deleted_at", "is", null)
     .orderBy("groups.name")
+    .orderBy("groups.id")
     .execute();
 
   return c.json({ groups, totalBalance: await getTotalBalance(db, auth.id) });
