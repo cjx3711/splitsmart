@@ -17,6 +17,8 @@
     - /url: /app/expenses
   - link "Usage":
     - /url: /app/admin
+  - link "Get the app":
+    - /url: /app/install
   - textbox "Filter groups and friends by name":
     - /placeholder: Filter by name
   - link "Groups (10)":
@@ -41,24 +43,34 @@
     - /url: /app/friends/new
   - link "Aisyah":
     - /url: /app/friends/<ULID>
+  - button "Hide Aisyah from sidebar": ✕
   - link "Mel":
     - /url: /app/friends/<ULID>
+  - button "Hide Mel from sidebar": ✕
   - link "JJ":
     - /url: /app/friends/<ULID>
+  - button "Hide JJ from sidebar": ✕
   - link "John":
     - /url: /app/friends/<ULID>
+  - button "Hide John from sidebar": ✕
   - link "Ah Beng":
     - /url: /app/friends/<ULID>
+  - button "Hide Ah Beng from sidebar": ✕
   - link "Taro":
     - /url: /app/friends/<ULID>
+  - button "Hide Taro from sidebar": ✕
   - link "Danial":
     - /url: /app/friends/<ULID>
+  - button "Hide Danial from sidebar": ✕
   - link "Jas":
     - /url: /app/friends/<ULID>
+  - button "Hide Jas from sidebar": ✕
   - link "Hana":
     - /url: /app/friends/<ULID>
+  - button "Hide Hana from sidebar": ✕
   - link "Ah Lian":
     - /url: /app/friends/<ULID>
+  - button "Hide Ah Lian from sidebar": ✕
   - link "Show all":
     - /url: /app/friends
 - main:
@@ -170,4 +182,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

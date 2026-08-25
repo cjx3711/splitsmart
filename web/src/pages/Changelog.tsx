@@ -14,9 +14,14 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
-    version: "0.2.2",
+    version: "0.2.3",
     date: "26 August 2026",
     items: [
+      "Hide a friend from the sidebar.",
+      "You can now email the guest link to a friend. Max 3 a day.",
+      "Filter expenses by currency and who paid.",
+      "Claiming a guest link lands on a proper success screen.",
+      "Can now edit email addresses.",
       "Install the app: a guided page, linked from the sidebar, that walks through adding SplitSmart to your home screen on iOS, Android and desktop, with a one-click install where the browser supports it.",
     ],
   },
@@ -71,7 +76,8 @@ export function Changelog() {
       {ENTRIES.map((entry) => (
         <section key={entry.version} className="mkt-changelog-entry">
           <h2>
-            {entry.version} <span className="mkt-changelog-date">{entry.date}</span>
+            {entry.version}{" "}
+            <span className="mkt-changelog-date">{entry.date}</span>
           </h2>
           {entry.intro ? <p>{entry.intro}</p> : null}
           <ul>

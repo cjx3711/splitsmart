@@ -106,6 +106,16 @@ export interface SyncExpense {
    * skips these. Not a column: stored in `expenses.metadata.import_rounding`.
    */
   importRounding: boolean;
+  /**
+   * A client-owned bag, merged rather than replaced. Not a column: stored in
+   * `expenses.metadata.extra`. See src/domain/metadata.ts: metadataWithExtra.
+   */
+  extra: Record<string, unknown>;
+  /**
+   * The original Splitwise integer, read-only. Not a column: stored in
+   * `expenses.metadata.splitwise_id`.
+   */
+  splitwiseId: number | null;
   /** What a later edit has to send back as `baseVersion`. */
   version: number;
   createdBy: string | null;

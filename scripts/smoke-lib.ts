@@ -43,6 +43,8 @@ const RULES: [RegExp, string][] = [
   [/\blink_[A-Za-z0-9_-]{16,}\b/g, "<LINK_SECRET>"],
   [/\/guest\/l\/[A-Za-z0-9_-]{16,}/g, "/guest/l/<LINK_SECRET>"],
   [/([?&]link=)[A-Za-z0-9_-]+/g, "$1<LINK_SECRET>"],
+  // Footer `v{APP_VERSION}`. A changelog bump is not a UI regression.
+  [/\bv\d+\.\d+\.\d+\b/g, "v<VERSION>"],
   [/\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?/g, "<TIMESTAMP>"],
   [/\b\d{4}-\d{2}-\d{2}\b/g, "<DATE>"],
   [
@@ -86,7 +88,53 @@ export function normalise(input: string): string {
     .trim()}\n`;
 }
 
-export function guestUrl(kind: "group" | "friend", base: string): string {
+function liveGuestSecret(kind: "group" | "friend", nickname?: string): string {
+  if (!existsSync(SMOKE_DB)) {
+    throw new Error(`No smoke database at ${SMOKE_DB}. Run yarn smoke:reset first.`);
+  }
+  const sqlite = new Database(SMOKE_DB, { readonly: true, fileMustExist: true });
+  try {
+    const row = nickname
+      ? (sqlite
+          .prepare(
+            `SELECT al.token_secret AS token_secret
+             FROM access_links al
+             JOIN users u ON u.id = al.user_id
+             WHERE al.kind = ?
+               AND al.revoked_at IS NULL
+               AND al.token_secret IS NOT NULL
+               AND u.nickname = ?
+             ORDER BY al.created_at ASC
+             LIMIT 1`,
+          )
+          .get(kind, nickname) as { token_secret: string } | undefined)
+      : (sqlite
+          .prepare(
+            `SELECT token_secret FROM access_links
+             WHERE kind = ? AND revoked_at IS NULL AND token_secret IS NOT NULL
+             ORDER BY created_at ASC
+             LIMIT 1`,
+          )
+          .get(kind) as { token_secret: string } | undefined);
+    if (!row?.token_secret) {
+      const who = nickname ? ` for ${nickname}` : "";
+      throw new Error(`No live ${kind} guest link${who} in ${SMOKE_DB}. Re-run yarn smoke:reset.`);
+    }
+    return row.token_secret;
+  } finally {
+    sqlite.close();
+  }
+}
+
+export function guestUrl(kind: "group" | "friend", base: string, nickname?: string): string {
+  return `${base.replace(/\/$/, "")}/guest/l/${liveGuestSecret(kind, nickname)}`;
+}
+
+/**
+ * A live friend link that is not Hana's. The claim-success capture consumes
+ * one of these; F18 needs Hana's link still intact afterwards.
+ */
+export function spareFriendGuestUrl(base: string): string {
   if (!existsSync(SMOKE_DB)) {
     throw new Error(`No smoke database at ${SMOKE_DB}. Run yarn smoke:reset first.`);
   }
@@ -94,18 +142,59 @@ export function guestUrl(kind: "group" | "friend", base: string): string {
   try {
     const row = sqlite
       .prepare(
-        `SELECT token_secret FROM access_links
-         WHERE kind = ? AND revoked_at IS NULL AND token_secret IS NOT NULL
+        `SELECT al.token_secret AS token_secret
+         FROM access_links al
+         JOIN users u ON u.id = al.user_id
+         WHERE al.kind = 'friend'
+           AND al.revoked_at IS NULL
+           AND al.token_secret IS NOT NULL
+           AND IFNULL(u.nickname, u.name) != 'Hana'
+         ORDER BY al.created_at ASC
          LIMIT 1`,
       )
-      .get(kind) as { token_secret: string } | undefined;
+      .get() as { token_secret: string } | undefined;
     if (!row?.token_secret) {
-      throw new Error(`No live ${kind} guest link in ${SMOKE_DB}. Re-run yarn smoke:reset.`);
+      throw new Error(`No spare friend guest link in ${SMOKE_DB}. Re-run yarn smoke:reset.`);
     }
     return `${base.replace(/\/$/, "")}/guest/l/${row.token_secret}`;
   } finally {
     sqlite.close();
   }
+}
+
+/**
+ * Guest friend link → register → claim, stopping on the named success screen.
+ * F18 then clicks through; the claim-success capture takes the shutter here.
+ */
+export async function claimFriendLinkAsNewAccount(
+  page: Page,
+  inviteUrl: string,
+  identity: { email: string; name: string; password?: string },
+): Promise<void> {
+  const password = identity.password ?? "password123";
+  await page.goto(inviteUrl, { waitUntil: "domcontentloaded" });
+  await page.getByText("Between you").waitFor({ timeout: 15_000 });
+
+  const banner = page.getByRole("link", { name: "Make it mine" });
+  await banner.waitFor({ timeout: 10_000 });
+  await banner.click();
+  await page.getByRole("heading", { name: "Make it yours" }).waitFor({ timeout: 10_000 });
+
+  await page.getByRole("link", { name: "Create an account" }).click();
+  await page.getByRole("heading", { name: "Create account" }).waitFor({ timeout: 10_000 });
+
+  await page.getByLabel("Email").fill(identity.email);
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await page.getByRole("heading", { name: "Finish creating your account" }).waitFor({ timeout: 10_000 });
+  await page.getByLabel("Name", { exact: true }).fill(identity.name);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await page.getByRole("heading", { name: "Which one is you?" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Claim" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Claim" }).click();
+  await page.getByRole("heading", { name: "Link claimed" }).waitFor({ timeout: 15_000 });
 }
 
 export async function newContext(

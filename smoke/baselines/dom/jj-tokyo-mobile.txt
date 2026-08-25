@@ -56,7 +56,7 @@
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
   - button "Filters"
-  - button "Download CSV"
+  - button "More actions"
   - link "TeamLab tickets <DATE> · Life · You paid lent 7200JPY 9600JPY"
   - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments borrowed 1200JPY 4800JPY":
     - text: Ramen at Ichiran <DATE> · Dining out ·
@@ -85,4 +85,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

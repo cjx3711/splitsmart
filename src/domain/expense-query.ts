@@ -33,6 +33,10 @@ export interface ExpenseFilters {
    */
   categoryChildIds?: number[];
   isPayment?: boolean;
+  /** ISO 4217 code, exact match. */
+  currencyCode?: string;
+  /** Only expenses where this person put money in (`paid_share_minor > 0`). */
+  paidByUserId?: string;
 }
 
 /** Splitwise's "no group" bucket, spelled for a query string. */
@@ -103,6 +107,12 @@ export function parseExpenseFilters(
   if (query.is_payment === "true" || query.is_payment === "1") filters.isPayment = true;
   if (query.is_payment === "false" || query.is_payment === "0") filters.isPayment = false;
 
+  const currencyCode = query.currency_code?.trim().toUpperCase();
+  if (currencyCode) filters.currencyCode = currencyCode;
+
+  const paidBy = query.paid_by?.trim();
+  if (paidBy && isUlid(paidBy)) filters.paidByUserId = paidBy;
+
   return filters;
 }
 
@@ -115,6 +125,9 @@ export interface FilterableExpense {
   isPayment: boolean;
   /** Everyone on the bill, for the `friendId` filter. */
   participantIds: string[];
+  currencyCode: string;
+  /** Everyone who put money in (`paid_share_minor > 0`), for the `paidByUserId` filter. */
+  payerIds: string[];
 }
 
 /**
@@ -160,6 +173,14 @@ export function matchesFilters(
     }
   }
   if (filters.isPayment !== undefined && expense.isPayment !== filters.isPayment) return false;
+
+  if (filters.currencyCode !== undefined && expense.currencyCode !== filters.currencyCode) {
+    return false;
+  }
+
+  if (filters.paidByUserId !== undefined && !expense.payerIds.includes(filters.paidByUserId)) {
+    return false;
+  }
 
   return true;
 }

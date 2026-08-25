@@ -1,17 +1,16 @@
 - banner:
+  - button "Show menu": ☰
   - link "SplitSmart":
     - /url: /app
     - img "SplitSmart"
+  - button "Payment"
+  - button "Expense"
 - main:
-  - img "SplitSmart"
-  - text: SplitSmart
-  - heading "Reset password" [level=1]
-  - paragraph: We'll send a link to choose a new one.
-  - text: Email
-  - textbox "Email"
-  - button "Send reset link"
-  - link "Back to log in":
-    - /url: /app/login
+  - heading "Link claimed" [level=1]
+  - paragraph: That person is you now. Everything they were part of is on this account, and the guest link that acted as them has stopped working.
+  - paragraph:
+    - button "Open Test User"
+    - button "Go to your dashboard"
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

@@ -20,11 +20,13 @@
  * Search stays on the bar (it is the thing people type every time). Everything
  * else lives in a modal so the seven-control wrap does not eat the list.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { displayName, type ExpenseQuery, type Group } from "./api.ts";
 import { categoryPath, CategoryPicker, useCategories } from "./categories.tsx";
 import { useAuth } from "./App.tsx";
 import { Modal } from "./Modal.tsx";
+import { MoreIcon } from "./Icons.tsx";
+import { useCurrencies } from "./money.tsx";
 import { useLocalDb } from "./sync/SyncProvider.tsx";
 import { localExpenseCsv } from "./db/queries.ts";
 
@@ -35,7 +37,9 @@ function modalFilterCount(value: ExpenseQuery): number {
     Number(value.datedAfter !== undefined) +
     Number(value.datedBefore !== undefined) +
     Number(value.categoryId !== undefined) +
-    Number(value.isPayment !== undefined)
+    Number(value.isPayment !== undefined) +
+    Number(value.currencyCode !== undefined) +
+    Number(value.paidByUserId !== undefined)
   );
 }
 
@@ -44,6 +48,7 @@ export function ExpenseFilters({
   onChange,
   groups,
   people,
+  payers,
   csvScope,
   csvFilename = "expenses",
 }: {
@@ -53,6 +58,8 @@ export function ExpenseFilters({
   groups?: Group[];
   /** Offer a "with this person" picker. Omit on a friend's own screen. */
   people?: Array<{ id: string; name: string; nickname?: string | null }>;
+  /** Offer a "paid by" picker, scoped to whoever can appear on this screen's bills. */
+  payers?: Array<{ id: string; name: string; nickname?: string | null }>;
   /**
    * The scope the screen itself imposes, for the download only.
    *
@@ -65,14 +72,27 @@ export function ExpenseFilters({
   csvFilename?: string;
 }) {
   const categories = useCategories();
+  const { currencies } = useCurrencies();
   const db = useLocalDb();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   // Typing is local so every keystroke does not fire a request; the parent is
   // told once the box settles. 250ms is short enough to feel immediate.
   const [q, setQ] = useState(value.q ?? "");
 
   useEffect(() => setQ(value.q ?? ""), [value.q]);
+
+  // Closes on an outside click, same as the currency picker's own menu.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [menuOpen]);
 
   useEffect(() => {
     if ((value.q ?? "") === q) return;
@@ -113,32 +133,53 @@ export function ExpenseFilters({
         </button>
       )}
 
-      {/* Built from the mirror and handed to the browser as a blob, rather than a
-          link to /api/v1/expenses.csv. That endpoint still exists and still works
-          - it is what curl and the API docs use - but a link to it is the one
-          thing on this bar that would fail with no network, and the document it
-          returns is identical to this one by construction. */}
-      <button
-        type="button"
-        className="link"
-        title="Download these expenses as CSV"
-        disabled={!db || !user}
-        onClick={() => {
-          if (!db || !user) return;
-          void localExpenseCsv(db, user.id, { ...csvScope, ...value }).then((csv) => {
-            const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-            const anchor = document.createElement("a");
-            anchor.href = url;
-            anchor.download = `${csvFilename}.csv`;
-            anchor.click();
-            // Revoked immediately: the click has already handed the blob to the
-            // download, and leaving it alive holds the whole file in memory.
-            URL.revokeObjectURL(url);
-          });
-        }}
-      >
-        Download CSV
-      </button>
+      {/* A lone action tucked behind "more" rather than sat on the bar - it is
+          used far less often than searching or filtering, so it should not
+          compete with them for space or attention. */}
+      <div className="filters-more" ref={menuRef}>
+        <button
+          type="button"
+          className="filters-trigger filters-more-trigger"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label="More actions"
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          <MoreIcon />
+        </button>
+
+        {menuOpen && (
+          <div className="filters-more-menu" role="menu">
+            {/* Built from the mirror and handed to the browser as a blob, rather
+                than a link to /api/v1/expenses.csv. That endpoint still exists
+                and still works - it is what curl and the API docs use - but a
+                link to it is the one thing on this bar that would fail with no
+                network, and the document it returns is identical to this one
+                by construction. */}
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!db || !user}
+              onClick={() => {
+                setMenuOpen(false);
+                if (!db || !user) return;
+                void localExpenseCsv(db, user.id, { ...csvScope, ...value }).then((csv) => {
+                  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = `${csvFilename}.csv`;
+                  anchor.click();
+                  // Revoked immediately: the click has already handed the blob to
+                  // the download, and leaving it alive holds the whole file in memory.
+                  URL.revokeObjectURL(url);
+                });
+              }}
+            >
+              Download CSV
+            </button>
+          </div>
+        )}
+      </div>
 
       <Modal
         open={open}
@@ -222,9 +263,50 @@ export function ExpenseFilters({
             >
               <option value="">Expenses and payments</option>
               <option value="false">Expenses only</option>
-              <option value="true">Settle-ups only</option>
+              <option value="true">Payments only</option>
             </select>
           </label>
+
+          <label className="filter-field">
+            Currency
+            <select
+              value={value.currencyCode ?? ""}
+              onChange={(e) =>
+                onChange({ ...value, currencyCode: e.target.value === "" ? undefined : e.target.value })
+              }
+            >
+              <option value="">Any currency</option>
+              {[...currencies]
+                .sort((a, b) => a.code.localeCompare(b.code))
+                .map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.symbol ? `${c.code} · ${c.symbol}` : c.code}
+                  </option>
+                ))}
+            </select>
+          </label>
+
+          {payers && (
+            <label className="filter-field">
+              Paid by
+              <select
+                value={value.paidByUserId ?? ""}
+                onChange={(e) =>
+                  onChange({
+                    ...value,
+                    paidByUserId: e.target.value === "" ? undefined : e.target.value,
+                  })
+                }
+              >
+                <option value="">Anyone</option>
+                {payers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.id === user?.id ? "You" : displayName(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <div className="filter-field">
             <div className="filter-field-label">Category</div>

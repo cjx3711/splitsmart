@@ -15,7 +15,9 @@
   - link "Add a friend":
     - /url: /app/friends/new
     - button "Add a friend"
-  - text: Net position 6000JPY -3836.21USD You owe 3836.21USD You are owed 6000JPY
+  - text: Net position ≈-3798.50USD*
+  - group: JPY · USD▼
+  - text: You owe 3836.21USD You are owed 6000JPY
   - paragraph:
     - text: "* Converted to USD, your default currency, using"
     - link "Rates By Exchange Rate API":
@@ -25,13 +27,9 @@
       - /url: /app/settings
     - text: .
   - heading "You owe" [level=2]
-  - link "Test User you owe 3836.21USD owes you 1200JPY -3696.21USD ·Apartment 4B -140.00USD ·Ski Trip 2026 1200JPY ·Weekend in Tokyo":
+  - link "Test User ≈you owe 3828.67USD*":
     - /url: /app/friends/<ULID>
-    - text: Test User you owe 3836.21USD owes you 1200JPY
-    - list:
-      - listitem: "-3696.21USD ·Apartment 4B"
-      - listitem: "-140.00USD ·Ski Trip 2026"
-      - listitem: 1200JPY ·Weekend in Tokyo
+  - group: JPY · USD▼
   - heading "You are owed" [level=2]
   - link "Ah Beng owes you 2400JPY":
     - /url: /app/friends/<ULID>
@@ -47,4 +45,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

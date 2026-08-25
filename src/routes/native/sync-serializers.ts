@@ -24,7 +24,7 @@ import type {
   SyncShare,
   SyncUser,
 } from "../../domain/sync-types.ts";
-import { importRoundingOf, repeatPausedOf } from "../../domain/metadata.ts";
+import { extraOf, importRoundingOf, repeatPausedOf, splitwiseIdOf } from "../../domain/metadata.ts";
 import { knownEmail } from "../../domain/person.ts";
 import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 
@@ -224,6 +224,8 @@ export async function loadExpenses(
       repeatOf: row.repeat_of,
       repeatPaused: repeatPausedOf(row.metadata),
       importRounding: importRoundingOf(row.metadata),
+      extra: extraOf(row.metadata),
+      splitwiseId: splitwiseIdOf(row.metadata),
       version: row.version,
       createdBy: row.created_by,
       updatedBy: row.updated_by,

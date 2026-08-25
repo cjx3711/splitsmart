@@ -10,14 +10,24 @@
  * Friends and groups are ordered by last expense, from the per-user
  * localStorage recency map, not from a full balance pass. Counts live on the
  * headings; "Show all" is a link, not a tally.
+ *
+ * A friend can be crossed off this rail without leaving the roster. That
+ * hide is local (`hiddenFriends.ts`): they come back if you search, or if
+ * a newer shared expense lands.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { LuSettings, LuSmartphone } from "react-icons/lu";
 import { compareByLastExpense } from "../../src/domain/friend-recency.ts";
 import { displayName } from "./api.ts";
 import { useAuth } from "./App.tsx";
 import { useGroups, useRelatedPeople } from "./localData.ts";
+import {
+  friendIsHidden,
+  hideFriend,
+  loadHiddenFriends,
+  saveHiddenFriends,
+} from "./db/hiddenFriends.ts";
 import { Avatar } from "./Avatar.tsx";
 import { GroupTypeIcon } from "./groupTypes.tsx";
 import { NavSkeleton } from "./Skeleton.tsx";
@@ -42,10 +52,17 @@ export function Sidebar({ className }: { className: string }) {
     () => new Map(Object.entries(friendsQuery?.lastByGroup ?? {})),
     [friendsQuery?.lastByGroup],
   );
+  const lastByFriend = friendsQuery?.last ?? {};
+  const [hiddenFriends, setHiddenFriends] = useState<Record<string, string>>({});
   const groupsLoading = groupsQuery === undefined;
   const friendsLoading = friendsQuery === undefined;
 
+  useEffect(() => {
+    setHiddenFriends(user?.id ? loadHiddenFriends(user.id) : {});
+  }, [user?.id]);
+
   const query = filter.trim().toLowerCase();
+  const searching = query.length > 0;
   const filteredGroups = useMemo(
     () => groups.filter((g) => g.name.toLowerCase().includes(query)),
     [groups, query],
@@ -60,12 +77,26 @@ export function Sidebar({ className }: { className: string }) {
     );
     return query ? sorted : sorted.slice(0, SIDEBAR_GROUP_LIMIT);
   }, [filteredGroups, lastByGroup, query]);
-  const sidebarFriends = useMemo(() => {
-    // Friends arrive from the mirror already ordered by last shared expense.
-    return query ? filteredFriends : filteredFriends.slice(0, SIDEBAR_FRIEND_LIMIT);
-  }, [filteredFriends, query]);
+  const visibleFriends = useMemo(
+    () =>
+      filteredFriends.filter(
+        (f) => !friendIsHidden(hiddenFriends[f.id], lastByFriend[f.id] ?? "", searching),
+      ),
+    [filteredFriends, hiddenFriends, lastByFriend, searching],
+  );
+  const sidebarFriends = useMemo(
+    () => (searching ? visibleFriends : visibleFriends.slice(0, SIDEBAR_FRIEND_LIMIT)),
+    [visibleFriends, searching],
+  );
   const hasMoreGroups = !query && filteredGroups.length > SIDEBAR_GROUP_LIMIT;
-  const hasMoreFriends = !query && filteredFriends.length > SIDEBAR_FRIEND_LIMIT;
+  const hasMoreFriends = !searching && friends.length > sidebarFriends.length;
+
+  function hideFromRail(friendId: string) {
+    if (!user) return;
+    const next = hideFriend(hiddenFriends, friendId, lastByFriend[friendId] ?? "");
+    saveHiddenFriends(user.id, next);
+    setHiddenFriends(next);
+  }
 
   const shownName = user ? displayName(user) : "";
 
@@ -170,13 +201,28 @@ export function Sidebar({ className }: { className: string }) {
         {friendsLoading ? (
           <NavSkeleton rows={5} />
         ) : sidebarFriends.length === 0 ? (
-          <p className="nav-empty">{friends.length === 0 ? "No friends yet." : "No matches."}</p>
+          friends.length === 0 ? (
+            <p className="nav-empty">No friends yet.</p>
+          ) : searching ? (
+            <p className="nav-empty">No matches.</p>
+          ) : null
         ) : (
           sidebarFriends.map((f) => (
-            <NavLink key={f.id} to={`/friends/${f.id}`} className={navClass}>
-              <span className={f.is_ghost === 0 ? "dot dot--joined" : "dot"} />
-              <span className="nav-item-label">{displayName(f)}</span>
-            </NavLink>
+            <div key={f.id} className="nav-friend">
+              <NavLink to={`/friends/${f.id}`} className={navClass}>
+                <span className={f.is_ghost === 0 ? "dot dot--joined" : "dot"} />
+                <span className="nav-item-label">{displayName(f)}</span>
+              </NavLink>
+              <button
+                type="button"
+                className="icon nav-hide"
+                onClick={() => hideFromRail(f.id)}
+                aria-label={`Hide ${displayName(f)} from sidebar`}
+                title="Hide from sidebar"
+              >
+                ✕
+              </button>
+            </div>
           ))
         )}
         {hasMoreFriends && (

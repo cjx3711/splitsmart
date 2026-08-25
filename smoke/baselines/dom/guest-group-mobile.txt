@@ -30,9 +30,11 @@
       - listitem:
         - button "Test User → JJ 1200JPY"
       - listitem:
+        - button "Ah Beng → Test User 1200JPY"
+      - listitem:
         - button "You → Test User 1200JPY"
     - heading "Balances" [level=2]
-    - text: Test User settled up JJ gets back 6000JPY Ah Beng owes 2400JPY You guest owe 3600JPY
+    - text: Test User gets back 1200JPY JJ gets back 6000JPY Ah Beng owes 3600JPY You guest owe 3600JPY
   - heading "Expenses" [level=2]
   - link "TeamLab tickets <DATE> · Life · JJ paid borrowed 2400JPY 9600JPY"
   - link "Ramen at Ichiran <DATE> · Dining out · Test User paid · 2 comments borrowed 1200JPY 4800JPY"
@@ -46,4 +48,4 @@
     - /url: /docs
   - link "GitHub":
     - /url: https://github.com/cjx3711/splitsmart
-  - text: v0.2.1
+  - text: v<VERSION>

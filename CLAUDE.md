@@ -69,7 +69,7 @@ PNG baselines live in `smoke/baselines/png/` and DOM dumps in
 `smoke/baselines/dom/`. Both ARE committed. PNGs are machine-local (system
 fonts); re-record with `--update` on the device you run on rather than
 "fixing" a font diff. DOM dumps go through `scripts/smoke-lib.ts`, which
-strips ULIDs, dates, link secrets and the live FX estimate. Update a baseline
+strips ULIDs, dates, link secrets, the app version and the live FX estimate. Update a baseline
 in the commit that changed the UI, never to quiet a failing run.
 
 ## The four rules

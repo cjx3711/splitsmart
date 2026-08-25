@@ -24,6 +24,12 @@ export type ScreenDef = {
   /** File name, without extension or viewport suffix. */
   id: string;
   auth: ScreenAuth;
+  /**
+   * Capture session key. Defaults to `authKey`. Set this when the screen
+   * mutates the seed (claim-success consumes a guest link) so it is not
+   * grouped with the anonymous login captures that run first.
+   */
+  session?: string;
   /** Where to land first. Relative to the web origin. Ignored for guest auth. */
   path: string;
   /** Accessible names / exact text to click, in order, after landing. */
@@ -67,6 +73,8 @@ export const CAPTURE_PARAMS = {
  *   .avatar     pattern is hashed from the user's ULID; every smoke:reset mints new ones.
  *   .estimate   the ≈ overall figure, converted at live Exchange Rate API rates.
  *   .comment-time  system comments are stamped at seed time, not SEED_TODAY.
+ *   .footer-version  `v{APP_VERSION}`. A changelog bump is not a layout change;
+ *                    the box stays so a longer string cannot shift the footer.
  *   .sync-badge / .sync-icon / .syncbar / .sync-status
  *     pending vs synced is a race against the outbox.
  */
@@ -88,6 +96,8 @@ export const STABILISE_CSS = `
   /* Guest link URL is a fresh secret every smoke:reset. Keep the box so layout
      still compares; the characters are the only thing that must not. */
   .link-url { color: transparent !important; }
+  /* Changelog bumps change the glyphs, not the chrome. Keep the box. */
+  .footer-version { color: transparent !important; }
   /* New in the header: hide from layout so existing PNG baselines stay put. */
   .sync-status { display: none !important; }
 `;
@@ -258,6 +268,13 @@ const DEFS: ScreenDef[] = [
     click: ["Hana"],
     waitForText: "Ramen at Ichiran",
   },
+  {
+    id: "claim-success",
+    auth: { kind: "none" },
+    session: "claim-success",
+    path: "/",
+    waitForText: "Link claimed",
+  },
 ];
 
 /** Desktop and mobile for every screen. The id carries the viewport suffix for mobile. */
@@ -267,6 +284,7 @@ export const SCREENS: Screen[] = DEFS.flatMap((def) => [
 ]);
 
 export function authKey(screen: Screen): string {
+  if (screen.session) return screen.session;
   if (screen.auth.kind === "none") return "none";
   if (screen.auth.kind === "guest") return `guest:${screen.auth.link}`;
   return `user:${screen.auth.account ?? "user"}`;

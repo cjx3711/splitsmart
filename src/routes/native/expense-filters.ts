@@ -38,6 +38,8 @@ export const expenseListQuerySchema = z.object({
   dated_before: z.string().optional(),
   category_id: z.string().optional(),
   is_payment: z.string().optional(),
+  currency_code: z.string().optional(),
+  paid_by: z.string().optional(),
   limit: z.string().optional(),
   offset: z.string().optional(),
 });
@@ -108,6 +110,23 @@ export function expenseFilterWhere(filters: ExpenseFilters) {
     }
     if (filters.isPayment !== undefined) {
       conditions.push(eb("expenses.is_payment", "=", filters.isPayment ? 1 : 0));
+    }
+
+    if (filters.currencyCode !== undefined) {
+      conditions.push(eb("expenses.currency_code", "=", filters.currencyCode));
+    }
+
+    if (filters.paidByUserId !== undefined) {
+      conditions.push(
+        eb.exists(
+          eb
+            .selectFrom("expense_users as filter_payer")
+            .select("filter_payer.user_id")
+            .whereRef("filter_payer.expense_id", "=", "expenses.id")
+            .where("filter_payer.user_id", "=", filters.paidByUserId)
+            .where("filter_payer.paid_share_minor", ">", 0),
+        ),
+      );
     }
 
     return eb.and(conditions);

@@ -32,12 +32,14 @@ import {
   DEFAULT_BASE,
   arg,
   chromiumHint,
+  claimFriendLinkAsNewAccount,
   clickNamed,
   dumpDom,
   guestUrl,
   newContext,
   settle,
   signIn,
+  spareFriendGuestUrl,
 } from "./smoke-lib.ts";
 
 const require = createRequire(import.meta.url);
@@ -83,7 +85,14 @@ function wipeStale(dir: string, ext: string, screens: Screen[]): void {
 }
 
 async function preparePage(page: Page, screen: Screen, base: string): Promise<void> {
-  if (screen.auth.kind === "guest") {
+  const id = screen.id.replace(/-mobile$/, "");
+  if (id === "claim-success") {
+    const email = `smoke-claim-${screen.viewport}@example.com`;
+    await claimFriendLinkAsNewAccount(page, spareFriendGuestUrl(base), {
+      email,
+      name: "Smoke Claimant",
+    });
+  } else if (screen.auth.kind === "guest") {
     await page.goto(guestUrl(screen.auth.link, base), { waitUntil: "domcontentloaded" });
   } else {
     await page.goto(`${base}${screen.path}`, { waitUntil: "domcontentloaded" });
