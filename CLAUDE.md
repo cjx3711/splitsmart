@@ -170,6 +170,89 @@ partial, or nonsense cannot make the cache disagree with `expense_users` - the
 worst it can do is choose a different valid pairing. Do not add a path that
 writes `expense_repayments` from anything but this function.
 
+## simplify_by_default governs two screens, and nothing financial
+
+The group flag decides how a set of nets is turned into edges. It changes who
+hands money to whom, never what anyone is up or down, and it writes nothing:
+
+- **Friend totals** — `pairwiseWithSimplify` in `settle.ts`, called by
+  `getPairwiseBalancesByGroup` and by the mirror's `localFriends`. On, a cycle
+  through a third party collapses and their debt can be rerouted onto you; off,
+  the sidebar shows the raw per-bill edges.
+- **A group's suggested settle-up** — `settleSuggestions`, called by
+  `GET /groups/:id/settle`, its guest twin, and `localSettleSuggestions`. On,
+  the fewest transfers from the member nets; off, `expense_repayments` netted
+  per pair, so nobody is asked to pay someone they never shared a bill with.
+
+Both surfaces must read the same flag. Suggested settle-up used to simplify
+unconditionally, which made the toggle look broken: it sits in Group options,
+and the group page — nets, which simplify cannot move, plus an always-simplified
+suggestion list — was the one screen where nothing changed.
+
+New groups get it **on**: the API create default, `NewGroup.tsx`, the column
+default in `001`, and the mirror's assumption for a group it has not stored yet
+all agree. An imported group keeps Splitwise's setting instead.
+
+`web/src/groupSettings.ts` is the one writer of the flag from the client (Group
+options and the shortcut under the payment list), so the mirror-first,
+roll-back-on-refusal shape cannot drift between them. `default_currency` is
+written from the same module for the same reason.
+
+## A group's default currency is settable, and moves no money
+
+It decides two presentational things: what currency a new expense in the group
+STARTS in (`AddExpenseDialog` prefers it over your own preferred currency) and
+what the group screen offers to convert balances to. It converts nothing —
+every recorded expense keeps the currency it was entered in, and no balance is
+touched (rule 2), so changing it is safe on a group with history.
+
+A new group starts from the creator's own preferred currency rather than a
+hardcoded USD, and both `NewGroup.tsx` and Group options offer the picker.
+`POST /groups` still defaults to `USD` for an API client that names no currency.
+Both write paths check the code against the `currencies` table first: the column
+is a foreign key, so an unknown code would otherwise be a 500 rather than a
+message the form can show.
+
+## Closing out balances that already cancel
+
+Two screens offer to record payments that move no money, and both must ASK.
+
+`planSettleAll` (`src/domain/settle.ts`) takes a friend's per-group breakdown
+and returns one transfer per bucket, for **only** those currencies whose
+buckets already sum to zero. A currency that does not sum to zero is a real
+debt and must never get an invented transfer; that is the invariant worth
+keeping, and F14 in the smoke suite asserts it directly.
+
+The friend page reaches it two ways:
+
+- **Found**: simplify-debts has left a group and the one-on-one bucket holding
+  opposite amounts. The note under the balance explains that before offering
+  "Close them out".
+- **Created**: a settle-up recorded here is one-on-one, so bringing a currency
+  to zero between two people leaves any shared group still reading as owed.
+  `FriendDetail` computes the follow-up plan in the settle-up's `onSubmit`,
+  stashes it in a **ref**, and opens a confirm dialog from `onClose` — the two
+  run in the same tick, so state would be a render behind and the question
+  would be dropped. It used to write those payments silently; they land in
+  groups with other people in them, so they are offered, never assumed.
+
+Every one carries `SETTLE_ALL_NOTE` as a comment saying no money changed hands.
+
+## Converting balances says whose default currency
+
+Multi-currency balances are per-currency ledgers (rule 2), and converting is a
+pair of ordinary payments per currency - close the old one, open the new - never
+a stored rate. The wording rule: **every mention of converting names the target
+as a default currency, and whose.** A bare code presented without that word
+reads as the app choosing for you, and it is not arbitrary - it is a setting.
+
+- `ConvertBalancesHint` (`web/src/ConversionNote.tsx`) is the one nudge, shared
+  by a group's payment list, the friend page and the guest friend page, so the
+  same situation is not met in three different sentences.
+- `ConvertBalanceDialog` / `ConvertGroupBalanceDialog` take `defaultLabel`
+  alongside `preferredCurrency`: "your default currency" on a friend page,
+  "this group's default currency" inside a group.
+
 ## Layout
 
 ```
@@ -195,8 +278,9 @@ src/
                      group when simplify_by_default is on. One-on-one expenses
                      stay pairwise. expense_repayments stays the per-bill
                      cache; simplify is compute-time only.
-    settle.ts        simplifyDebts + pairwiseWithSimplify. Pure. Also imported
-                     by the frontend so offline friend totals cannot drift.
+    settle.ts        simplifyDebts + pairwiseWithSimplify + settleSuggestions.
+                     Pure. Also imported by the frontend so offline friend
+                     totals cannot drift.
     expenses.ts      The ONLY writer of expense tables, except wipe.ts
     comments.ts      The ONLY writer of `comments`. User + system rows
     recurring.ts     Interval arithmetic. Pure. Also imported by the frontend
@@ -247,7 +331,11 @@ web/                 React frontend (Vite)
     ExpenseForm.tsx      The one add-expense form (group, friend, or neither)
     ExpenseDialog.tsx    ExpenseForm in a modal. Shared by both shells
     AddExpenseDialog.tsx Loads people/groups from the mirror; logged-in entry
-    SettleUpDialog.tsx   Currency picker + SettleUpForm. Shared by both shells
+    AddPaymentDialog.tsx Header entry: pick a person, then SettleUpDialog
+    SettleUpDialog.tsx   Balance picker + SettleUpForm. Shared by both shells
+    SettleUpForm.tsx     The payment form. Two people get a swap row, not selects
+    recordPayment.ts     Enqueues a payment plus its note, as a comment
+    Icons.tsx            The inline SVG glyphs the chrome uses (+, swap)
     Modal.tsx            Native <dialog>. Modal chrome; Dialog for the lightbox
     ConfirmDialog.tsx    Two-button confirm on top of Modal
     PeoplePicker.tsx     Who is on the expense: an email-style To: field
@@ -413,6 +501,39 @@ setting each person's payment to what they owe.
 Keep the two axes apart in the UI as well as the model. `web/src/PaidBy.tsx`
 edits payments and nothing else; `web/src/SplitEditor.tsx` decides who owes
 what and never touches a payment.
+
+## The UI calls them expenses and payments
+
+Two nouns, one glyph each: **＋ Expense** and **＋ Payment**, on the header, on
+every page head, and in both shells. "Settle up" is gone from the buttons - it
+named a goal rather than the row it writes, and it had no counterpart on the
+other button. The suggestion list on a group page is still a suggestion, so it
+is headed "Suggested payments" and remains the only place the word describes
+something not yet recorded.
+
+Recording one is `SettleUpForm`, and three things about it are deliberate:
+
+- **Two people get a direction row, not two selects.** "A → B" that swaps on
+  click. Two selects can be set to the same person, which is the one thing the
+  form must refuse, and they take two gestures to express a correction that is
+  really one bit.
+- **There is no "show in" currency.** A payment clears the currency it is made
+  in; an estimate of it in another currency answers a question nobody recording
+  a payment is asking, and it sat right next to the amount box.
+- **The note is a comment, not a column.** `web/src/recordPayment.ts` enqueues
+  the payment and then the note against the id it just minted, so every logged-in
+  screen posts it the same way; the guest screens do the same through
+  `guestApi.addComment`. A payment's description is always "Payment", so this is
+  where "cash at dinner" actually goes.
+
+`AddPaymentDialog` is the header entry point. A payment needs a person before it
+needs a form, so it asks who first and then opens the ordinary `SettleUpDialog`
+on that person's real balances - the same dialog the friend page opens, not a
+second copy of it.
+
+Whenever that dialog shows its balance picker it also offers **Enter a different
+amount**. The listed balances are shortcuts; a part payment, or one in a currency
+nobody currently owes, has to be typeable or the picker is a dead end.
 
 ## Comments
 
