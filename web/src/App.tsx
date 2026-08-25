@@ -29,6 +29,7 @@ import { Series } from "./pages/Series.tsx";
 import { Activity } from "./pages/Activity.tsx";
 import { Claim } from "./pages/Claim.tsx";
 import { Settings } from "./pages/Settings.tsx";
+import { InstallApp } from "./pages/InstallApp.tsx";
 import { ApiTokens } from "./pages/ApiTokens.tsx";
 import { Import } from "./pages/Import.tsx";
 import { Admin } from "./pages/Admin.tsx";
@@ -159,6 +160,7 @@ function Shell() {
       <Route path="/conflicts" element={<Protected><Conflicts /></Protected>} />
       <Route path="/settings/tokens" element={<Protected><ApiTokens /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
+      <Route path="/install" element={<Protected><InstallApp /></Protected>} />
       <Route path="/import" element={<Protected><Import /></Protected>} />
       <Route
         path="/admin"

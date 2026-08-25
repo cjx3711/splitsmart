@@ -13,7 +13,7 @@
  */
 import { useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { LuSettings } from "react-icons/lu";
+import { LuSettings, LuSmartphone } from "react-icons/lu";
 import { compareByLastExpense } from "../../src/domain/friend-recency.ts";
 import { displayName } from "./api.ts";
 import { useAuth } from "./App.tsx";
@@ -21,6 +21,7 @@ import { useGroups, useRelatedPeople } from "./localData.ts";
 import { Avatar } from "./Avatar.tsx";
 import { GroupTypeIcon } from "./groupTypes.tsx";
 import { NavSkeleton } from "./Skeleton.tsx";
+import { useIsStandalone } from "./pwaInstall.ts";
 
 const SIDEBAR_GROUP_LIMIT = 5;
 const SIDEBAR_FRIEND_LIMIT = 10;
@@ -31,6 +32,7 @@ function withCount(label: string, count: number): string {
 
 export function Sidebar({ className }: { className: string }) {
   const { user } = useAuth();
+  const standalone = useIsStandalone();
   const [filter, setFilter] = useState("");
   const groupsQuery = useGroups();
   const friendsQuery = useRelatedPeople();
@@ -108,6 +110,12 @@ export function Sidebar({ className }: { className: string }) {
         <NavLink to="/admin" end className={navClass}>
           <span className="dot" />
           <span className="nav-item-label">Usage</span>
+        </NavLink>
+      )}
+      {!standalone && (
+        <NavLink to="/install" className={navClass}>
+          <LuSmartphone className="nav-item-icon" aria-hidden="true" />
+          <span className="nav-item-label">Get the app</span>
         </NavLink>
       )}
 
