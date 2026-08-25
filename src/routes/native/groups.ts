@@ -9,7 +9,12 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { db, transaction } from "../../db/index.ts";
 import { requireAuth, type AppEnv } from "../../auth/middleware.ts";
-import { getGroupBalances, getTotalBalance, simplifyDebts } from "../../domain/balances.ts";
+import {
+  getGroupBalances,
+  getGroupRawEdges,
+  getTotalBalance,
+  settleSuggestions,
+} from "../../domain/balances.ts";
 import {
   createExpense,
   updateExpense,
@@ -28,6 +33,22 @@ import { isUlid, ulid } from "../../domain/ulid.ts";
 import { MAX_NAME_LENGTH, MAX_NICKNAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
 import { repeatPausedOf } from "../../domain/metadata.ts";
+
+/**
+ * True if the code is a currency we hold.
+ *
+ * `groups.default_currency` is a foreign key, so an unknown code would surface
+ * as a constraint failure (a 500) rather than a message the form can show. The
+ * same check guards PATCH /auth/me for the same reason.
+ */
+async function isKnownCurrency(code: string): Promise<boolean> {
+  const row = await db
+    .selectFrom("currencies")
+    .select("code")
+    .where("code", "=", code)
+    .executeTakeFirst();
+  return row !== undefined;
+}
 
 /** Throws a 403-shaped result if the caller isn't in the group. */
 async function assertMember(groupId: string, userId: string) {
@@ -75,6 +96,10 @@ export const groupRoutes = new Hono<AppEnv>()
   async (c) => {
     const auth = c.get("user");
     const input = c.req.valid("json");
+
+    if (!(await isKnownCurrency(input.defaultCurrency))) {
+      return c.json({ error: `Unknown currency: ${input.defaultCurrency}` }, 400);
+    }
 
     // No guest link is minted here. Creating a group is not deciding to share
     // it; the owner mints a link from the group screen when they mean to.
@@ -177,12 +202,14 @@ export const groupRoutes = new Hono<AppEnv>()
       .object({
         name: z.string().trim().min(1).max(200).optional(),
         groupType: z.enum(GROUP_TYPES).optional(),
+        defaultCurrency: z.string().length(3).toUpperCase().optional(),
         simplifyByDefault: z.boolean().optional(),
       })
       .refine(
         (body) =>
           body.name !== undefined ||
           body.groupType !== undefined ||
+          body.defaultCurrency !== undefined ||
           body.simplifyByDefault !== undefined,
         { message: "Nothing to update" },
       ),
@@ -196,7 +223,14 @@ export const groupRoutes = new Hono<AppEnv>()
     return c.json({ error: "Not a member of this group" }, 403);
   }
 
-  const { name, groupType, simplifyByDefault } = c.req.valid("json");
+  const { name, groupType, defaultCurrency, simplifyByDefault } = c.req.valid("json");
+
+  // Changing the default currency changes what the next bill STARTS in and
+  // nothing else: recorded expenses keep the currency they were entered in, and
+  // no balance is converted (rule 2).
+  if (defaultCurrency !== undefined && !(await isKnownCurrency(defaultCurrency))) {
+    return c.json({ error: `Unknown currency: ${defaultCurrency}` }, 400);
+  }
 
   const group = await transaction(async (trx) => {
     const updated = await trx
@@ -204,6 +238,7 @@ export const groupRoutes = new Hono<AppEnv>()
       .set({
         ...(name !== undefined ? { name } : {}),
         ...(groupType !== undefined ? { group_type: groupType } : {}),
+        ...(defaultCurrency !== undefined ? { default_currency: defaultCurrency } : {}),
         ...(simplifyByDefault !== undefined
           ? { simplify_by_default: simplifyByDefault ? 1 : 0 }
           : {}),
@@ -228,7 +263,14 @@ export const groupRoutes = new Hono<AppEnv>()
   if (!group) return c.json({ error: "Group not found" }, 404);
   return c.json({ group });
 })
-/** Suggested settle-up transfers, per currency. Presentational only. */
+/**
+ * Suggested settle-up transfers, per currency. Presentational only: nothing is
+ * recorded until someone posts the payment.
+ *
+ * Simplified when the group asks for it, the raw per-bill debts when it does
+ * not - the same `simplify_by_default` that decides friend totals, so the
+ * setting cannot mean one thing here and another on a friend page.
+ */
   .get("/:id/settle", async (c) => {
   const auth = c.get("user");
   const groupId = c.req.param("id");
@@ -238,23 +280,21 @@ export const groupRoutes = new Hono<AppEnv>()
     return c.json({ error: "Not a member of this group" }, 403);
   }
 
-  const balances = await getGroupBalances(db, groupId);
-  const byCurrency = new Map<string, Array<{ userId: string; amountMinor: number }>>();
+  const group = await db
+    .selectFrom("groups")
+    .select("simplify_by_default")
+    .where("id", "=", groupId)
+    .executeTakeFirst();
+  const simplify = group?.simplify_by_default === 1;
 
-  for (const member of balances) {
-    for (const b of member.balances) {
-      const list = byCurrency.get(b.currencyCode) ?? [];
-      list.push({ userId: member.userId, amountMinor: b.amountMinor });
-      byCurrency.set(b.currencyCode, list);
-    }
-  }
+  const [members, edges] = await Promise.all([
+    getGroupBalances(db, groupId),
+    // Only read when simplify is off, but the group is small and one indexed
+    // aggregate is cheaper than a second round trip to decide.
+    getGroupRawEdges(db, groupId),
+  ]);
 
-  const suggestions = [...byCurrency.entries()].map(([currencyCode, entries]) => ({
-    currencyCode,
-    transfers: simplifyDebts(entries),
-  }));
-
-  return c.json({ suggestions });
+  return c.json({ suggestions: settleSuggestions({ simplify, members, edges }) });
 })
   .get("/:id/expenses", zValidator("query", expenseListQuerySchema), async (c) => {
   const auth = c.get("user");

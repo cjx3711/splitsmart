@@ -203,6 +203,43 @@ describe("group options", () => {
     assert.equal(after.simplify_by_default, 1);
   });
 
+  test("a member can change the default currency, and existing expenses keep theirs", async () => {
+    const before = await db
+      .selectFrom("expenses")
+      .select(["id", "currency_code"])
+      .where("group_id", "=", groupId)
+      .execute();
+
+    const res = await as(memberToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ defaultCurrency: "sgd" }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { group: { default_currency: string } };
+    assert.equal(body.group.default_currency, "SGD");
+
+    // Rule 2: the setting decides what the NEXT bill starts in. It converts
+    // nothing, so every expense already recorded keeps its own currency.
+    for (const row of before) {
+      const after = await db
+        .selectFrom("expenses")
+        .select("currency_code")
+        .where("id", "=", row.id)
+        .executeTakeFirstOrThrow();
+      assert.equal(after.currency_code, row.currency_code);
+    }
+  });
+
+  test("an unknown currency is a 400, not a constraint failure", async () => {
+    const res = await as(memberToken, `/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ defaultCurrency: "ZZZ" }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, /Unknown currency/i);
+  });
+
   test("a stranger cannot rename it", async () => {
     const strangerToken = (await createApiToken(strangerId, "test")).token;
     const res = await as(strangerToken, `/groups/${groupId}`, {
@@ -210,5 +247,116 @@ describe("group options", () => {
       body: JSON.stringify({ name: "Hijacked" }),
     });
     assert.equal(res.status, 403);
+  });
+});
+
+/**
+ * The settle endpoint answers with whatever the group's `simplify_by_default`
+ * says, because that toggle used to be invisible here: the suggestions were
+ * always simplified, so turning it off appeared to do nothing on the one screen
+ * the setting lives next to.
+ */
+describe("suggested settle-up follows simplify_by_default", () => {
+  let cycleGroupId: string;
+  let thirdId: string;
+
+  before(async () => {
+    thirdId = await realUser("Theo", "theo@example.com");
+    cycleGroupId = ulid();
+    await db
+      .insertInto("groups")
+      .values({
+        id: cycleGroupId,
+        name: "Cycle",
+        group_type: "trip",
+        default_currency: "USD",
+        created_by: ownerId,
+      })
+      .execute();
+    await db
+      .insertInto("group_members")
+      .values([
+        { group_id: cycleGroupId, user_id: ownerId, role: "owner", joined_via: "creator" },
+        { group_id: cycleGroupId, user_id: memberId, role: "member", joined_via: "added" },
+        { group_id: cycleGroupId, user_id: thirdId, role: "member", joined_via: "added" },
+      ])
+      .execute();
+
+    // A three-way cycle, 10.00 each: nobody is up or down, but three debts are
+    // on the books. Owner -> member -> third -> owner.
+    const ring: Array<[string, string]> = [
+      [ownerId, memberId],
+      [memberId, thirdId],
+      [thirdId, ownerId],
+    ];
+    for (const [payer, ower] of ring) {
+      const res = await as(ownerToken, `/groups/${cycleGroupId}/expenses`, {
+        method: "POST",
+        body: JSON.stringify({
+          description: "Round",
+          costMinor: 1000,
+          currencyCode: "USD",
+          date: "2026-08-17",
+          splitType: "exact",
+          participants: [
+            { userId: payer, paidMinor: 1000, input: 0 },
+            { userId: ower, paidMinor: 0, input: 1000 },
+          ],
+        }),
+      });
+      assert.equal(res.status, 201);
+    }
+  });
+
+  async function suggestions(simplify: boolean) {
+    const patched = await as(ownerToken, `/groups/${cycleGroupId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ simplifyByDefault: simplify }),
+    });
+    assert.equal(patched.status, 200);
+
+    const res = await as(ownerToken, `/groups/${cycleGroupId}/settle`);
+    assert.equal(res.status, 200);
+    return ((await res.json()) as {
+      suggestions: Array<{
+        currencyCode: string;
+        transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
+      }>;
+    }).suggestions;
+  }
+
+  test("on: the cycle collapses and there is nothing to pay", async () => {
+    assert.deepEqual(await suggestions(true), []);
+  });
+
+  test("off: every recorded debt is offered, and nobody pays a stranger", async () => {
+    const sets = await suggestions(false);
+    assert.equal(sets.length, 1);
+    assert.equal(sets[0]!.currencyCode, "USD");
+    assert.deepEqual(
+      sets[0]!.transfers
+        .map((t) => `${t.fromUserId}->${t.toUserId}:${t.amountMinor}`)
+        .sort(),
+      [
+        `${memberId}->${ownerId}:1000`,
+        `${ownerId}->${thirdId}:1000`,
+        `${thirdId}->${memberId}:1000`,
+      ].sort(),
+    );
+  });
+
+  test("either way, no member's net moves", async () => {
+    for (const simplify of [true, false]) {
+      await suggestions(simplify);
+      const res = await as(ownerToken, `/groups/${cycleGroupId}`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as {
+        balances: Array<{ userId: string; balances: unknown[] }>;
+      };
+      assert.deepEqual(
+        body.balances.flatMap((b) => b.balances),
+        [],
+      );
+    }
   });
 });

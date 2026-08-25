@@ -47,7 +47,12 @@ import {
 } from "../../domain/access-links.ts";
 import { personCamel, personSnake } from "../../domain/person.ts";
 import { parseAvatarPattern } from "../../domain/avatar-pattern.ts";
-import { getGroupBalances, getBalanceBetween, simplifyDebts } from "../../domain/balances.ts";
+import {
+  getGroupBalances,
+  getGroupRawEdges,
+  getBalanceBetween,
+  settleSuggestions,
+} from "../../domain/balances.ts";
 import {
   createExpense,
   updateExpense,
@@ -755,28 +760,29 @@ export const guestRoutes = new Hono<GuestEnv>()
     return c.json({ error: mapped.error }, mapped.status);
   }
 })
-/** Suggested transfers for a group in scope. Presentational, like the app's. */
+/** Suggested transfers for a group in scope. Simplified or raw, like the app's. */
   .get("/groups/:id/settle", async (c) => {
   const scope = scopeOf(c);
   const groupId = c.req.param("id");
   if (!isUlid(groupId)) return c.json({ error: "Invalid group id" }, 400);
   if (!scope.groupIds.includes(groupId)) return c.json({ error: "Not found" }, 404);
 
-  const balances = await getGroupBalances(db, groupId);
-  const byCurrency = new Map<string, Array<{ userId: string; amountMinor: number }>>();
+  const group = await db
+    .selectFrom("groups")
+    .select("simplify_by_default")
+    .where("id", "=", groupId)
+    .executeTakeFirst();
 
-  for (const member of balances) {
-    for (const b of member.balances) {
-      const list = byCurrency.get(b.currencyCode) ?? [];
-      list.push({ userId: member.userId, amountMinor: b.amountMinor });
-      byCurrency.set(b.currencyCode, list);
-    }
-  }
+  const [members, edges] = await Promise.all([
+    getGroupBalances(db, groupId),
+    getGroupRawEdges(db, groupId),
+  ]);
 
   return c.json({
-    suggestions: [...byCurrency.entries()].map(([currencyCode, entries]) => ({
-      currencyCode,
-      transfers: simplifyDebts(entries),
-    })),
+    suggestions: settleSuggestions({
+      simplify: group?.simplify_by_default === 1,
+      members,
+      edges,
+    }),
   });
 });
