@@ -14,6 +14,13 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    version: "0.2.2",
+    date: "26 August 2026",
+    items: [
+      "Install the app: a guided page, linked from the sidebar, that walks through adding SplitSmart to your home screen on iOS, Android and desktop, with a one-click install where the browser supports it.",
+    ],
+  },
+  {
     version: "0.2.1",
     date: "25 August 2026",
     items: [
