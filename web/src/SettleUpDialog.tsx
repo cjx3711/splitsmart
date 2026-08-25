@@ -8,9 +8,11 @@
  * transfer in a group, "X owes you" between two people) and where the write
  * goes (outbox vs guest API).
  *
- * Group settle-up always offers the suggested transfers as presets, plus a
- * path to type a different payment. Friend settle-up still skips the picker
- * when only one currency is outstanding.
+ * Group settle-up always offers the suggested transfers as presets. Friend
+ * settle-up still skips the picker when only one currency is outstanding.
+ * Whenever the picker IS shown, so is a path to type a different payment: the
+ * offered balances are shortcuts, and a picker with no way past it cannot
+ * record a part payment or a currency nobody happens to be owed in.
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { Modal } from "./Modal.tsx";
@@ -60,6 +62,21 @@ export function friendSettleChoices(
     }));
 }
 
+/**
+ * The id of one suggested transfer.
+ *
+ * Exported because `SettleSuggestion` renders the same list on the group page
+ * and opens this dialog straight onto a row; both sides have to name a choice
+ * the same way or the prefill silently falls back to the picker.
+ */
+export function settleChoiceId(
+  currencyCode: string,
+  transfer: { fromUserId: string; toUserId: string },
+  index: number,
+): string {
+  return `${currencyCode}:${transfer.fromUserId}:${transfer.toUserId}:${index}`;
+}
+
 export function groupSettleChoices(
   settle: Array<{
     currencyCode: string;
@@ -70,7 +87,7 @@ export function groupSettleChoices(
 ): SettleChoice[] {
   return settle.flatMap((s) =>
     s.transfers.map((transfer, i) => ({
-      id: `${s.currencyCode}:${transfer.fromUserId}:${transfer.toUserId}:${i}`,
+      id: settleChoiceId(s.currencyCode, transfer, i),
       currencyCode: s.currencyCode,
       label: (
         <>
@@ -139,8 +156,8 @@ export function SettleUpDialog({
   title,
   people,
   currencies,
-  preferredCurrency,
   choices,
+  initialChoiceId,
   allowManual = false,
   onClose,
   onSubmit,
@@ -149,8 +166,13 @@ export function SettleUpDialog({
   title: string;
   people: Person[];
   currencies: string[];
-  preferredCurrency?: string;
   choices: SettleChoice[];
+  /**
+   * Open straight onto this choice, skipping the picker: the group page opens
+   * the dialog by clicking a suggested transfer. "Choose a different payment"
+   * still goes back to the full list.
+   */
+  initialChoiceId?: string;
   /** Group settle-up: always show the suggested transfers, plus a typed path. */
   allowManual?: boolean;
   onClose: () => void;
@@ -158,20 +180,30 @@ export function SettleUpDialog({
 }) {
   const [picked, setPicked] = useState<string | null>(null);
 
+  // `choices` is rebuilt on every render, so it cannot be a dependency here
+  // without resetting the pick the user just made. A stale id is handled below
+  // instead, where the list is actually consulted.
   useEffect(() => {
-    if (open) setPicked(null);
-  }, [open]);
+    if (open) setPicked(initialChoiceId ?? null);
+  }, [open, initialChoiceId]);
+
+  // An id that is no longer offered - a sync landed, someone else recorded the
+  // payment - drops back to the picker rather than prefilling an amount nobody
+  // owes any more.
+  const pickedChoice =
+    picked !== null && picked !== MANUAL_ID ? choices.find((c) => c.id === picked) : undefined;
+  const selected = picked !== null && picked !== MANUAL_ID && !pickedChoice ? null : picked;
 
   const showPicker = allowManual
-    ? picked === null && choices.length > 0
-    : choices.length > 1 && picked === null;
+    ? selected === null && choices.length > 0
+    : choices.length > 1 && selected === null;
   const active =
-    picked && picked !== MANUAL_ID
-      ? choices.find((c) => c.id === picked)
+    selected && selected !== MANUAL_ID
+      ? pickedChoice
       : !allowManual && choices.length <= 1
         ? choices[0]
         : undefined;
-  const canGoBack = picked !== null && (allowManual || choices.length > 1);
+  const canGoBack = selected !== null && (allowManual || choices.length > 1);
   const grouped = choicesByCurrency(choices);
   const showCurrencyHeadings = grouped.length > 1;
 
@@ -182,7 +214,7 @@ export function SettleUpDialog({
           <p className="muted" style={{ margin: 0 }}>
             {allowManual
               ? "Pick a suggested payment, or enter a different amount. A payment only clears that currency."
-              : "Which balance do you want to settle? A payment only clears that currency."}
+              : "Pick a balance to settle, or enter a different amount. A payment only clears that currency."}
           </p>
           {allowManual
             ? grouped.map((group) => (
@@ -210,29 +242,30 @@ export function SettleUpDialog({
                   {choice.label}
                 </button>
               ))}
-          {allowManual && (
-            <button
-              type="button"
-              className="secondary settle-manual"
-              onClick={() => setPicked(MANUAL_ID)}
-            >
-              Enter a different amount
-            </button>
-          )}
+          {/* Always offered. The listed balances are shortcuts, not the only
+              thing anyone may record: a part payment, or a currency nobody is
+              currently owed in, has to be typeable or the picker becomes a
+              dead end. */}
+          <button
+            type="button"
+            className="secondary settle-manual"
+            onClick={() => setPicked(MANUAL_ID)}
+          >
+            Enter a different amount
+          </button>
         </div>
       ) : (
         <div className="stack">
           {canGoBack && (
             <button type="button" className="link settle-back" onClick={() => setPicked(null)}>
-              {allowManual ? "Choose a different payment" : "Choose a different currency"}
+              {allowManual ? "Choose a different payment" : "Choose a different balance"}
             </button>
           )}
           <SettleUpForm
-            key={picked ?? active?.id ?? "form"}
+            key={selected ?? active?.id ?? "form"}
             className="stack"
             people={people}
             currencies={currencies}
-            preferredCurrency={preferredCurrency}
             initial={active?.initial}
             onSubmit={async (payment) => {
               await onSubmit(payment);

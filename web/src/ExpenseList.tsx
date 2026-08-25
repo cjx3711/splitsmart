@@ -8,7 +8,7 @@
  *
  * Payments (`is_payment`) are a transfer, not a bill, so they get a different
  * row: a small payment mark and "{payer} paid {recipient}" instead of the
- * stored "Payment"/"Settle up" label. The headline is "sent" / "received"
+ * stored "Payment" label. The headline is "sent" / "received"
  * rather than lent / borrowed, and there is no second total — the transfer
  * and the bill are the same number.
  *
@@ -56,10 +56,10 @@ export function paymentParties(shares: Share[]): { payer?: Share; recipient?: Sh
   return { payer, recipient };
 }
 
-/** "{You} paid {Poh}" / "{Poh} paid {You}", falling back to "Settle up". */
+/** "{You} paid {Poh}" / "{Poh} paid {You}", falling back to "Payment". */
 export function paymentTitle(shares: Share[], nameOf: PersonLookup): string {
   const { payer, recipient } = paymentParties(shares);
-  if (!payer || !recipient) return "Settle up";
+  if (!payer || !recipient) return "Payment";
   return `${nameOf(payer.user_id)} paid ${nameOf(recipient.user_id)}`;
 }
 
@@ -153,7 +153,7 @@ export function ExpenseList({
                       />
                     </>
                   ) : (
-                    "Settle up"
+                    "Payment"
                   )
                 ) : (
                   expense.description

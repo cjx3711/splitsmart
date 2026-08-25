@@ -38,6 +38,8 @@ import { Verify } from "./pages/Verify.tsx";
 import { Reset } from "./pages/Reset.tsx";
 import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
+import { AddPaymentDialog } from "./AddPaymentDialog.tsx";
+import { PlusIcon } from "./Icons.tsx";
 import { Footer } from "./Footer.tsx";
 import { api } from "./api.ts";
 import { Skeleton } from "./Skeleton.tsx";
@@ -281,7 +283,7 @@ function AdminGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** Group and friend detail screens carry their own add-expense action. */
+/** Group and friend detail screens carry their own add actions in the page head. */
 function pageHasAddExpense(pathname: string): boolean {
   return /^\/groups\/[^/]+$/.test(pathname) || /^\/friends\/[^/]+$/.test(pathname);
 }
@@ -298,6 +300,7 @@ function TopBar({
   const { user } = useAuth();
   const location = useLocation();
   const [adding, setAdding] = useState(false);
+  const [paying, setPaying] = useState(false);
   const showAddExpense = appChrome && !pageHasAddExpense(location.pathname);
 
   return (
@@ -332,10 +335,16 @@ function TopBar({
         )}
         {showAddExpense && (
           <>
+            <button className="inline secondary" onClick={() => setPaying(true)}>
+              <PlusIcon /> Payment
+            </button>
             <button className="inline" onClick={() => setAdding(true)}>
-              Add Expense
+              <PlusIcon /> Expense
             </button>
             <AddExpenseDialog open={adding} onClose={() => setAdding(false)} />
+            {/* A payment needs a person before it needs a form, so this one
+                opens on the friend list. See AddPaymentDialog. */}
+            <AddPaymentDialog open={paying} onClose={() => setPaying(false)} />
           </>
         )}
         {!user && !isPublicAuthPath(location.pathname) && (

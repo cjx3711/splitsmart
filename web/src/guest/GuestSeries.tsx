@@ -78,7 +78,7 @@ export function GuestSeries() {
 
       setView({
         templateId,
-        title: head.is_payment === 1 ? "Settle up" : head.description,
+        title: head.is_payment === 1 ? "Payment" : head.description,
         interval,
         nextRepeat: stoppedReason ? null : (template?.next_repeat ?? null),
         stoppedReason,

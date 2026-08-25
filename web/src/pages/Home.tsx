@@ -22,7 +22,7 @@ const IMPROVEMENTS = [
   "As many expenses a day as you want",
   "Clicking just outside the add-expense box doesn't dump the draft",
   "Currencies with no decimals don't show any, so 3000 JPY is 3000 JPY, not 3000.00",
-  "Mixed balances show a live ≈ estimate, and you can convert them into one currency at today's rate",
+  "Mixed balances show a live ≈ estimate, and you can convert them into your default currency at today's rate",
   "A currency picker that puts the ones you frequently use at the top",
   "Free API for scripts or AI agents",
 ];

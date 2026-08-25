@@ -22,7 +22,7 @@ const ENTRIES: Entry[] = [
       "Forgot password flow",
       "Splitwise import ensures parity with splitwise.",
       "Repeating Splitwise can be resumed.",
-      "Convert a mixed-currency friend or group balance into one currency.",
+      "Convert a mixed-currency friend or group balance into the default currency.",
       "More fun avatars",
       "Daily SQLite backups to S3.",
       "Dropped the Splitwise-compatible API. /api/v1 is the API.",

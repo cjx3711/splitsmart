@@ -109,6 +109,7 @@ export function Dashboard() {
       <ConversionFootnote
         sets={[net, ...friends.map((f) => f.balances)]}
         preferredCurrency={user.defaultCurrency}
+        settingsHref="/settings"
       />
 
       <div className="columns" style={{ marginTop: "1.75rem" }}>

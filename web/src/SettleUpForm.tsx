@@ -9,15 +9,23 @@
  * dollars leaves both ledgers open; that follows from currencies never being
  * converted, and the form says so rather than letting people discover it.
  *
- * "Show in" is display-only: pick any currency to see today's ≈ estimate. The
- * submitted amountMinor and currencyCode stay in the debt's own currency.
+ * Two people is the common case and gets its own control: a direction ROW,
+ * "A → B", that swaps when you click it, instead of two selects that can be
+ * set to the same person. With three or more (a group) the selects stay, since
+ * there is a real choice of who and not just of which way round.
+ *
+ * The note is optional and is NOT part of the expense: it is posted as an
+ * ordinary comment on the payment by whoever submits this form. Payments carry
+ * no description worth reading ("Payment"), so "for last week's taxi" has
+ * nowhere else to live, and a comment is the one place that already renders on
+ * the bill and syncs like everything else.
  */
 import { useState, type FormEvent } from "react";
-import { Amount, useCurrencies, useParseMoney } from "./money.tsx";
+import { useCurrencies, useParseMoney } from "./money.tsx";
 import { CurrencySelect } from "./CurrencySelect.tsx";
-import { convertMinor, useExchangeRates } from "./exchangeRates.ts";
 import { type Payer } from "./ExpenseForm.tsx";
 import { HelpTip } from "./HelpTip.tsx";
+import { SwapIcon } from "./Icons.tsx";
 
 export interface SettlePayment {
   fromUserId: string;
@@ -27,13 +35,14 @@ export interface SettlePayment {
   date: string;
   description?: string;
   details?: string;
+  /** Free text the caller posts as a comment on the payment. Empty means none. */
+  note?: string;
 }
 
 export function SettleUpForm({
   people,
   currencies,
   initial,
-  preferredCurrency,
   onSubmit,
   className = "card stack",
 }: {
@@ -42,8 +51,6 @@ export function SettleUpForm({
   currencies: string[];
   /** Prefill, e.g. from the group's suggested settle-up. */
   initial?: { fromUserId: string; toUserId: string; amount: string; currencyCode: string };
-  /** Default for the display-only "show in …" conversion. */
-  preferredCurrency?: string;
   onSubmit: (payment: SettlePayment) => Promise<void>;
   className?: string;
 }) {
@@ -57,29 +64,16 @@ export function SettleUpForm({
   const [amount, setAmount] = useState(initial?.amount ?? "");
   const [currency, setCurrency] = useState(initial?.currencyCode ?? currencies[0] ?? "USD");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [displayCurrency, setDisplayCurrency] = useState(
-    preferredCurrency ?? initial?.currencyCode ?? currencies[0] ?? "USD",
-  );
 
-  const convertTarget = displayCurrency !== currency ? displayCurrency : "";
-  const { rates, loading, error: ratesError } = useExchangeRates(
-    convertTarget,
-    convertTarget ? [currency] : [],
-  );
-  const canConvert = Boolean(convertTarget && rates && !loading && !ratesError);
+  const pair = people.length === 2;
 
-  let typedMinor: number | null = null;
-  try {
-    typedMinor = amount.trim() ? parseInCurrency(amount, currency) : null;
-  } catch {
-    typedMinor = null;
+  function swap() {
+    setFromUserId(toUserId);
+    setToUserId(fromUserId);
   }
-  const convertedMinor =
-    canConvert && typedMinor !== null && rates
-      ? convertMinor(typedMinor, currency, convertTarget, rates, decimalsFor)
-      : null;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -100,7 +94,14 @@ export function SettleUpForm({
 
     setBusy(true);
     try {
-      await onSubmit({ fromUserId, toUserId, amountMinor, currencyCode: currency, date });
+      await onSubmit({
+        fromUserId,
+        toUserId,
+        amountMinor,
+        currencyCode: currency,
+        date,
+        note: note.trim() || undefined,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not record the payment");
     } finally {
@@ -114,36 +115,57 @@ export function SettleUpForm({
     <form onSubmit={handleSubmit} className={className}>
       {error && <p className="error">{error}</p>}
 
-      <div className="form-grid">
+      {pair ? (
         <div>
-          <label htmlFor="settleFrom">Paid by</label>
-          <select
-            id="settleFrom"
-            value={fromUserId}
-            onChange={(e) => setFromUserId(e.target.value)}
+          <span className="label-text">Who paid</span>
+          <button
+            type="button"
+            className="settle-direction"
+            onClick={swap}
+            aria-label={`${nameOf(fromUserId)} paid ${nameOf(toUserId)}. Swap.`}
           >
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+            <span className="settle-direction-name">{nameOf(fromUserId)}</span>
+            <span className="settle-arrow" aria-hidden="true">
+              →
+            </span>
+            <span className="settle-direction-name">{nameOf(toUserId)}</span>
+            <span className="settle-swap" aria-hidden="true">
+              <SwapIcon />
+            </span>
+          </button>
         </div>
-        <div>
-          <label htmlFor="settleTo">Paid to</label>
-          <select
-            id="settleTo"
-            value={toUserId}
-            onChange={(e) => setToUserId(e.target.value)}
-          >
-            {people.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+      ) : (
+        <div className="form-grid">
+          <div>
+            <label htmlFor="settleFrom">Paid by</label>
+            <select
+              id="settleFrom"
+              value={fromUserId}
+              onChange={(e) => setFromUserId(e.target.value)}
+            >
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="settleTo">Paid to</label>
+            <select
+              id="settleTo"
+              value={toUserId}
+              onChange={(e) => setToUserId(e.target.value)}
+            >
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="form-grid">
         <div>
@@ -157,25 +179,6 @@ export function SettleUpForm({
             autoFocus
             required
           />
-          <div className="convert-show-in">
-            <label htmlFor="settleShowIn">Show in</label>
-            <CurrencySelect id="settleShowIn" value={displayCurrency} onChange={setDisplayCurrency} />
-            {convertedMinor !== null && (
-              <p className="field-hint" style={{ margin: 0 }}>
-                ≈ <Amount minor={convertedMinor} currency={convertTarget} /> at today's rate
-              </p>
-            )}
-            {convertTarget && loading && (
-              <p className="field-hint" style={{ margin: 0 }}>
-                Fetching today's rate…
-              </p>
-            )}
-            {convertTarget && ratesError && (
-              <p className="field-hint" style={{ margin: 0 }}>
-                Couldn't load a rate for {displayCurrency}.
-              </p>
-            )}
-          </div>
         </div>
         <div>
           <label htmlFor="settleCurrency">Currency</label>
@@ -187,18 +190,8 @@ export function SettleUpForm({
         <div className="label-with-help">
           <label htmlFor="settleDate">Date</label>
           <HelpTip label="About this payment">
-            {convertedMinor !== null && typedMinor !== null ? (
-              <>
-                Recording <Amount minor={typedMinor} currency={currency} /> to clear this {currency}{" "}
-                balance - about <Amount minor={convertedMinor} currency={convertTarget} /> at today's
-                rate.
-              </>
-            ) : (
-              <>
-                This clears {currency} only. A balance in any other currency is a separate ledger and
-                stays open.
-              </>
-            )}
+            This clears {currency} only. A balance in any other currency is a separate ledger and
+            stays open.
           </HelpTip>
         </div>
         <input
@@ -207,6 +200,18 @@ export function SettleUpForm({
           value={date}
           onChange={(e) => setDate(e.target.value)}
         />
+      </div>
+
+      <div>
+        <label htmlFor="settleNote">Note (optional)</label>
+        <input
+          id="settleNote"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Cash at dinner"
+          maxLength={500}
+        />
+        <p className="field-hint">Posted as a comment on this payment.</p>
       </div>
 
       <div>
