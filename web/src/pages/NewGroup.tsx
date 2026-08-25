@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth, useSidebarRefresh } from "../App.tsx";
+import { CurrencySelect } from "../CurrencySelect.tsx";
 import { GroupTypePicker, type GroupType } from "../groupTypes.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { NeedsConnection, useOnline } from "../OnlineOnly.tsx";
@@ -18,6 +19,9 @@ export function NewGroup() {
 
   const [name, setName] = useState("");
   const [groupType, setGroupType] = useState<GroupType>("trip");
+  // Your own preferred currency, not a hardcoded USD: most groups are in the
+  // currency you already think in, and it stays editable here and in Options.
+  const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
   const [simplifyDebts, setSimplifyDebts] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +35,7 @@ export function NewGroup() {
       const { group } = await api.createGroup({
         name: name.trim(),
         groupType,
+        defaultCurrency: currency,
         simplifyByDefault: simplifyDebts,
       });
       if (db && user) {
@@ -72,6 +77,16 @@ export function NewGroup() {
           <label id="groupTypeLabel">Type and icon</label>
           <GroupTypePicker value={groupType} onChange={setGroupType} disabled={busy} />
         </div>
+        <div style={{ maxWidth: "16rem" }}>
+          <span className="label-with-help">
+            <label htmlFor="groupCurrency">Default currency</label>
+            <HelpTip label="About the group's default currency">
+              What an expense in this group starts in. Starts from your preferred currency, and any
+              bill can still be entered in another one. Changeable later in Options.
+            </HelpTip>
+          </span>
+          <CurrencySelect id="groupCurrency" value={currency} onChange={setCurrency} />
+        </div>
         <label className="setting-toggle">
           <input
             type="checkbox"
@@ -82,9 +97,11 @@ export function NewGroup() {
             <span className="with-help">
               Simplify debts
               <HelpTip label="About simplify debts">
-                When on, friend totals for this group collapse cycles through other people, the same
-                way Splitwise does. Each bill still shows who paid. You can change this later in
-                group options.
+                When on, friend totals and settle-up for this group collapse cycles through other
+                people, the same way Splitwise does: you may be asked to pay someone you did not
+                share a bill with. When off, both show one payment per recorded debt. Each bill
+                still shows who paid, and your net never changes either way. You can change this
+                later in group options.
               </HelpTip>
             </span>
             <span className="muted" style={{ display: "block", marginTop: "0.15rem" }}>

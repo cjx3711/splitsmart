@@ -1,5 +1,6 @@
 /**
- * Group options: name, type (the sidebar icon), simplify debts, members.
+ * Group options: name, type (the sidebar icon), default currency, simplify
+ * debts, members.
  *
  * Any logged-in member can change these. Guest-link holders never reach this
  * page — the guest shell has no settings routes (docs/GUEST.md). Adding,
@@ -11,6 +12,7 @@ import { api, displayName, type GroupMember } from "../api.ts";
 import { AddMemberDialog } from "../AddMemberDialog.tsx";
 import { avatarFromRow } from "../Avatar.tsx";
 import { Breadcrumbs } from "../Breadcrumbs.tsx";
+import { CurrencySelect } from "../CurrencySelect.tsx";
 import { ConfirmDialog } from "../ConfirmDialog.tsx";
 import { FriendListItem, friendHref } from "../FriendListItem.tsx";
 import { GroupTypePicker, isGroupType, type GroupType } from "../groupTypes.tsx";
@@ -21,6 +23,7 @@ import { NeedsConnection, OnlineOnly, useOnline } from "../OnlineOnly.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { markMemberLeft, patchGroup, patchPerson, restoreMember, revertPerson } from "../sync/localFirst.ts";
+import { setGroupCurrency, setGroupSimplify } from "../groupSettings.ts";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function GroupOptions() {
@@ -34,6 +37,7 @@ export function GroupOptions() {
   const [groupType, setGroupType] = useState<GroupType>("other");
   const [busy, setBusy] = useState(false);
   const [simplifyBusy, setSimplifyBusy] = useState(false);
+  const [currencyBusy, setCurrencyBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
@@ -80,19 +84,29 @@ export function GroupOptions() {
     }
   }
 
+  async function setCurrency(code: string) {
+    if (!db) return;
+    setError(null);
+    setCurrencyBusy(true);
+    try {
+      await setGroupCurrency(db, current.id, code);
+      syncNow();
+    } catch (err) {
+      // setGroupCurrency has already put the mirror back.
+      setError(err instanceof Error ? err.message : "Could not save the currency");
+    } finally {
+      setCurrencyBusy(false);
+    }
+  }
+
   async function setSimplify(on: boolean) {
     if (!db) return;
     setSimplifyBusy(true);
-    const previous = await patchGroup(db, current.id, { simplifyByDefault: on });
     try {
-      await api.updateGroup(current.id, { simplifyByDefault: on });
+      await setGroupSimplify(db, current.id, on);
       syncNow();
     } catch {
-      if (previous) {
-        await patchGroup(db, current.id, {
-          simplifyByDefault: previous.simplifyByDefault !== false,
-        });
-      }
+      // setGroupSimplify has already put the mirror back.
     } finally {
       setSimplifyBusy(false);
     }
@@ -146,6 +160,27 @@ export function GroupOptions() {
             </div>
           </form>
 
+          <div className="card stack" style={{ marginTop: "1rem" }}>
+            <div style={{ maxWidth: "16rem" }}>
+              <span className="label-with-help">
+                <label htmlFor="groupCurrency">Default currency</label>
+                <HelpTip label="About the group's default currency">
+                  What a new expense in this group starts in, and the currency the group screen
+                  offers to convert balances to. Nothing already recorded changes: every expense
+                  keeps the currency it was entered in, and balances are never converted.
+                </HelpTip>
+              </span>
+              <CurrencySelect
+                id="groupCurrency"
+                value={current.default_currency}
+                onChange={(code) => {
+                  if (currencyBusy || code === current.default_currency) return;
+                  void setCurrency(code);
+                }}
+              />
+            </div>
+          </div>
+
           <div className="card" style={{ marginTop: "1rem" }}>
             <label className="setting-toggle">
               <input
@@ -158,15 +193,17 @@ export function GroupOptions() {
                 <span className="with-help">
                   Simplify debts
                   <HelpTip label="About simplify debts">
-                    When on, friend totals for this group match Splitwise: cycles through other
-                    people collapse. Your net in the group does not change, and each bill still
-                    shows who paid. Imported groups keep the Splitwise setting.
+                    When on, friend totals and this group's settle-up match Splitwise: cycles
+                    through other people collapse into the fewest payments, which can mean paying
+                    someone you did not share a bill with. When off, both show one payment per
+                    recorded debt. Your net in the group does not change either way, and each bill
+                    still shows who paid. Imported groups keep the Splitwise setting.
                   </HelpTip>
                 </span>
                 <span className="muted" style={{ display: "block", marginTop: "0.15rem" }}>
                   {simplifyOn
-                    ? "Friend balances in this group are simplified."
-                    : "Friend balances show the raw who-owes-whom from each bill."}
+                    ? "Friend balances and settle-up in this group are simplified."
+                    : "Friend balances and settle-up show the raw who-owes-whom from each bill."}
                 </span>
               </span>
             </label>

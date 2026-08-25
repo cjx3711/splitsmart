@@ -122,13 +122,19 @@ export async function revertPerson(db: LocalDb, previous: SyncUser): Promise<voi
 export async function patchGroup(
   db: LocalDb,
   groupId: string,
-  patch: { name?: string; groupType?: string; simplifyByDefault?: boolean },
+  patch: {
+    name?: string;
+    groupType?: string;
+    defaultCurrency?: string;
+    simplifyByDefault?: boolean;
+  },
 ): Promise<SyncGroup | undefined> {
   const group = await db.groups.get(groupId);
   if (!group) return undefined;
   await db.groups.update(groupId, {
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.groupType !== undefined ? { groupType: patch.groupType } : {}),
+    ...(patch.defaultCurrency !== undefined ? { defaultCurrency: patch.defaultCurrency } : {}),
     ...(patch.simplifyByDefault !== undefined ? { simplifyByDefault: patch.simplifyByDefault } : {}),
   });
   return group;

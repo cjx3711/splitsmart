@@ -32,7 +32,7 @@ export function AddExpenseDialog({
   onClose,
   initialGroupId = null,
   initialFriendId = null,
-  title = "Add Expense",
+  title = "New expense",
   onCreated,
 }: {
   open: boolean;

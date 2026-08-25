@@ -27,7 +27,12 @@ import {
   compareByLastExpense,
   lastSharedExpenseIdByUser,
 } from "../../../src/domain/friend-recency.ts";
-import { simplifyDebts, pairwiseWithSimplify, type PairwiseEdge } from "../../../src/domain/settle.ts";
+import {
+  pairwiseWithSimplify,
+  settleSuggestions,
+  type GroupEdge,
+  type PairwiseEdge,
+} from "../../../src/domain/settle.ts";
 import {
   csvDocument,
   type CsvExpenseRow,
@@ -640,10 +645,11 @@ export async function localGroupMembers(
 /**
  * Suggested settle-up transfers, per currency.
  *
- * The same greedy matching the server runs, on the same numbers, through the same
- * pure function. `simplifyDebts` throws if a currency does not net to zero, which
- * would mean the mirror is inconsistent; that is worth surfacing rather than
- * papering over, so the error is left to propagate.
+ * The same decision the server makes, on the same numbers, through the same pure
+ * function: simplified when the group asks for it, the recorded per-pair debts
+ * when it does not. `simplifyDebts` throws if a currency does not net to zero,
+ * which would mean the mirror is inconsistent; that is worth surfacing rather
+ * than papering over, so the error is left to propagate.
  */
 export async function localSettleSuggestions(
   db: LocalDb,
@@ -654,23 +660,30 @@ export async function localSettleSuggestions(
     transfers: Array<{ fromUserId: string; toUserId: string; amountMinor: number }>;
   }>;
 }> {
-  const balances = groupBalances(movements(await liveExpenses(db)), groupId);
-  const byCurrency = new Map<string, Array<{ userId: string; amountMinor: number }>>();
-
-  for (const member of balances) {
-    for (const b of member.balances) {
-      const list = byCurrency.get(b.currencyCode) ?? [];
-      list.push({ userId: member.userId, amountMinor: b.amountMinor });
-      byCurrency.set(b.currencyCode, list);
-    }
-  }
+  const moves = movements(await liveExpenses(db));
+  const group = await db.groups.get(groupId);
 
   return {
-    suggestions: [...byCurrency.entries()].map(([currencyCode, entries]) => ({
-      currencyCode,
-      transfers: simplifyDebts(entries),
-    })),
+    suggestions: settleSuggestions({
+      // A group the mirror has not stored yet defaults on, the same as
+      // `simplifyFlagsForMoves` and a freshly created group.
+      simplify: groupSimplifies(group?.simplifyByDefault),
+      members: groupBalances(moves, groupId),
+      edges: groupEdges(moves, groupId),
+    }),
   };
+}
+
+/** The mirror's equivalent of `getGroupRawEdges`: this group's movements, as edges. */
+function groupEdges(moves: Movement[], groupId: string): GroupEdge[] {
+  return moves
+    .filter((move) => move.groupId === groupId)
+    .map((move) => ({
+      fromUserId: move.fromUserId,
+      toUserId: move.toUserId,
+      currencyCode: move.currencyCode,
+      amountMinor: move.amountMinor,
+    }));
 }
 
 export async function localFriends(
@@ -970,7 +983,7 @@ export async function localSeries(
 
   return {
     templateId,
-    title: head.isPayment ? "Settle up" : head.description,
+    title: head.isPayment ? "Payment" : head.description,
     groupId: head.groupId,
     groupName: group?.name ?? null,
     interval,
