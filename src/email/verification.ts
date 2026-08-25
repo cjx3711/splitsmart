@@ -19,7 +19,7 @@ import { ulid } from "../domain/ulid.ts";
 import { db } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
-import { sendEmail } from "./send.ts";
+import { sendTrackedEmail } from "./sends.ts";
 import { verificationEmail } from "./templates.ts";
 import { displayName } from "../domain/person.ts";
 
@@ -110,8 +110,13 @@ export async function issueVerificationToken(userId: string): Promise<IssueOutco
     expiresInHours: TOKEN_TTL_HOURS,
   });
 
-  const result = await sendEmail({ to: user.email, ...message });
-  return { status: "sent", delivered: result.delivered };
+  const result = await sendTrackedEmail({
+    type: "verification",
+    message: { to: user.email, ...message },
+    actorUserId: user.id,
+    subjectUserId: user.id,
+  });
+  return { status: "sent", delivered: result.ok && result.delivered };
 }
 
 export type ConsumeOutcome =

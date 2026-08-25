@@ -256,6 +256,20 @@ export interface ActivityTable {
   created_at: Generated<string>;
 }
 
+/** One outbound mail attempt. See src/email/sends.ts. */
+export interface EmailSendsTable {
+  id: string;
+  type: string;
+  to_address: string;
+  actor_user_id: string | null;
+  subject_user_id: string | null;
+  subject: string | null;
+  provider_id: string | null;
+  delivered: Generated<number>;
+  reason: string | null;
+  sent_at: Generated<string>;
+}
+
 /**
  * Daily S3 snapshots. Server-wide, not per-user. See src/backup/.
  */
@@ -299,6 +313,7 @@ export interface Database {
   sync_log: SyncLogTable;
   email_tokens: EmailTokensTable;
   emails: EmailsTable;
+  email_sends: EmailSendsTable;
   database_backups: DatabaseBackupsTable;
 }
 

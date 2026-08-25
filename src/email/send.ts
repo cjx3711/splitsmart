@@ -54,6 +54,10 @@ export type PostmarkSendInput = {
  * successful registration into a 500; the account is already created and the
  * user can request another link. The result object carries the outcome for
  * logging; check `delivered` if you need to branch on it.
+ *
+ * Application sends go through `sendTrackedEmail` in sends.ts so every attempt
+ * is logged (and rate-limited when the caller asks). This function is the
+ * transport only.
  */
 export async function sendEmail(message: EmailMessage): Promise<SendResult> {
   if (emailProvider === "resend") {

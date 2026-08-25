@@ -4,27 +4,49 @@
  * Used by the group screen (a general link, plus one per placeholder member)
  * and the friend screen (one link for that person). See docs/GUEST.md.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, ApiError, type AccessLink } from "./api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { NeedsConnection, useOnline } from "./OnlineOnly.tsx";
 import { HelpTip } from "./HelpTip.tsx";
 import { Skeleton } from "./Skeleton.tsx";
+import { CopyIcon, MoreIcon } from "./Icons.tsx";
 
-export function CopyLinkButton({ url, label = "Copy link" }: { url: string; label?: string }) {
+/** Copies `url` to the clipboard. Pass `iconOnly` for a glyph-only button. */
+export function CopyLinkButton({
+  url,
+  label = "Copy link",
+  iconOnly = false,
+}: {
+  url: string;
+  label?: string;
+  iconOnly?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
 
+  function copy() {
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  if (iconOnly) {
+    return (
+      <button
+        type="button"
+        className="secondary inline icon-button"
+        aria-label={copied ? "Copied" : label}
+        title={copied ? "Copied" : label}
+        onClick={copy}
+      >
+        <CopyIcon />
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      className="secondary inline"
-      onClick={() => {
-        void navigator.clipboard.writeText(url).then(() => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 2000);
-        });
-      }}
-    >
+    <button type="button" className="secondary inline" onClick={copy}>
       {copied ? "Copied" : label}
     </button>
   );
@@ -39,6 +61,8 @@ export function LinkPanel({
   slots,
   canManage,
   intro,
+  extra,
+  revision = 0,
 }: {
   /** Which links to list: one group's, or one friend's. */
   query: { groupId: string } | { friendId: string };
@@ -47,6 +71,10 @@ export function LinkPanel({
   /** Only a group owner may mint or revoke. Members just see what exists. */
   canManage: boolean;
   intro: string;
+  /** Rendered inside the card after the slots (friend-page invite, etc.). */
+  extra?: ReactNode;
+  /** Bump to reload (e.g. after saving an email minted a friend link). */
+  revision?: number;
 }) {
   const [links, setLinks] = useState<AccessLink[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -72,7 +100,7 @@ export function LinkPanel({
       setError(message);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the query object is rebuilt each render; its identity is `key`
-  }, [key]);
+  }, [key, revision]);
 
   useEffect(() => {
     setLinks(null);
@@ -84,11 +112,15 @@ export function LinkPanel({
     setBusy(slot.id);
     setError(null);
     try {
-      await api.mintLink({
+      const minted = await api.mintLink({
         kind: slot.kind,
         groupId: slot.groupId ?? null,
         userId: slot.userId ?? null,
       });
+      // A freshly minted secret is the only time the URL is readable at all
+      // (see the "Replace to get a copyable URL" note below), so copying it
+      // immediately saves a second click that would otherwise be mandatory.
+      void navigator.clipboard.writeText(minted.url).catch(() => {});
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create that link");
@@ -183,39 +215,27 @@ export function LinkPanel({
                 </span>
               </div>
 
-              {url && (
+              {(url || manage) && (
                 <div className="link-url-row">
-                  <code className="link-url">{url}</code>
-                  <CopyLinkButton url={url} />
-                </div>
-              )}
-
-              {manage && (
-                <div className="link-slot-actions">
-                  <button
-                    className="secondary inline"
-                    disabled={busy === slot.id}
-                    onClick={() => {
-                      if (existing) setPending({ kind: "replace", slot });
-                      else void mint(slot);
-                    }}
-                  >
-                    {existing ? "Replace with a new link" : "Create a link"}
-                  </button>
-                  {existing && (
-                    <button
-                      className="link"
-                      disabled={busy === slot.id}
-                      onClick={() => setPending({ kind: "revoke", slot, linkId: existing.id })}
-                    >
-                      Turn off
-                    </button>
+                  {url && <code className="link-url">{url}</code>}
+                  {url && <CopyLinkButton url={url} iconOnly />}
+                  {manage && (
+                    <LinkSlotMenu
+                      busy={busy === slot.id}
+                      hasExisting={Boolean(existing)}
+                      onCreate={() => void mint(slot)}
+                      onReplace={() => setPending({ kind: "replace", slot })}
+                      onRevoke={() =>
+                        existing && setPending({ kind: "revoke", slot, linkId: existing.id })
+                      }
+                    />
                   )}
                 </div>
               )}
             </div>
           );
         })}
+        {extra}
       </div>
 
       <ConfirmDialog
@@ -248,6 +268,80 @@ export function LinkPanel({
         </p>
       </ConfirmDialog>
     </>
+  );
+}
+
+/** The kebab menu on a link row: create/replace and turn-off, tucked away. */
+function LinkSlotMenu({
+  busy,
+  hasExisting,
+  onCreate,
+  onReplace,
+  onRevoke,
+}: {
+  busy: boolean;
+  hasExisting: boolean;
+  onCreate: () => void;
+  onReplace: () => void;
+  onRevoke: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [open]);
+
+  return (
+    <div className="link-slot-menu" ref={ref}>
+      <button
+        type="button"
+        className="secondary inline icon-button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Link options"
+        disabled={busy}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <MoreIcon />
+      </button>
+
+      {open && (
+        <div className="link-slot-menu-list" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            disabled={busy}
+            onClick={() => {
+              setOpen(false);
+              if (hasExisting) onReplace();
+              else onCreate();
+            }}
+          >
+            {hasExisting ? "Replace with a new link" : "Create a link"}
+          </button>
+          {hasExisting && (
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              disabled={busy}
+              onClick={() => {
+                setOpen(false);
+                onRevoke();
+              }}
+            >
+              Turn off
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

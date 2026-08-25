@@ -35,6 +35,7 @@ const { listRelatedUserIds, addFriendship, friendPair } = await import(
   "../../domain/friends.ts"
 );
 const { ulid } = await import("../../domain/ulid.ts");
+const { FRIEND_INVITES_PER_DAY } = await import("../../email/friend-invite.ts");
 
 let apiToken: string;
 let aliceId: string;
@@ -633,6 +634,200 @@ describe("editing a placeholder", () => {
     assert.equal(body.friend.nickname, "Bobby");
     assert.equal(body.friend.icon_emoji, "🦊");
     assert.equal(body.friend.icon_hue, 32);
+  });
+
+  test("can set and clear a ghost's invite address", async () => {
+    const set = await authed(`/api/v1/friends/${bobId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email: "bob-invite@example.com" }),
+    });
+    assert.equal(set.status, 200);
+    const setBody = (await set.json()) as {
+      friend: { email: string | null };
+      inviteUrl?: string;
+      emailDelivered?: boolean;
+    };
+    assert.equal(setBody.friend.email, "bob-invite@example.com");
+    assert.equal(setBody.inviteUrl, undefined);
+    assert.equal(setBody.emailDelivered, undefined);
+
+    const stored = await db
+      .selectFrom("users")
+      .select(["email", "invite_email"])
+      .where("id", "=", bobId)
+      .executeTakeFirstOrThrow();
+    assert.equal(stored.email, null);
+    assert.equal(stored.invite_email, "bob-invite@example.com");
+
+    const sends = await db
+      .selectFrom("email_sends")
+      .select("id")
+      .where("type", "=", "invite")
+      .where("subject_user_id", "=", bobId)
+      .execute();
+    assert.equal(sends.length, 0, "saving an address must not send mail");
+
+    const cleared = await authed(`/api/v1/friends/${bobId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email: "" }),
+    });
+    assert.equal(cleared.status, 200);
+    const clearedBody = (await cleared.json()) as {
+      friend: { email: string | null };
+      inviteUrl?: string;
+    };
+    assert.equal(clearedBody.friend.email, null);
+    assert.equal(clearedBody.inviteUrl, undefined);
+  });
+
+  test("refuses your own address and a live account's address", async () => {
+    const own = await authed(`/api/v1/friends/${bobId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email: "alice@example.com" }),
+    });
+    assert.equal(own.status, 400);
+
+    const liveId = ulid();
+    await db
+      .insertInto("users")
+      .values({
+        id: liveId,
+        email: "already-joined@example.com",
+        password_hash: "scrypt$131072$8$1$AAAA$AAAA",
+        name: "Already Joined",
+        default_currency: "USD",
+        is_ghost: 0,
+      })
+      .execute();
+    const taken = await authed(`/api/v1/friends/${bobId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email: "already-joined@example.com" }),
+    });
+    assert.equal(taken.status, 400);
+  });
+
+  test("refuses a second placeholder at an address this owner already invited", async () => {
+    const first = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Invite One", email: "invite-one@example.com" }),
+    });
+    const second = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Invite Two", email: "invite-two@example.com" }),
+    });
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+    const { friend } = (await second.json()) as { friend: { id: string } };
+
+    const clash = await authed(`/api/v1/friends/${friend.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email: "invite-one@example.com" }),
+    });
+    assert.equal(clash.status, 409);
+  });
+
+  test("resending an invite uses the stored address and the live guest link", async () => {
+    const added = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "Resend Me", email: "resend-me@example.com" }),
+    });
+    const { friend, inviteUrl } = (await added.json()) as {
+      friend: { id: string };
+      inviteUrl: string;
+    };
+
+    const nameless = await authed("/api/v1/friends", {
+      method: "POST",
+      body: JSON.stringify({ name: "No Mail" }),
+    });
+    const { friend: noMail } = (await nameless.json()) as { friend: { id: string } };
+    const missing = await authed(`/api/v1/friends/${noMail.id}/invite`, { method: "POST" });
+    assert.equal(missing.status, 400);
+
+    const resent = await authed(`/api/v1/friends/${friend.id}/invite`, { method: "POST" });
+    assert.equal(resent.status, 200);
+    const body = (await resent.json()) as { inviteUrl: string; emailDelivered: boolean };
+    assert.equal(body.inviteUrl, inviteUrl, "resend must not rotate the live link");
+    assert.equal(body.emailDelivered, false);
+
+    const again = await authed(`/api/v1/friends/${friend.id}/invite`, { method: "POST" });
+    assert.equal(again.status, 429);
+    const againBody = (await again.json()) as { error: string; retryAfterSeconds: number };
+    assert.match(againBody.error, /24 hours/i);
+    assert.ok(againBody.retryAfterSeconds >= 1);
+  });
+
+  test("caps invite emails at three per user per UTC day", async () => {
+    const senderId = ulid();
+    await db
+      .insertInto("users")
+      .values({
+        id: senderId,
+        email: "quota@example.com",
+        password_hash: "scrypt$131072$8$1$AAAA$AAAA",
+        name: "Quota Owner",
+        default_currency: "USD",
+        is_ghost: 0,
+      })
+      .execute();
+    const token = (await createApiToken(senderId, "quota")).token;
+    const asSender = (path: string, init: RequestInit = {}) =>
+      app.request(path, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+
+    async function addAndInvite(name: string, email: string) {
+      const added = await asSender("/api/v1/friends", {
+        method: "POST",
+        body: JSON.stringify({ name, email }),
+      });
+      assert.equal(added.status, 201);
+      const { friend } = (await added.json()) as { friend: { id: string } };
+      const sent = await asSender(`/api/v1/friends/${friend.id}/invite`, { method: "POST" });
+      return { friendId: friend.id, sent };
+    }
+
+    const first = await addAndInvite("Quota Ghost 0", "quota-ghost-0@example.com");
+    assert.equal(first.sent.status, 200, "first friend in 24h");
+
+    const afterAdd = await db
+      .selectFrom("email_sends")
+      .select(["id", "type", "actor_user_id", "subject_user_id"])
+      .where("actor_user_id", "=", senderId)
+      .execute();
+    assert.equal(afterAdd.length, 1);
+    assert.equal(afterAdd[0]?.type, "invite");
+    assert.equal(afterAdd[0]?.subject_user_id, first.friendId);
+
+    for (let i = 1; i < FRIEND_INVITES_PER_DAY; i++) {
+      const next = await addAndInvite(`Quota Ghost ${i}`, `quota-ghost-${i}@example.com`);
+      assert.equal(next.sent.status, 200, `friend ${i + 1} should succeed`);
+    }
+
+    const fourth = await addAndInvite("Quota Ghost 3", "quota-ghost-3@example.com");
+    assert.equal(fourth.sent.status, 429);
+    const blockedBody = (await fourth.sent.json()) as { error: string; retryAfterSeconds: number };
+    assert.match(blockedBody.error, /3 invites per day/i);
+    assert.ok(blockedBody.retryAfterSeconds >= 1);
+    assert.ok(fourth.sent.headers.get("Retry-After"));
+
+    const patched = await asSender(`/api/v1/friends/${first.friendId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ email: "quota-ghost-patched@example.com" }),
+    });
+    assert.equal(patched.status, 200);
+    const afterPatch = await db
+      .selectFrom("email_sends")
+      .select("id")
+      .where("actor_user_id", "=", senderId)
+      .where("type", "=", "invite")
+      .execute();
+    assert.equal(afterPatch.length, FRIEND_INVITES_PER_DAY, "PATCH must not consume or refund a slot");
   });
 
   test("refuses to edit a real account", async () => {

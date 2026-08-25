@@ -92,6 +92,11 @@ export function FriendDetail() {
   const [showSettledGroups, setShowSettledGroups] = useState(false);
   const [settlingAll, setSettlingAll] = useState(false);
   const [filters, setFilters] = useState<ExpenseQuery>({});
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null,
+  );
+  const [linkRevision, setLinkRevision] = useState(0);
   const formatMoney = useFormatMoney();
   const { engine, syncNow, db } = useSync();
 
@@ -100,6 +105,8 @@ export function FriendDetail() {
     setShowSettledGroups(false);
     setOpenDialog(null);
     pendingCascade.current = [];
+    setInviteNotice(null);
+    setLinkRevision(0);
   }, [id]);
 
   const loaded = useFriend(id);
@@ -229,6 +236,28 @@ export function FriendDetail() {
     );
   };
 
+  const sendInvite = async () => {
+    setInviteBusy(true);
+    setInviteNotice(null);
+    try {
+      const result = await api.inviteFriend(friend.id);
+      setInviteNotice({
+        kind: "ok",
+        text: result.emailDelivered
+          ? `Invite sent to ${friend.email}.`
+          : "No invite was emailed (this server has no mail provider). Copy the guest link below.",
+      });
+      setLinkRevision((n) => n + 1);
+    } catch (err) {
+      setInviteNotice({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Could not send invite",
+      });
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
   return (
     <>
       <Breadcrumbs trail={[{ label: "Friends", to: "/friends" }, { label: name }]} />
@@ -243,15 +272,20 @@ export function FriendDetail() {
                 ? `${friend.name} · `
                 : ""}
               {friend.email ?? "No email"}
-              {friend.is_ghost === 1 && " · hasn't joined yet"}
+              {friend.is_ghost === 1 && (
+                <>
+                  {" "}
+                  <span className="tag muted">guest</span>
+                </>
+              )}
             </p>
           </div>
         </div>
         <div className="page-actions">
           {friend.is_ghost === 1 && (
-            <OnlineOnly what="Editing a placeholder's name">
+            <OnlineOnly what="Editing a placeholder">
               <button className="secondary" onClick={() => setOpenDialog("identity")}>
-                Edit name
+                Edit
               </button>
             </OnlineOnly>
           )}
@@ -263,6 +297,10 @@ export function FriendDetail() {
           </button>
         </div>
       </div>
+
+      {inviteNotice && (
+        <p className={inviteNotice.kind === "error" ? "error" : "notice"}>{inviteNotice.text}</p>
+      )}
 
       <AddExpenseDialog
         open={openDialog === "expense"}
@@ -610,6 +648,35 @@ export function FriendDetail() {
                   },
                 ]}
                 intro="Share this link so they can view your shared expenses. Links expire after 3 months. If one is compromised, turn it off and create a new one."
+                revision={linkRevision}
+                extra={
+                  <div className="link-slot">
+                    {friend.email ? (
+                      <div className="link-slot-actions" style={{ marginTop: 0 }}>
+                        <OnlineOnly what="Sending an invite">
+                          <button
+                            type="button"
+                            className="secondary inline"
+                            disabled={inviteBusy}
+                            onClick={() => void sendInvite()}
+                          >
+                            {inviteBusy ? "Sending…" : "Send invite"}
+                          </button>
+                        </OnlineOnly>
+                        <HelpTip label="About sending the invite">
+                          Emails the guest link above to {friend.email}. Each
+                          person can be emailed once every 24 hours, and you can
+                          send 3 invites per day. If this server has no mail
+                          provider, copy the link and send it yourself.
+                        </HelpTip>
+                      </div>
+                    ) : (
+                      <p className="muted" style={{ margin: 0 }}>
+                        Add an email under Edit to send this link to their inbox.
+                      </p>
+                    )}
+                  </div>
+                }
               />
             </>
           )}
@@ -620,6 +687,7 @@ export function FriendDetail() {
           <ExpenseFilters
             value={filters}
             onChange={setFilters}
+            payers={[{ id: user.id, name: user.name, nickname: user.nickname }, friend]}
             csvScope={{ friendId: friend.id }}
             csvFilename={`splitsmart-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
           />

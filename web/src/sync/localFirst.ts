@@ -25,6 +25,7 @@ import { parseAvatarPattern, type AvatarPattern } from "../../../src/domain/avat
 export type IdentityPatch = {
   name?: string;
   nickname?: string | null;
+  email?: string | null;
   iconLetters?: string | null;
   iconEmoji?: string | null;
   iconHue?: number | null;
@@ -37,6 +38,7 @@ function withIdentity(user: SyncUser, patch: IdentityPatch): SyncUser {
     ...user,
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.nickname !== undefined ? { nickname: patch.nickname } : {}),
+    ...(patch.email !== undefined ? { email: patch.email } : {}),
     ...(patch.iconLetters !== undefined ? { iconLetters: patch.iconLetters } : {}),
     ...(patch.iconEmoji !== undefined ? { iconEmoji: patch.iconEmoji } : {}),
     ...(patch.iconHue !== undefined ? { iconHue: patch.iconHue } : {}),
@@ -111,6 +113,7 @@ export async function revertPerson(db: LocalDb, previous: SyncUser): Promise<voi
   await patchPerson(db, previous.id, {
     name: previous.name,
     nickname: previous.nickname,
+    email: previous.email,
     iconLetters: previous.iconLetters,
     iconEmoji: previous.iconEmoji,
     iconHue: previous.iconHue,

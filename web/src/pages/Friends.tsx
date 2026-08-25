@@ -90,7 +90,12 @@ export function Friends() {
               subtitle={
                 <span className="muted">
                   {friend.email ?? "No email"}
-                  {friend.is_ghost === 1 && " · hasn't joined yet"}
+                  {friend.is_ghost === 1 && (
+                    <>
+                      {" "}
+                      <span className="tag muted">guest</span>
+                    </>
+                  )}
                 </span>
               }
               actions={

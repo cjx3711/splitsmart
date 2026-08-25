@@ -20,7 +20,7 @@ import { ulid } from "../domain/ulid.ts";
 import { db, type DB } from "../db/index.ts";
 import { env } from "../env.ts";
 import { generateToken, hashToken } from "../auth/password.ts";
-import { sendEmail } from "./send.ts";
+import { sendTrackedEmail } from "./sends.ts";
 import { signupEmail } from "./templates.ts";
 
 export const SIGNUP_TOKEN_TTL_HOURS = 24;
@@ -194,8 +194,11 @@ export async function startEmailSignup(input: {
 
   let delivered = false;
   if (input.emailVerificationRequired) {
-    const result = await sendEmail({ to: email, ...signupEmail({ verifyUrl, expiresInHours: SIGNUP_TOKEN_TTL_HOURS }) });
-    delivered = result.delivered;
+    const result = await sendTrackedEmail({
+      type: "signup",
+      message: { to: email, ...signupEmail({ verifyUrl, expiresInHours: SIGNUP_TOKEN_TTL_HOURS }) },
+    });
+    delivered = result.ok && result.delivered;
   }
 
   return {

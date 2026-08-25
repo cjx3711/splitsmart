@@ -33,26 +33,26 @@ import { compareByLastExpense } from "../../domain/friend-recency.ts";
 import {
   addFriendship,
   findExplicitGhostByInviteEmail,
+  inviteEmailTaken,
   lastSharedExpenseIds,
   removeFriendship,
   listExplicitFriendIds,
   listRelatedUserIds,
 } from "../../domain/friends.ts";
 import { createExpense, createPayment } from "../../domain/expenses.ts";
+import { extraOf, splitwiseIdOf } from "../../domain/metadata.ts";
 import { commentCountSql } from "../../domain/comments.ts";
 import { findFriendLink, mintAccessLink } from "../../domain/access-links.ts";
 import { expenseBodySchema } from "./expense-schema.ts";
 import { expenseFilterWhere, expenseListQuerySchema, hasFilters, parseExpenseFilters } from "./expense-filters.ts";
-import { sendEmail } from "../../email/send.ts";
-import { friendInviteEmail } from "../../email/templates.ts";
-import { env } from "../../env.ts";
+import { deliverGhostInvite } from "../../email/friend-invite.ts";
 import { displayName, knownEmail, MAX_NAME_LENGTH, personSnake } from "../../domain/person.ts";
 import { isUlid, ulid } from "../../domain/ulid.ts";
 import { logChange } from "../../domain/sync-log.ts";
 import {
-  hasIdentityPatch,
+  friendPatchSchema,
+  hasFriendPatch,
   identityColumns,
-  identityPatchSchema,
 } from "./person-schema.ts";
 
 interface FriendBreakdown {
@@ -104,6 +104,59 @@ function byGroupName(a: { groupName: string | null }, b: { groupName: string | n
   if (a.groupName === null) return 1;
   if (b.groupName === null) return -1;
   return a.groupName.localeCompare(b.groupName);
+}
+
+async function findLiveAccountByEmail(email: string) {
+  return db
+    .selectFrom("users")
+    .select(["id", "email", "name", "nickname", "is_ghost"])
+    .where("email", "=", email)
+    .where("is_ghost", "=", 0)
+    .where("deleted_at", "is", null)
+    .executeTakeFirst();
+}
+
+/**
+ * The guest link the invite email carries. Reuses a live friend link so
+ * resending does not rotate the URL the owner may already have copied.
+ */
+async function ensureFriendInviteUrl(ownerId: string, ghostId: string): Promise<string> {
+  const existing = await findFriendLink(db, ownerId, ghostId);
+  // Older rows may have no copyable URL (token_secret was added later). Mint
+  // rather than email a blank href; minting also rotates that dead slot.
+  if (existing?.url) return existing.url;
+  const minted = await transaction((trx) =>
+    mintAccessLink(trx, {
+      kind: "friend",
+      userId: ghostId,
+      createdBy: ownerId,
+    }),
+  );
+  return minted.url;
+}
+
+async function refuseInviteEmail(
+  authId: string,
+  ghostId: string,
+  email: string,
+): Promise<{ error: string; status: 400 | 409 } | null> {
+  const existingAccount = await findLiveAccountByEmail(email);
+  if (existingAccount?.id === authId) {
+    return { error: "That's your own email address.", status: 400 };
+  }
+  if (existingAccount) {
+    return {
+      error: "That address already has a SplitSmart account. Add them as a friend instead of attaching the address to a placeholder.",
+      status: 400,
+    };
+  }
+  if (await inviteEmailTaken(db, ghostId, email, authId)) {
+    return {
+      error: "You already have a placeholder invited at that address.",
+      status: 409,
+    };
+  }
+  return null;
 }
 
 const addFriendSchema = z.object({
@@ -209,17 +262,6 @@ export const friendRoutes = new Hono<AppEnv>()
   if (existingAccount) {
     await addFriendship(auth.id, existingAccount.id);
 
-    const invite = friendInviteEmail({
-      name: displayName(existingAccount),
-      inviterName: displayName(auth),
-      // They already have an account, so the invite is just the front door.
-      acceptUrl: `${env.APP_ORIGIN}/app`,
-      isNewAccount: false,
-    });
-    const delivery = existingAccount.email
-      ? await sendEmail({ to: existingAccount.email, ...invite })
-      : null;
-
     return c.json(
       {
         friend: {
@@ -232,7 +274,7 @@ export const friendRoutes = new Hono<AppEnv>()
           breakdown: [],
         },
         existingAccount: true,
-        emailDelivered: delivery?.delivered ?? false,
+        emailDelivered: false,
       },
       201,
     );
@@ -259,14 +301,6 @@ export const friendRoutes = new Hono<AppEnv>()
         inviteUrl = minted.url;
       }
 
-      const invite = friendInviteEmail({
-        name: displayName(existingGhost),
-        inviterName: displayName(auth),
-        acceptUrl: inviteUrl,
-        isNewAccount: true,
-      });
-      const delivery = await sendEmail({ to: input.email, ...invite });
-
       return c.json(
         {
           friend: {
@@ -279,7 +313,7 @@ export const friendRoutes = new Hono<AppEnv>()
             breakdown: [],
           },
           existingAccount: false,
-          emailDelivered: delivery.delivered,
+          emailDelivered: false,
           inviteUrl,
         },
         201,
@@ -326,18 +360,6 @@ export const friendRoutes = new Hono<AppEnv>()
 
   await addFriendship(auth.id, friend.id);
 
-  let emailDelivered = false;
-  if (input.email) {
-    const invite = friendInviteEmail({
-      name: displayName(friend),
-      inviterName: displayName(auth),
-      acceptUrl: inviteUrl,
-      isNewAccount: true,
-    });
-    const delivery = await sendEmail({ to: input.email, ...invite });
-    emailDelivered = delivery.delivered;
-  }
-
   return c.json(
     {
       friend: {
@@ -350,9 +372,9 @@ export const friendRoutes = new Hono<AppEnv>()
         breakdown: [],
       },
       existingAccount: false,
-      emailDelivered,
+      emailDelivered: false,
       // Returned so the UI can copy it. The same URL is always available from
-      // the friend's guest-link panel.
+      // the friend's guest-link panel. Mail goes out only from POST /:id/invite.
       inviteUrl,
     },
     201,
@@ -406,24 +428,27 @@ export const friendRoutes = new Hono<AppEnv>()
   });
 })
 /**
- * Edit a placeholder person's name and icon.
+ * Edit a placeholder person's name, icon, and invite address.
  *
  * Real accounts edit themselves at PATCH /auth/me. A ghost has no login, so
  * the people who can already see them (friends, group-mates) may set the
  * name, nickname, and icon they all share. Fan-out is via audience-addressed
  * `user` log rows: a standalone `user` row otherwise only reaches its own
  * subject, and ghosts do not sync.
+ *
+ * `email` writes `invite_email`, never `users.email`. Saving does not send
+ * mail; that is POST /:id/invite, and only when the owner clicks it.
  */
   .patch(
   "/:id",
-  zValidator("json", identityPatchSchema),
+  zValidator("json", friendPatchSchema),
   async (c) => {
     const auth = c.get("user");
     const friendId = c.req.param("id");
     if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
 
     const input = c.req.valid("json");
-    if (!hasIdentityPatch(input)) {
+    if (!hasFriendPatch(input)) {
       return c.json({ error: "Nothing to update." }, 400);
     }
 
@@ -432,7 +457,7 @@ export const friendRoutes = new Hono<AppEnv>()
 
     const friend = await db
       .selectFrom("users")
-      .select(["id", "is_ghost"])
+      .select(["id", "is_ghost", "invite_email"])
       .where("id", "=", friendId)
       .where("deleted_at", "is", null)
       .executeTakeFirst();
@@ -445,6 +470,15 @@ export const friendRoutes = new Hono<AppEnv>()
       );
     }
 
+    const nextEmail = input.email !== undefined && input.email !== friend.invite_email
+      ? input.email
+      : undefined;
+
+    if (nextEmail) {
+      const refused = await refuseInviteEmail(auth.id, friendId, nextEmail);
+      if (refused) return c.json({ error: refused.error }, refused.status);
+    }
+
     const identity = identityColumns(input);
     const audience = await listRelatedUserIds(db, friendId);
 
@@ -453,6 +487,7 @@ export const friendRoutes = new Hono<AppEnv>()
         .updateTable("users")
         .set({
           ...identity,
+          ...(nextEmail !== undefined ? { invite_email: nextEmail } : {}),
           updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
         })
         .where("id", "=", friendId)
@@ -505,6 +540,60 @@ export const friendRoutes = new Hono<AppEnv>()
   },
 )
 /**
+ * Email the current guest link to a placeholder's invite address.
+ *
+ * The only send in this file. POST /friends and PATCH store the address and
+ * return a copyable URL; they do not mail. One send per friend per 24 hours,
+ * and three per owner per UTC day. The URL is the live guest-link panel one,
+ * so rotating the link is still a separate decision.
+ */
+  .post("/:id/invite", async (c) => {
+    const auth = c.get("user");
+    const friendId = c.req.param("id");
+    if (!isUlid(friendId)) return c.json({ error: "Invalid friend id" }, 400);
+
+    const related = await listRelatedUserIds(db, auth.id);
+    if (!related.includes(friendId)) return c.json({ error: "Friend not found" }, 404);
+
+    const friend = await db
+      .selectFrom("users")
+      .select(["id", "is_ghost", "invite_email", "name", "nickname"])
+      .where("id", "=", friendId)
+      .where("deleted_at", "is", null)
+      .executeTakeFirst();
+
+    if (!friend) return c.json({ error: "Friend not found" }, 404);
+    if (friend.is_ghost !== 1) {
+      return c.json(
+        { error: "You can only invite placeholder people. They already have an account." },
+        403,
+      );
+    }
+    if (!friend.invite_email) {
+      return c.json({ error: "Add an email address first." }, 400);
+    }
+
+    const inviteUrl = await ensureFriendInviteUrl(auth.id, friendId);
+    const sent = await deliverGhostInvite({
+      to: friend.invite_email,
+      friendId,
+      actorUserId: auth.id,
+      friendName: displayName(friend),
+      inviterName: displayName(auth),
+      inviteUrl,
+    });
+    if (!sent.ok) {
+      return c.json(
+        { error: sent.error, retryAfterSeconds: sent.retryAfterSeconds },
+        429,
+        { "Retry-After": String(sent.retryAfterSeconds) },
+      );
+    }
+
+    return c.json({ emailDelivered: sent.emailDelivered, inviteUrl });
+  },
+)
+/**
  * Expenses shared with one friend, across every group plus the one-on-one ones.
  *
  * Matching the friend screen in Splitwise: the question "what is between us"
@@ -526,7 +615,7 @@ export const friendRoutes = new Hono<AppEnv>()
       "expenses.id", "expenses.description", "expenses.cost_minor",
       "expenses.currency_code", "expenses.date", "expenses.is_payment",
       "expenses.split_type", "expenses.split_meta", "expenses.group_id",
-      "expenses.repeat_interval", "expenses.repeat_of",
+      "expenses.repeat_interval", "expenses.repeat_of", "expenses.metadata",
       "categories.name as category_name", "groups.name as group_name",
     ])
     .select(commentCountSql().as("comment_count"))
@@ -573,7 +662,15 @@ export const friendRoutes = new Hono<AppEnv>()
   }
 
   return c.json({
-    expenses: expenses.map((e) => ({ ...e, shares: byExpense.get(e.id) ?? [] })),
+    expenses: expenses.map((e) => {
+      const { metadata, ...rest } = e;
+      return {
+        ...rest,
+        extra: extraOf(metadata),
+        splitwise_id: splitwiseIdOf(metadata),
+        shares: byExpense.get(e.id) ?? [],
+      };
+    }),
   });
 })
 /**
