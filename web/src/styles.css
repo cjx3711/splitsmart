@@ -1581,6 +1581,49 @@ button.compact {
   line-height: 1;
 }
 
+.filters-more {
+  position: relative;
+}
+
+.filters-more-trigger {
+  padding: 0.4rem 0.6rem;
+  line-height: 1;
+}
+
+.filters-more-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: 0.3rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.3);
+}
+
+.filters-more-menu button {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: 0.35rem;
+  color: var(--text);
+  text-align: left;
+  font-weight: 500;
+}
+
+.filters-more-menu button:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.filters-more-menu button:disabled {
+  color: var(--muted);
+}
+
 .filter-modal {
   display: flex;
   flex-direction: column;
@@ -2273,6 +2316,91 @@ button.danger {
 
 .danger-zone .danger-item p {
   margin: 0 0 0.75rem;
+}
+
+/* --- install-as-app page --------------------------------------------------- */
+
+.install-intro a,
+.install-benefits a {
+  text-decoration: underline;
+}
+
+.install-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+
+.install-cta p {
+  margin: 0.2rem 0 0;
+}
+
+.install-cta button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.install-done {
+  align-items: flex-start;
+  color: var(--positive);
+}
+
+.install-done p {
+  color: var(--text);
+  margin: 0;
+}
+
+.install-platform-picker {
+  display: flex;
+  gap: 0.4rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.install-platform-btn {
+  width: auto;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.install-platform-btn.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
+.install-steps {
+  margin: 0;
+  padding: 1rem 1.25rem 1rem 2.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.install-steps li {
+  padding-left: 0.15rem;
+}
+
+.install-steps .icon-glyph {
+  vertical-align: -0.15em;
+  margin: 0 0.1em;
+}
+
+.install-benefits {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 button.link,
