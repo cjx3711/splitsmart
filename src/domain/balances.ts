@@ -12,12 +12,12 @@
  */
 import { sql } from "kysely";
 import type { DB } from "../db/index.ts";
-import { pairwiseWithSimplify, type PairwiseEdge } from "./settle.ts";
+import { pairwiseWithSimplify, type GroupEdge, type PairwiseEdge } from "./settle.ts";
 
 // `simplifyDebts` lives in a pure module so the offline mirror can run the same
 // implementation in the browser. Re-exported here so existing callers are
 // unaffected by where it sits.
-export { simplifyDebts, pairwiseWithSimplify } from "./settle.ts";
+export { simplifyDebts, pairwiseWithSimplify, settleSuggestions } from "./settle.ts";
 
 export interface CurrencyAmount {
   currencyCode: string;
@@ -305,6 +305,36 @@ export async function getGroupBalances(
   }
 
   return [...byUser.entries()].map(([userId, balances]) => ({ userId, balances }));
+}
+
+/**
+ * The recorded who-owes-whom inside one group, summed per pair and currency.
+ *
+ * What a group with simplify OFF offers as its settle-up: the debts the bills
+ * actually created, rather than the shortest route through the nets. Opposite
+ * directions are left as separate rows and cancelled by `settleSuggestions`,
+ * which is where every caller nets them the same way.
+ */
+export async function getGroupRawEdges(db: DB, groupId: string): Promise<GroupEdge[]> {
+  const rows = await sql<{
+    from_user_id: string;
+    to_user_id: string;
+    currency_code: string;
+    amount_minor: number;
+  }>`
+    SELECT r.from_user_id, r.to_user_id, e.currency_code, SUM(r.amount_minor) AS amount_minor
+    FROM expense_repayments r
+    JOIN expenses e ON e.id = r.expense_id
+    WHERE e.group_id = ${groupId} AND e.deleted_at IS NULL
+    GROUP BY r.from_user_id, r.to_user_id, e.currency_code
+  `.execute(db);
+
+  return rows.rows.map((row) => ({
+    fromUserId: row.from_user_id,
+    toUserId: row.to_user_id,
+    currencyCode: row.currency_code,
+    amountMinor: row.amount_minor,
+  }));
 }
 
 /**

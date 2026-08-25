@@ -5,7 +5,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { pairwiseWithSimplify, simplifyDebts } from "./settle.ts";
+import { pairwiseWithSimplify, planSettleAll, settleSuggestions, simplifyDebts } from "./settle.ts";
 
 describe("simplifyDebts", () => {
   test("a two-person debt is itself", () => {
@@ -137,5 +137,171 @@ describe("pairwiseWithSimplify", () => {
       simplifyByGroupId: new Map([[group, true]]),
     });
     assert.deepEqual(edges, raw);
+  });
+});
+
+describe("planSettleAll", () => {
+  test("zeroes a group and one-on-one bucket that cancel out overall", () => {
+    const transfers = planSettleAll("a", "b", [
+      { groupId: "g1", balances: [{ currencyCode: "JPY", amountMinor: -3663 }] },
+      { groupId: null, balances: [{ currencyCode: "JPY", amountMinor: 3663 }] },
+    ]);
+    assert.deepEqual(
+      transfers.sort((x, y) => (x.groupId ?? "").localeCompare(y.groupId ?? "")),
+      [
+        { groupId: null, currencyCode: "JPY", fromUserId: "b", toUserId: "a", amountMinor: 3663 },
+        { groupId: "g1", currencyCode: "JPY", fromUserId: "a", toUserId: "b", amountMinor: 3663 },
+      ],
+    );
+  });
+
+  test("leaves a currency alone when it does not net to zero overall", () => {
+    const transfers = planSettleAll("a", "b", [
+      { groupId: "g1", balances: [{ currencyCode: "USD", amountMinor: -1000 }] },
+      { groupId: null, balances: [{ currencyCode: "USD", amountMinor: 500 }] },
+    ]);
+    assert.deepEqual(transfers, []);
+  });
+
+  test("does nothing when every bucket is already settled", () => {
+    assert.deepEqual(
+      planSettleAll("a", "b", [{ groupId: "g1", balances: [] }]),
+      [],
+    );
+  });
+
+  test("settles one currency while leaving an unrelated unsettled one alone", () => {
+    const transfers = planSettleAll("a", "b", [
+      {
+        groupId: "g1",
+        balances: [
+          { currencyCode: "JPY", amountMinor: -3663 },
+          { currencyCode: "USD", amountMinor: -1000 },
+        ],
+      },
+      { groupId: null, balances: [{ currencyCode: "JPY", amountMinor: 3663 }] },
+    ]);
+    assert.deepEqual(
+      transfers.map((t) => t.currencyCode).sort(),
+      ["JPY", "JPY"],
+    );
+  });
+});
+
+describe("settleSuggestions", () => {
+  // A cycle: a paid for b, b paid for c, c paid for a, one unit each. Nets are
+  // all zero, so simplify clears the group with nothing at all - and the raw
+  // answer is three real payments nobody can skip.
+  const cycle = [
+    { fromUserId: "a", toUserId: "b", currencyCode: "USD", amountMinor: 1000 },
+    { fromUserId: "b", toUserId: "c", currencyCode: "USD", amountMinor: 1000 },
+    { fromUserId: "c", toUserId: "a", currencyCode: "USD", amountMinor: 1000 },
+  ];
+
+  test("simplify on collapses a cycle to nothing", () => {
+    assert.deepEqual(
+      settleSuggestions({ simplify: true, members: [], edges: cycle }),
+      [],
+    );
+  });
+
+  test("simplify off keeps every recorded debt in the cycle", () => {
+    const sets = settleSuggestions({ simplify: false, members: [], edges: cycle });
+    assert.equal(sets.length, 1);
+    assert.equal(sets[0]!.currencyCode, "USD");
+    assert.deepEqual(sets[0]!.transfers, [
+      { fromUserId: "a", toUserId: "b", amountMinor: 1000 },
+      { fromUserId: "b", toUserId: "c", amountMinor: 1000 },
+      { fromUserId: "c", toUserId: "a", amountMinor: 1000 },
+    ]);
+  });
+
+  test("simplify off nets opposite directions between the same pair", () => {
+    const sets = settleSuggestions({
+      simplify: false,
+      members: [],
+      edges: [
+        { fromUserId: "a", toUserId: "b", currencyCode: "USD", amountMinor: 1000 },
+        { fromUserId: "b", toUserId: "a", currencyCode: "USD", amountMinor: 400 },
+      ],
+    });
+    assert.deepEqual(sets, [
+      { currencyCode: "USD", transfers: [{ fromUserId: "a", toUserId: "b", amountMinor: 600 }] },
+    ]);
+  });
+
+  test("simplify off drops a pair that has cancelled out", () => {
+    assert.deepEqual(
+      settleSuggestions({
+        simplify: false,
+        members: [],
+        edges: [
+          { fromUserId: "a", toUserId: "b", currencyCode: "USD", amountMinor: 1000 },
+          { fromUserId: "b", toUserId: "a", currencyCode: "USD", amountMinor: 1000 },
+        ],
+      }),
+      [],
+    );
+  });
+
+  test("simplify off never reroutes a debt onto a third party", () => {
+    // b owes a, and c owes a. Raw and simplified agree here, which is exactly
+    // why the toggle looks inert on a group with one habitual payer.
+    const edges = [
+      { fromUserId: "b", toUserId: "a", currencyCode: "USD", amountMinor: 1000 },
+      { fromUserId: "c", toUserId: "a", currencyCode: "USD", amountMinor: 500 },
+    ];
+    const members = [
+      { userId: "a", balances: [{ currencyCode: "USD", amountMinor: 1500 }] },
+      { userId: "b", balances: [{ currencyCode: "USD", amountMinor: -1000 }] },
+      { userId: "c", balances: [{ currencyCode: "USD", amountMinor: -500 }] },
+    ];
+    assert.deepEqual(
+      settleSuggestions({ simplify: false, members, edges }),
+      settleSuggestions({ simplify: true, members, edges }),
+    );
+  });
+
+  test("currencies come back in a stable order, whichever mode", () => {
+    const edges = [
+      { fromUserId: "a", toUserId: "b", currencyCode: "USD", amountMinor: 100 },
+      { fromUserId: "a", toUserId: "b", currencyCode: "JPY", amountMinor: 100 },
+      { fromUserId: "a", toUserId: "b", currencyCode: "SGD", amountMinor: 100 },
+    ];
+    const members = [
+      {
+        userId: "a",
+        balances: [
+          { currencyCode: "USD", amountMinor: -100 },
+          { currencyCode: "JPY", amountMinor: -100 },
+          { currencyCode: "SGD", amountMinor: -100 },
+        ],
+      },
+      {
+        userId: "b",
+        balances: [
+          { currencyCode: "USD", amountMinor: 100 },
+          { currencyCode: "JPY", amountMinor: 100 },
+          { currencyCode: "SGD", amountMinor: 100 },
+        ],
+      },
+    ];
+    for (const simplify of [true, false]) {
+      assert.deepEqual(
+        settleSuggestions({ simplify, members, edges }).map((s) => s.currencyCode),
+        ["JPY", "SGD", "USD"],
+      );
+    }
+  });
+
+  test("simplify off is unaffected by the member nets it does not read", () => {
+    assert.deepEqual(
+      settleSuggestions({
+        simplify: false,
+        members: [{ userId: "z", balances: [{ currencyCode: "USD", amountMinor: 99 }] }],
+        edges: [{ fromUserId: "a", toUserId: "b", currencyCode: "USD", amountMinor: 1000 }],
+      }),
+      [{ currencyCode: "USD", transfers: [{ fromUserId: "a", toUserId: "b", amountMinor: 1000 }] }],
+    );
   });
 });

@@ -284,8 +284,11 @@ CREATE TABLE groups (
   default_currency  TEXT    NOT NULL DEFAULT 'USD' REFERENCES currencies(code),
   avatar_url        TEXT,
 
-  -- Whether to collapse the debt graph when displaying balances.
-  simplify_by_default INTEGER NOT NULL DEFAULT 0,
+  -- Whether to collapse the debt graph when displaying balances, and offer the
+  -- fewest transfers rather than one payment per recorded debt. ON by default,
+  -- matching Splitwise, the API's create default and what the offline mirror
+  -- assumes for a group it has not stored yet.
+  simplify_by_default INTEGER NOT NULL DEFAULT 1,
 
   created_by        TEXT    REFERENCES users(id),
   created_at        TEXT    NOT NULL DEFAULT (datetime('now')),

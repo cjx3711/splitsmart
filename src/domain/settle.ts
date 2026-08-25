@@ -172,6 +172,179 @@ export function pairwiseWithSimplify(input: {
   return result.filter((edge) => edge.amountMinor !== 0);
 }
 
+export interface SettleTransfer {
+  fromUserId: string;
+  toUserId: string;
+  amountMinor: number;
+}
+
+/** Suggested transfers for one currency. The wire shape of every settle endpoint. */
+export interface SettleSuggestionSet {
+  currencyCode: string;
+  transfers: SettleTransfer[];
+}
+
+/** One directed who-owes-whom inside a group, before opposite directions cancel. */
+export interface GroupEdge {
+  fromUserId: string;
+  toUserId: string;
+  currencyCode: string;
+  amountMinor: number;
+}
+
+/**
+ * What a group offers when someone presses Settle up, one set per currency.
+ *
+ * The group's `simplify_by_default` picks between two honest answers, so the
+ * toggle means the same thing on every screen it touches:
+ *
+ * - **on**: the fewest transfers that clear the group, from the member nets.
+ *   Cycles collapse and a third party's debt can be rerouted, exactly as the
+ *   friend totals in `pairwiseWithSimplify` already do.
+ * - **off**: the debts as recorded. `expense_repayments` netted per pair, so
+ *   nobody is asked to pay someone they never shared a bill with.
+ *
+ * Nets are identical either way; only who hands money to whom differs. Nothing
+ * here is written down: a suggestion becomes a balance only once somebody
+ * records the payment.
+ */
+export function settleSuggestions(input: {
+  simplify: boolean;
+  /** Every member's net in the group, per currency. Sums to zero. */
+  members: Array<{ userId: string; balances: CurrencyAmount[] }>;
+  /** The per-bill edges in the group. Only read when simplify is off. */
+  edges: GroupEdge[];
+}): SettleSuggestionSet[] {
+  const byCurrency = input.simplify
+    ? simplifiedByCurrency(input.members)
+    : rawByCurrency(input.edges);
+
+  return [...byCurrency.entries()]
+    .map(([currencyCode, transfers]) => ({ currencyCode, transfers }))
+    .filter((set) => set.transfers.length > 0)
+    .sort((a, b) => (a.currencyCode < b.currencyCode ? -1 : a.currencyCode > b.currencyCode ? 1 : 0));
+}
+
+function simplifiedByCurrency(
+  members: Array<{ userId: string; balances: CurrencyAmount[] }>,
+): Map<string, SettleTransfer[]> {
+  const nets = new Map<string, Array<{ userId: string; amountMinor: number }>>();
+  for (const member of members) {
+    for (const b of member.balances) {
+      const list = nets.get(b.currencyCode) ?? [];
+      list.push({ userId: member.userId, amountMinor: b.amountMinor });
+      nets.set(b.currencyCode, list);
+    }
+  }
+
+  const result = new Map<string, SettleTransfer[]>();
+  for (const [currencyCode, entries] of nets) {
+    result.set(currencyCode, simplifyDebts(entries));
+  }
+  return result;
+}
+
+/**
+ * The recorded debts, netted per pair.
+ *
+ * A pair is canonicalised by userId (a ULID, so `<` is the whole ordering, the
+ * same rule `splitEvenly` allocates by) and the sign says which way the money
+ * goes. Two bills in opposite directions cancel; that is netting, not
+ * simplifying, and no third party is involved.
+ */
+function rawByCurrency(edges: GroupEdge[]): Map<string, SettleTransfer[]> {
+  const pairs = new Map<string, number>();
+  for (const edge of edges) {
+    const flip = edge.fromUserId > edge.toUserId;
+    const low = flip ? edge.toUserId : edge.fromUserId;
+    const high = flip ? edge.fromUserId : edge.toUserId;
+    const key = `${edge.currencyCode}\0${low}\0${high}`;
+    pairs.set(key, (pairs.get(key) ?? 0) + (flip ? -edge.amountMinor : edge.amountMinor));
+  }
+
+  const result = new Map<string, SettleTransfer[]>();
+  for (const [key, amount] of pairs) {
+    if (amount === 0) continue;
+    const [currencyCode = "", low = "", high = ""] = key.split("\0");
+    const list = result.get(currencyCode) ?? [];
+    list.push({
+      fromUserId: amount > 0 ? low : high,
+      toUserId: amount > 0 ? high : low,
+      amountMinor: Math.abs(amount),
+    });
+    result.set(currencyCode, list);
+  }
+
+  // Biggest first, like the simplified sets, then by payer so a reload cannot
+  // shuffle the rows people are clicking on.
+  for (const list of result.values()) {
+    list.sort(
+      (a, b) =>
+        b.amountMinor - a.amountMinor ||
+        (a.fromUserId < b.fromUserId ? -1 : a.fromUserId > b.fromUserId ? 1 : 0) ||
+        (a.toUserId < b.toUserId ? -1 : a.toUserId > b.toUserId ? 1 : 0),
+    );
+  }
+  return result;
+}
+
+export interface SettleAllTransfer {
+  /** NULL for the one-on-one bucket. */
+  groupId: string | null;
+  currencyCode: string;
+  fromUserId: string;
+  toUserId: string;
+  amountMinor: number;
+}
+
+/**
+ * Closes every per-group and one-on-one gap between two people, for whichever
+ * currencies their combined total already nets to zero.
+ *
+ * Simplify-debts can leave a friend "settled up" overall while one shared
+ * group and the one-on-one bucket still show opposite, cancelling amounts in
+ * the same currency - nobody owes anything net, but neither row reads zero on
+ * its own. Each transfer here is a no-money-moved payment that zeroes exactly
+ * one bucket; the caller posts a comment saying so.
+ *
+ * A currency whose buckets do NOT sum to zero is left alone entirely: that is
+ * a real, unsettled debt, and this must never invent a transfer for it.
+ */
+export function planSettleAll(
+  viewerId: string,
+  otherUserId: string,
+  breakdown: Array<{ groupId: string | null; balances: CurrencyAmount[] }>,
+): SettleAllTransfer[] {
+  const totalsByCurrency = new Map<string, number>();
+  for (const bucket of breakdown) {
+    for (const b of bucket.balances) {
+      totalsByCurrency.set(b.currencyCode, (totalsByCurrency.get(b.currencyCode) ?? 0) + b.amountMinor);
+    }
+  }
+
+  const transfers: SettleAllTransfer[] = [];
+  for (const bucket of breakdown) {
+    for (const b of bucket.balances) {
+      if (b.amountMinor === 0) continue;
+      if ((totalsByCurrency.get(b.currencyCode) ?? 0) !== 0) continue;
+
+      transfers.push({
+        groupId: bucket.groupId,
+        currencyCode: b.currencyCode,
+        fromUserId: b.amountMinor > 0 ? otherUserId : viewerId,
+        toUserId: b.amountMinor > 0 ? viewerId : otherUserId,
+        amountMinor: Math.abs(b.amountMinor),
+      });
+    }
+  }
+  return transfers;
+}
+
+interface CurrencyAmount {
+  currencyCode: string;
+  amountMinor: number;
+}
+
 function bucketKey(groupId: string | null, currencyCode: string): string {
   return `${groupId ?? ""}\0${currencyCode}`;
 }
