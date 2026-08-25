@@ -9,7 +9,7 @@
 import Database from "better-sqlite3";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, Locator, Page } from "playwright";
 
 export const ROOT = resolve(import.meta.dirname, "..");
 export const SMOKE_DB = join(ROOT, "data", "smoke.db");
@@ -49,7 +49,14 @@ const RULES: [RegExp, string][] = [
     /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? \d{1,2}(,? \d{4})?/g,
     "<DATE>",
   ],
-  [/\b\d+ (second|minute|hour|day|week|month|year)s? ago\b/gi, "<AGO>"],
+  // The backups panel prints `toLocaleString()` (en-US, UTC) and its own
+  // abbreviated relative times, neither of which the ISO rules above match.
+  [/\b\d{1,2}\/\d{1,2}\/\d{4},? \d{1,2}:\d{2}(:\d{2})?(\s?[AP]M)?/g, "<TIMESTAMP>"],
+  [
+    /\b\d+ (sec|min|hr|second|minute|hour|day|week|month|year)s? (ago|from now)\b/gi,
+    "<AGO>",
+  ],
+  [/\bjust now\b/gi, "<AGO>"],
   [/\b(yesterday|today|tomorrow)\b/gi, "<RELDATE>"],
   [/\[ref_\d+\]/g, "[ref]"],
   [/\bref_\d+\b/g, "ref"],
@@ -67,7 +74,10 @@ function blankFxEstimate(lines: string[]): string[] {
 }
 
 export function normalise(input: string): string {
-  let out = input;
+  // The admin backups panel prints resolved filesystem paths (the database and
+  // the snapshot directory). Those are absolute, so they name whoever's
+  // checkout this is; a DOM baseline has to be portable between machines.
+  let out = input.split(ROOT).join("<ROOT>");
   for (const [pattern, replacement] of RULES) out = out.replace(pattern, replacement);
   return `${blankFxEstimate(out.split("\n"))
     .map((line) => line.replace(/[ \t]+$/, ""))
@@ -166,6 +176,87 @@ export async function clickNamed(
     .or(page.getByRole("button", { name: withCount }))
     .or(page.getByText(name, { exact: true }));
   await target.filter({ visible: true }).first().click({ timeout: 15_000 });
+}
+
+/**
+ * Fixed exchange rates for the flows that convert money.
+ *
+ * `web/src/exchangeRates.ts` fetches these in the browser and caches them for a
+ * day. Left live, a conversion flow would assert against whatever the market
+ * did this morning, so it could only ever check "a number appeared" - which is
+ * exactly the bug a conversion test exists to catch. Stubbed, `1200 JPY` has
+ * one right answer and the flow can say what it is.
+ *
+ * Values are USD per unit, so any PAIR in the table is derivable: the API is
+ * asked for one base at a time and answers `1 base = rates[X] X`.
+ */
+const USD_PER_UNIT: Record<string, number> = {
+  USD: 1,
+  JPY: 1 / 150,
+  EUR: 1.1,
+  GBP: 1.25,
+  SGD: 0.75,
+};
+
+/** Pinned so the "Rates as of …" line is stable. Normalised to <DATE> anyway. */
+export const FX_DATE_UNIX = Date.UTC(2026, 5, 1) / 1000;
+
+export const FX_HOST_PATTERN = "https://open.er-api.com/**";
+
+/**
+ * Answer every rates request from the table above, and FAIL the flow if one is
+ * asked for that the table cannot serve - a silent fallthrough to the network
+ * would put flakiness back exactly where it was removed.
+ */
+export async function stubExchangeRates(page: Page): Promise<void> {
+  await page.route(FX_HOST_PATTERN, async (route) => {
+    const base = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop() ?? "");
+    const perBase = USD_PER_UNIT[base.toUpperCase()];
+    if (perBase === undefined) {
+      await route.fulfill({ status: 404, body: `smoke: no stub rate for base ${base}` });
+      return;
+    }
+    const rates = Object.fromEntries(
+      Object.entries(USD_PER_UNIT).map(([code, perUnit]) => [code, perBase / perUnit]),
+    );
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: "success",
+        base_code: base.toUpperCase(),
+        rates,
+        time_last_update_unix: FX_DATE_UNIX,
+      }),
+    });
+  });
+}
+
+/** What `stubExchangeRates` says `amountMinor` of `from` becomes in `to`. */
+export function expectedConversion(
+  amountMinor: number,
+  from: string,
+  to: string,
+  decimals: (code: string) => number,
+): number {
+  const major = amountMinor / 10 ** decimals(from);
+  const usd = major * USD_PER_UNIT[from.toUpperCase()]!;
+  const target = usd / USD_PER_UNIT[to.toUpperCase()]!;
+  // The app rounds half away from zero, like the importer does (CLAUDE.md).
+  return Math.round(target * 10 ** decimals(to));
+}
+
+/**
+ * Pick a currency in a `CurrencySelect`: it is a searchable listbox, not a
+ * <select>, so `selectOption` does nothing to it.
+ */
+export async function chooseCurrency(scope: Locator, triggerId: string, code: string): Promise<void> {
+  await scope.locator(`#${triggerId}`).click();
+  const menu = scope.page().locator(".currency-select-menu");
+  await menu.waitFor({ timeout: 10_000 });
+  await menu.locator(".currency-select-search").fill(code);
+  await menu.getByRole("option", { name: new RegExp(`^${code}\\b`) }).first().click();
+  await menu.waitFor({ state: "hidden", timeout: 10_000 });
 }
 
 export async function settle(page: Page): Promise<void> {

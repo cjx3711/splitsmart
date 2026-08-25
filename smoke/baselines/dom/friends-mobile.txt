@@ -1,10 +1,10 @@
 - banner:
   - button "Show menu": ☰
-  - link "SplitSmart SplitSmart":
+  - link "SplitSmart":
     - /url: /app
     - img "SplitSmart"
-    - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - main:
   - heading "Friends" [level=1]
   - button "+ Add friend"
@@ -16,12 +16,12 @@
   - button "Remove Mel": ✕
   - link "JJ jj@example.com -1200JPY 3836.21USD shared":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
-    - /url: /app/friends/<ULID>
-  - button "Remove Ah Beng": ✕
   - link "John No email · hasn't joined yet 60.00USD":
     - /url: /app/friends/<ULID>
   - button "Remove John": ✕
+  - link "Ah Beng ahbeng@example.com 1200JPY 149.25USD":
+    - /url: /app/friends/<ULID>
+  - button "Remove Ah Beng": ✕
   - link "Taro taro@example.com settled up shared":
     - /url: /app/friends/<ULID>
   - link "Danial danial@example.com settled up":

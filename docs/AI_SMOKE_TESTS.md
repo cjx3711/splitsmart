@@ -111,6 +111,9 @@ Listed in `scripts/smoke-screens.ts`. Every id is captured twice: desktop
 | `expense-rent-stop` | Test User | Stop-repeating warning modal on Rent |
 | `add-expense-dialog` | Test User | The add form |
 | `settings` | Test User | Account, export, danger zone |
+| `admin` | Test User | Operator usage list, window pinned with `as_of` |
+| `admin-user` | Test User | One account's counts and 30-day chart |
+| `admin-backups` | Test User | The backup panel with no S3 configured |
 | `jj-dashboard` | JJ | Same ledger, other side |
 | `jj-tokyo` | JJ | Tokyo as the member who paid TeamLab |
 | `jj-apartment` | JJ | Apartment 4B as the other roommate |
@@ -134,9 +137,38 @@ run *after* the screenshots of the seeded state.
 | F8 | Stop Rent warns (cancel is a no-op); resume starts from today and does not backfill |
 | F9 | Group balances, group members, and expense participants open `/friends/:id` |
 | F10 | Signed-in homepage says Open app; `/app/login` redirects to the dashboard |
+| F11 | A two-currency group names its default in the nudge and dialog; 3000 JPY → 20.00 USD; settle-up collapses to 3 × 35.00 USD |
+| F12 | Tokyo's 5 recorded debts + simplify nudge → 3 on, 5 again off; nets never grow |
+| F13 | Ah Beng's page carries the group's convert offer, naming USD as *your* default; previews 1200 JPY → 8.00 USD, cancels |
+| F14 | Settling a friend to zero prompts for the cancelling buckets, offers no USD, survives "Leave them for now", then clears on Close them out |
+| F15 | Usage lists accounts with no amount anywhere in `main`; search narrows to one and then to none; View keeps `as_of` and shows integer counts |
+| F16 | The backups panel reports itself unconfigured, lists no runs, and "Back up now" says so instead of recording a run |
+| F17 | JJ gets no Admin link, `/app/admin` sends them to the dashboard, and `/api/v1/admin/*` answers 403 |
 
-`yarn smoke:check` runs last, against whatever F1 / F3 / F7 / F8 wrote, and asks
-whether `SUM(paid_share) == SUM(owed_share) == cost` still holds.
+`yarn smoke:check` runs last, against whatever F1 / F3 / F7 / F8 / F11 / F14
+wrote, and asks whether `SUM(paid_share) == SUM(owed_share) == cost` still
+holds. The conversion and settle-all flows write pairs of payments, so this is
+the check that says those pairs balance.
+
+**Exchange rates are stubbed for every flow**, in `stubExchangeRates`
+(`scripts/smoke-lib.ts`): a fixed USD-per-unit table, USD/JPY pinned at 150. A
+conversion test against live rates could only assert "a number appeared", which
+is precisely the bug it exists to catch. A base the table does not carry is a
+404, not a fallthrough to the network. The captures still take the real rate
+for the ≈ estimate, which is why `normalise()` blanks it.
+
+**The backup config is pinned in `smoke:server`, not read from your `.env`.**
+`BACKUP_*` is set on the command line (empty bucket and keys, a `smoke.invalid`
+endpoint), so `admin-backups` captures the same unconfigured panel on every
+machine. Without that, a developer with real S3 credentials in `.env` would
+capture their own bucket name — and a scheduler that had actually started.
+`normalise()` also rewrites the checkout path to `<ROOT>`, since the panel
+prints the resolved database and snapshot directories.
+
+F13 and F14 both read Ah Beng, and F14 spends the JPY balance F13 asserts, so
+F13 comes first and F14 says so if it finds the balance already gone. F12
+restores the simplify toggle it flips, and F11 builds its own mixed-currency
+group in Yosemite Camping rather than borrowing one.
 
 ## Adding a screen or a flow
 

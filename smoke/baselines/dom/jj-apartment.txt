@@ -19,11 +19,11 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
-  - link "Apartment 4B":
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Friends (3)":
     - /url: /app/friends
@@ -48,19 +48,19 @@
   - heading "Apartment 4B" [level=1]
   - paragraph: Home · default USD · 2 members
   - button "Options"
-  - button "Settle up"
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
   - complementary:
+    - heading "Suggested payments About these payments" [level=2]:
+      - text: Suggested payments
+      - button "About these payments": "?"
+    - list:
+      - listitem:
+        - button "You → Test User 3696.21USD"
     - heading "Balances" [level=2]
     - link "Test User gets back 3696.21USD":
       - /url: /app/friends/<ULID>
     - text: You owe 3696.21USD
-    - heading "Suggested settle-up About suggested settle-up" [level=2]:
-      - text: Suggested settle-up
-      - button "About suggested settle-up": "?"
-    - text: USD
-    - list:
-      - listitem: You → Test User 3696.21USD
   - heading "Expenses" [level=2]
   - searchbox "Search descriptions"
   - button "Filters"

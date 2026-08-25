@@ -1,8 +1,7 @@
 - banner:
-  - link "SplitSmart SplitSmart":
+  - link "SplitSmart":
     - /url: /
     - img "SplitSmart"
-    - text: SplitSmart
   - link "Log in":
     - /url: /app/login
 - main:
@@ -31,7 +30,7 @@
     - article:
       - heading "Free API access" [level=2]
       - paragraph:
-        - text: The endpoints are in the
+        - text: For your scripts or AI agents to manage expenses. The endpoints are in the
         - link "API docs":
           - /url: /docs
         - text: .
@@ -65,12 +64,9 @@
       - listitem: As many expenses a day as you want
       - listitem: Clicking just outside the add-expense box doesn't dump the draft
       - listitem: Currencies with no decimals don't show any, so 3000 JPY is 3000 JPY, not 3000.00
-      - listitem: Mixed balances show a live ≈ estimate, and you can convert them into one currency at <RELDATE>'s rate
+      - listitem: Mixed balances show a live ≈ estimate, and you can convert them into your default currency at <RELDATE>'s rate
       - listitem: A currency picker that puts the ones you frequently use at the top
-      - listitem: Itemised bills, where each line has its own sharers and tax and tip get spread proportionally
-      - listitem: Splitwise import, and your API key is used for the request and then dropped
-      - listitem: Installable as a PWA, and the ledger stays on the device
-      - listitem: A JSON API at /api/v1, with a bearer token from Settings
+      - listitem: Free API for scripts or AI agents
   - region "What we don't have":
     - heading "What we don't have" [level=2]
     - paragraph: Splitwise is a company, has two phone apps, and a payments product. This is a toy app I built in 2 weeks.

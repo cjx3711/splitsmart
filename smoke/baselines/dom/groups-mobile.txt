@@ -1,10 +1,10 @@
 - banner:
   - button "Show menu": ☰
-  - link "SplitSmart SplitSmart":
+  - link "SplitSmart":
     - /url: /app
     - img "SplitSmart"
-    - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - main:
   - heading "Groups" [level=1]
   - button "+ Add group"

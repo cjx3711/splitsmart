@@ -2,7 +2,6 @@
   - link "Home":
     - /url: /guest/pick
     - img "SplitSmart"
-    - text: SplitSmart
   - text: Guest
 - main:
   - heading "Which one are you? Not on this list" [level=1]:

@@ -1,8 +1,7 @@
 - banner:
-  - link "SplitSmart SplitSmart":
+  - link "SplitSmart":
     - /url: /app
     - img "SplitSmart"
-    - text: SplitSmart
 - main:
   - img "SplitSmart"
   - text: SplitSmart

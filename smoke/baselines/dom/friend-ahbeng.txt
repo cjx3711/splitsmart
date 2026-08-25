@@ -21,15 +21,15 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
+  - link "Office Lunch Club":
+    - /url: /app/groups/<ULID>
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
-  - link "Hackathon Squad":
-    - /url: /app/groups/<ULID>
   - link "Jess & Marco's Wedding":
     - /url: /app/groups/<ULID>
-  - link "Yosemite Camping":
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -43,9 +43,9 @@
     - /url: /app/friends/<ULID>
   - link "JJ":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
   - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng":
     - /url: /app/friends/<ULID>
   - link "Taro":
     - /url: /app/friends/<ULID>
@@ -71,18 +71,24 @@
       - listitem: /Ah Beng
   - heading "Ah Beng" [level=1]
   - paragraph: Tan Ah Beng · ahbeng@example.com
-  - button "Settle up"
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
   - complementary:
     - text: Between you
     - button "About this balance": "?"
     - text: Ah Beng owes you 1200JPY Ah Beng owes you 149.25USD
-    - button "Convert balance"
     - paragraph:
-      - text: "* Converted to USD using"
+      - text: 2 currencies to settle separately.
+      - button "Convert the balances"
+      - text: into USD, your default currency, and there is less to send.
+    - paragraph:
+      - text: "* Converted to USD, your default currency, using"
       - link "Rates By Exchange Rate API":
         - /url: https://www.exchangerate-api.com
       - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+      - link "Change your default currency":
+        - /url: /app/settings
+      - text: .
     - heading "Shared groups" [level=2]
     - link "Ski Trip 2026 Trip 140.00USD":
       - /url: /app/groups/<ULID>

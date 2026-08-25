@@ -3,7 +3,8 @@
     - /url: /app
     - img "SplitSmart"
     - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - navigation "Main":
   - text: Test User
   - link "Settings":
@@ -22,15 +23,15 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
+  - link "Office Lunch Club":
+    - /url: /app/groups/<ULID>
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
-  - link "Hackathon Squad":
-    - /url: /app/groups/<ULID>
   - link "Jess & Marco's Wedding":
     - /url: /app/groups/<ULID>
-  - link "Yosemite Camping":
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -44,9 +45,9 @@
     - /url: /app/friends/<ULID>
   - link "JJ":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
   - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng":
     - /url: /app/friends/<ULID>
   - link "Taro":
     - /url: /app/friends/<ULID>
@@ -76,66 +77,10 @@
   - text: Profile image
   - button "About the profile image": "?"
   - button "Randomise"
-  - button "Default" [disabled]
-  - slider "Base gradient angle"
-  - button "Base"
-  - button "Gradient"
-  - text: Base
-  - slider "Band 1"
-  - button "Band 1 colour"
-  - button "Remove band 1": ×
-  - slider "Band 2"
-  - button "Band 2 colour"
-  - button "Remove band 2": ×
-  - slider "Band 3"
-  - button "Band 3 colour"
-  - button "Remove band 3": ×
-  - slider "Band 4"
-  - button "Band 4 colour"
-  - button "Remove band 4": ×
-  - slider "Band 5"
-  - button "Band 5 colour"
-  - button "Remove band 5": ×
-  - button "Add band"
-  - text: Icon letters
-  - button "About icon letters": "?"
-  - textbox "Icon letters":
-    - /placeholder: TU
-  - group "Icon emoji":
-    - text: Icon emoji
-    - button "No emoji" [pressed]: TU
-    - button "Use 😀": 😀
-    - button "Use 😎": 😎
-    - button "Use 🤓": 🤓
-    - button "Use 🥳": 🥳
-    - button "Use 👻": 👻
-    - button "Use 🤖": 🤖
-    - button "Use 🐱": 🐱
-    - button "Use 🐶": 🐶
-    - button "Use 🦊": 🦊
-    - button "Use 🐼": 🐼
-    - button "Use 🐸": 🐸
-    - button "Use 🐙": 🐙
-    - button "Use 🌸": 🌸
-    - button "Use 🍀": 🍀
-    - button "Use ⭐": ⭐
-    - button "Use 🔥": 🔥
-    - button "Use 🌈": 🌈
-    - button "Use 🌊": 🌊
-    - button "Use 🍕": 🍕
-    - button "Use 🍣": 🍣
-    - button "Use ☕": ☕
-    - button "Use 🍺": 🍺
-    - button "Use ✈️": ✈️
-    - button "Use 🏠": 🏠
-    - button "Use 🎵": 🎵
-    - button "Use ⚽": ⚽
-    - button "Use 🎮": 🎮
-    - button "Use 📚": 📚
-    - button "Use 💚": 💚
-    - button "Use 💙": 💙
-    - text: Or paste any emoji
-    - textbox "Or paste any emoji"
+  - button "Edit"
+  - text: Icon
+  - button "About icon letters and emoji": "?"
+  - button "Edit"
   - button "Save name and icon"
   - heading "Preferred currency About preferred currency" [level=2]:
     - text: Preferred currency
@@ -151,21 +96,29 @@
     - text: Admin
     - button "About admin": "?"
   - button "Open admin"
-  - heading "Delete all data" [level=2]
-  - paragraph: Permanently remove this account's groups, friends, expenses and guest links so you can import from Splitwise again. Your login is not deleted.
-  - button "Delete all my data"
+  - heading "Export your data About exporting" [level=2]:
+    - text: Export your data
+    - button "About exporting": "?"
+  - paragraph: Download everything you can see as CSV files in a zip. Filtered downloads of just the current expense list still live on each expenses screen.
+  - button "Download all data"
   - heading "API tokens About API tokens" [level=2]:
     - text: API tokens
     - button "About API tokens": "?"
-  - text: New token name
-  - textbox "New token name": API client
-  - button "Create token"
+  - link "Manage API tokens":
+    - /url: /app/settings/tokens
   - heading "This device About local data" [level=2]:
     - text: This device
     - button "About local data": "?"
   - button "Clear local data and resync"
   - heading "Session" [level=2]
   - button "Log out"
+  - heading "Danger zone" [level=2]
+  - heading "Delete all data" [level=3]
+  - paragraph: Permanently remove this account's groups, friends, expenses and guest links so you can import from Splitwise again. Your login is not deleted. Refuses if another real account still shares a group or expense with you.
+  - button "Delete all my data"
+  - heading "Delete account" [level=3]
+  - paragraph: Close this login. If other people with accounts still share groups or expenses with you, you become a placeholder they can still see — they can send you a guest link, and the history stays. If nobody else has an account on this data, everything is deleted, including this login.
+  - button "Delete my account"
 - contentinfo:
   - text: Created out of spite by cjx3711.
   - link "About":

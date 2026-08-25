@@ -1,0 +1,117 @@
+- banner:
+  - button "Show menu": ☰
+  - link "SplitSmart":
+    - /url: /app
+    - img "SplitSmart"
+  - button "Payment"
+  - button "Expense"
+- main:
+  - navigation "Admin":
+    - link "Usage":
+      - /url: /app/admin
+    - link "Backups":
+      - /url: /app/admin/backups
+  - heading "Backups About database backups" [level=1]:
+    - text: Backups
+    - button "About database backups": "?"
+  - button "Refresh"
+  - button "Back up now"
+  - button "Force run"
+  - heading "Last success" [level=2]
+  - paragraph: No successful runs yet
+  - heading "Last failure" [level=2]
+  - paragraph: No failures recorded
+  - heading "Total stored" [level=2]
+  - paragraph: Unavailable until backups are configured.
+  - group:
+    - text: Configuration unconfigured · scheduler not-started
+    - paragraph: Backups are disabled because the configuration is incomplete. BACKUP_S3_BUCKET is missing; BACKUP_S3_ACCESS_KEY_ID is missing; BACKUP_S3_SECRET_ACCESS_KEY is missing.
+    - table:
+      - rowgroup:
+        - row "Config status unconfigured":
+          - rowheader "Config status"
+          - cell "unconfigured"
+        - 'row "Scheduler not-started — configuration problems: BACKUP_S3_BUCKET (missing), BACKUP_S3_ACCESS_KEY_ID (missing), BACKUP_S3_SECRET_ACCESS_KEY (missing)"':
+          - rowheader "Scheduler"
+          - 'cell "not-started — configuration problems: BACKUP_S3_BUCKET (missing), BACKUP_S3_ACCESS_KEY_ID (missing), BACKUP_S3_SECRET_ACCESS_KEY (missing)"'
+        - row "Run in flight no":
+          - rowheader "Run in flight"
+          - cell "no"
+        - row "Tick —":
+          - rowheader "Tick"
+          - cell "—"
+        - row "Scheduler started <TIMESTAMP>":
+          - rowheader "Scheduler started"
+          - cell "<TIMESTAMP>"
+        - row "Last tick —":
+          - rowheader "Last tick"
+          - cell "—"
+        - row "Next tick —":
+          - rowheader "Next tick"
+          - cell "—"
+        - row "Next hour gate (UTC) —":
+          - rowheader "Next hour gate (UTC)"
+          - cell "—"
+        - row "Bucket —":
+          - rowheader "Bucket"
+          - cell "—"
+        - row "Endpoint https://smoke.invalid":
+          - rowheader "Endpoint"
+          - cell "https://smoke.invalid"
+        - row "Region auto":
+          - rowheader "Region"
+          - cell "auto"
+        - row "Path style false":
+          - rowheader "Path style"
+          - cell "false"
+        - row "Key prefix smoke/":
+          - rowheader "Key prefix"
+          - cell "smoke/"
+        - row "Checksum mode when_required":
+          - rowheader "Checksum mode"
+          - cell "when_required"
+        - row "Access key id not set":
+          - rowheader "Access key id"
+          - cell "not set"
+        - row "Secret access key not set":
+          - rowheader "Secret access key"
+          - cell "not set"
+        - row "Hour (UTC) 0":
+          - rowheader "Hour (UTC)"
+          - cell "0"
+        - row "Daily retention 7 days":
+          - rowheader "Daily retention"
+          - cell "7 days"
+        - row "Attempts per day 5":
+          - rowheader "Attempts per day"
+          - cell "5"
+        - row "Retry backoff 60 min":
+          - rowheader "Retry backoff"
+          - cell "60 min"
+        - row "Stale after 15 min":
+          - rowheader "Stale after"
+          - cell "15 min"
+        - row "Snapshot directory ./data/backups":
+          - rowheader "Snapshot directory"
+          - cell "./data/backups"
+        - row "Database <ROOT>/data/smoke.db":
+          - rowheader "Database"
+          - cell "<ROOT>/data/smoke.db"
+    - paragraph:
+      - text: A finished backup is uploaded and kept. Dailies older than the retention window are deleted; the first successful backup of each ISO week is copied under
+      - code: weekly/
+      - text: and never pruned. The local snapshot file is removed after upload. Timestamps render in this browser's timezone; the backup date is a UTC calendar day.
+  - heading "Runs" [level=2]
+  - paragraph: No backup runs recorded yet.
+  - paragraph: Showing 0 of 0 recorded runs, newest first.
+- contentinfo:
+  - text: Created out of spite by cjx3711.
+  - link "About":
+    - /url: /about
+  - link "Changelog":
+    - /url: /changelog
+  - link "API":
+    - /url: /docs
+  - link "GitHub":
+    - /url: https://github.com/cjx3711/splitsmart
+  - text: v0.2.0

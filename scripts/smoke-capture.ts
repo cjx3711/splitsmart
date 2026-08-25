@@ -230,7 +230,10 @@ export async function runCapture(opts: CaptureOpts): Promise<{ captured: number;
         playwrightVersion,
         params: CAPTURE_PARAMS,
         viewports: VIEWPORTS,
-        screens: screens.map((s) => ({
+        // Every definition, not just the ones this run captured: a `--only`
+        // run writes into the baseline directory too, and a manifest listing
+        // one screen would look like a baseline set of one.
+        screens: SCREENS.map((s) => ({
           id: s.id,
           viewport: s.viewport,
           path: s.path,

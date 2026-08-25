@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-08-24T12:16:28.570Z",
+  "capturedAt": "2026-08-25T09:11:54.086Z",
   "base": "http://localhost:5644",
   "playwrightVersion": "1.62.1",
   "params": {
@@ -259,7 +259,7 @@
       "viewport": "desktop",
       "path": "/app",
       "click": [
-        "Add Expense"
+        "Expense"
       ],
       "auth": "user:user"
     },
@@ -268,7 +268,7 @@
       "viewport": "mobile",
       "path": "/app",
       "click": [
-        "Add Expense"
+        "Expense"
       ],
       "auth": "user:user"
     },
@@ -316,6 +316,20 @@
       "click": [
         "View~Lee Jin Jie"
       ],
+      "auth": "user:user"
+    },
+    {
+      "id": "admin-backups",
+      "viewport": "desktop",
+      "path": "/app/admin/backups",
+      "click": [],
+      "auth": "user:user"
+    },
+    {
+      "id": "admin-backups-mobile",
+      "viewport": "mobile",
+      "path": "/app/admin/backups",
+      "click": [],
       "auth": "user:user"
     },
     {

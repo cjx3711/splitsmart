@@ -3,7 +3,8 @@
     - /url: /app
     - img "SplitSmart"
     - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - navigation "Main":
   - text: JJ
   - link "Settings":
@@ -20,11 +21,11 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
-  - link "Apartment 4B":
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Friends (3)":
     - /url: /app/friends
@@ -48,10 +49,13 @@
     - button "Add a friend"
   - text: Net position 6000JPY -3836.21USD You owe 3836.21USD You are owed 6000JPY
   - paragraph:
-    - text: "* Converted to USD using"
+    - text: "* Converted to USD, your default currency, using"
     - link "Rates By Exchange Rate API":
       - /url: https://www.exchangerate-api.com
     - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+    - link "Change your default currency":
+      - /url: /app/settings
+    - text: .
   - heading "You owe" [level=2]
   - link "Test User you owe 3836.21USD owes you 1200JPY -3696.21USD ·Apartment 4B -140.00USD ·Ski Trip 2026 1200JPY ·Weekend in Tokyo":
     - /url: /app/friends/<ULID>

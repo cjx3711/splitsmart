@@ -18,12 +18,15 @@ import { CAPTURE_PARAMS, STABILISE_CSS, VIEWPORTS } from "./smoke-screens.ts";
 import {
   DEFAULT_BASE,
   arg,
+  chooseCurrency,
   chromiumHint,
   clickNamed,
+  expectedConversion,
   guestUrl,
   newContext,
   settle,
   signIn,
+  stubExchangeRates,
 } from "./smoke-lib.ts";
 
 export type FlowVerdict = "pass" | "fail" | "blocked";
@@ -60,7 +63,7 @@ function dialog(page: Page) {
 async function openGroupExpense(page: Page, group: string): Promise<void> {
   await clickNamed(page, "Groups");
   await clickNamed(page, group);
-  await page.locator(".page-actions").getByRole("button", { name: "Add Expense" }).click();
+  await page.locator(".page-actions").getByRole("button", { name: "Expense", exact: true }).click();
   await dialog(page).getByLabel("Description").waitFor({ timeout: 10_000 });
 }
 
@@ -97,6 +100,76 @@ function requireFutureNextBill(label: string, text: string): string {
 
 async function seriesRentBillCount(page: Page): Promise<number> {
   return page.locator("main .list-item[role='link']").filter({ hasText: "Rent" }).count();
+}
+
+/** Only the two currencies the balance flows use. Keeps `decimals` honest. */
+const DECIMALS: Record<string, number> = { USD: 2, JPY: 0 };
+const decimalsFor = (code: string): number => {
+  const d = DECIMALS[code.toUpperCase()];
+  if (d === undefined) throw new Error(`smoke: no decimal count pinned for ${code}`);
+  return d;
+};
+
+async function openGroup(page: Page, group: string): Promise<void> {
+  await clickNamed(page, "Groups");
+  await clickNamed(page, group);
+  await page.getByRole("heading", { name: "Balances" }).waitFor({ timeout: 15_000 });
+}
+
+/** Every suggested transfer on a group page, as `{ minor, code }`. */
+async function settleRows(page: Page): Promise<Array<{ minor: number; code: string }>> {
+  const texts = await page.locator(".settle-list li .amount").allInnerTexts();
+  return texts.map((t) => {
+    const match = t.replace(/,/g, "").match(/(-?\d+(?:\.\d+)?)\s*([A-Z]{3})/);
+    if (!match) throw new Error(`no amount+code in ${JSON.stringify(t)}`);
+    const code = match[2]!;
+    return { minor: Math.round(Number(match[1]) * 10 ** decimalsFor(code)), code };
+  });
+}
+
+/**
+ * Add one expense to a group, split equally, paid by the signed-in user.
+ * `currency` is only touched when it differs from the group's own, because the
+ * picker is a listbox and opening it needlessly is a chance to get stuck.
+ */
+async function addGroupExpense(
+  page: Page,
+  group: string,
+  description: string,
+  amount: string,
+  currency?: string,
+): Promise<void> {
+  await openGroupExpense(page, group);
+  await dialog(page).getByLabel("Description").fill(description);
+  await dialog(page).getByLabel("Amount").fill(amount);
+  if (currency) await chooseCurrency(dialog(page), "currency", currency);
+  await dialog(page).getByRole("button", { name: "Add expense" }).click();
+  await dialog(page).waitFor({ state: "hidden", timeout: 15_000 });
+  await page.getByText(description).filter({ visible: true }).first().waitFor({ timeout: 15_000 });
+}
+
+/**
+ * The friend "Between you" card, once the mirror has actually filled it in.
+ *
+ * Waiting on the "Between you" heading is not enough: it renders as soon as the
+ * person resolves, and for a beat the card underneath reads "You're settled up"
+ * while the balances are still arriving. Reading innerText in that beat is a
+ * flake that looks exactly like a missing balance.
+ */
+async function friendBalanceCard(page: Page, showing: string, whenMissing: string): Promise<string> {
+  const card = page.locator(".friend-aside .card").first();
+  try {
+    await page.locator(".friend-aside .card").filter({ hasText: showing }).first().waitFor({ timeout: 20_000 });
+  } catch {
+    throw new Error(whenMissing);
+  }
+  return (await card.innerText()).trim();
+}
+
+function requireText(actual: string, needle: string, label: string): void {
+  if (!actual.includes(needle)) {
+    throw new Error(`${label} did not mention ${JSON.stringify(needle)}: ${JSON.stringify(actual.slice(0, 400))}`);
+  }
 }
 
 async function screenshot(page: Page, ctx: FlowCtx, id: string): Promise<string> {
@@ -261,6 +334,11 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
 
       await page.getByRole("button", { name: "Show menu" }).filter({ visible: true }).click();
       await page.getByRole("navigation", { name: "Main" }).waitFor();
+      // Via the Groups list, not the rail: the rail shows the five most recent
+      // groups, and the flows that run before this one bump Book Club and
+      // Apartment 4B past Weekend in Tokyo. What this flow is testing is the
+      // viewport, so it must not also depend on which groups were touched last.
+      await clickNamed(page, "Groups");
       await clickNamed(page, "Weekend in Tokyo");
       await page.getByText("Ramen at Ichiran").waitFor({ timeout: 10_000 });
       if (await overflow()) throw new Error("Tokyo group overflowed horizontally");
@@ -459,6 +537,376 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       return "Homepage said Open app; /app/login redirected to the dashboard.";
     },
   },
+  {
+    id: "F11",
+    title: "A group holding two currencies offers to convert into its default, and does it right",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+
+      // Yosemite Camping starts empty and is used by no other flow, so this
+      // builds its own mixed-currency group rather than depending on the seed.
+      await addGroupExpense(page, "Yosemite Camping", "Smoke test camp food", "60.00");
+      await addGroupExpense(page, "Yosemite Camping", "Smoke test onsen", "12000", "JPY");
+      await openGroup(page, "Yosemite Camping");
+
+      const before = await settleRows(page);
+      const usdBefore = before.filter((r) => r.code === "USD");
+      const jpyBefore = before.filter((r) => r.code === "JPY");
+      if (usdBefore.length !== 3 || jpyBefore.length !== 3) {
+        throw new Error(`expected 3 USD + 3 JPY transfers, got ${JSON.stringify(before)}`);
+      }
+      if (usdBefore.some((r) => r.minor !== 1500) || jpyBefore.some((r) => r.minor !== 3000)) {
+        throw new Error(`expected 15.00 USD and 3000 JPY each, got ${JSON.stringify(before)}`);
+      }
+
+      const hint = page.locator(".settle-hints").filter({ hasText: "currencies to settle" });
+      const hintText = (await hint.innerText()).trim();
+      requireText(hintText, "2 currencies to settle separately", "the convert nudge");
+      requireText(hintText, "USD, this group's default currency", "the convert nudge");
+
+      await hint.getByRole("button", { name: "Convert the balances" }).click();
+      const convert = dialog(page);
+      await convert.getByRole("heading", { name: "Convert balance" }).waitFor({ timeout: 10_000 });
+      requireText(
+        (await convert.innerText()).trim(),
+        "USD is this group's default currency.",
+        "the convert dialog",
+      );
+
+      await convert.locator(".convert-preview-row").first().waitFor({ timeout: 15_000 });
+      const legs = await convert.locator(".convert-preview-row").allInnerTexts();
+      const expected = expectedConversion(3000, "JPY", "USD", decimalsFor);
+      if (expected !== 2000) throw new Error(`stub rates drifted: 3000 JPY became ${expected}`);
+      if (legs.length !== 3) throw new Error(`expected 3 conversion legs, got ${JSON.stringify(legs)}`);
+      for (const leg of legs) {
+        if (!/3000\s*JPY/.test(leg) || !/20\.00\s*USD/.test(leg)) {
+          throw new Error(`leg did not read 3000 JPY → 20.00 USD: ${JSON.stringify(leg)}`);
+        }
+      }
+
+      await convert.getByRole("button", { name: "Convert to USD" }).click();
+      await convert.waitFor({ state: "hidden", timeout: 20_000 });
+
+      // Each debt is now the USD one plus the converted JPY one: 15.00 + 20.00.
+      await page
+        .locator(".settle-list li")
+        .filter({ hasText: "35.00" })
+        .first()
+        .waitFor({ timeout: 20_000 });
+      const after = await settleRows(page);
+      if (after.length !== 3 || after.some((r) => r.code !== "USD" || r.minor !== 3500)) {
+        throw new Error(`expected 3 × 35.00 USD after converting, got ${JSON.stringify(after)}`);
+      }
+      if ((await page.locator(".settle-hints").filter({ hasText: "currencies to settle" }).count()) > 0) {
+        throw new Error("the convert nudge survived a conversion that left one currency");
+      }
+      return "Mixed USD+JPY group named USD as its default in the nudge and the dialog; 3000 JPY → 20.00 USD each; settle-up collapsed to 3 × 35.00 USD and the nudge went away.";
+    },
+  },
+  {
+    id: "F12",
+    title: "Simplify-debts nudge shortens a group's settle-up, and the toggle drives it both ways",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+      await openGroup(page, "Weekend in Tokyo");
+
+      // Seeded with simplify off: two bills, four people, five per-pair debts.
+      const raw = await settleRows(page);
+      if (raw.length !== 5 || raw.some((r) => r.code !== "JPY")) {
+        throw new Error(`expected 5 raw JPY debts in Tokyo, got ${JSON.stringify(raw)}`);
+      }
+
+      const nudge = page.locator(".settle-hints").filter({ hasText: "simplify debts" });
+      requireText((await nudge.innerText()).trim(), "5 payments, one per recorded debt", "the simplify nudge");
+
+      await nudge.getByRole("button", { name: "Turn on simplify debts" }).click();
+      await page.locator(".settle-list li").nth(3).waitFor({ state: "detached", timeout: 20_000 });
+      const simplified = await settleRows(page);
+      if (simplified.length !== 3) {
+        throw new Error(`simplify should have cut 5 debts to 3, got ${JSON.stringify(simplified)}`);
+      }
+      // Nets cannot move; only who hands money to whom.
+      const rawTotal = raw.reduce((n, r) => n + r.minor, 0);
+      const simpleTotal = simplified.reduce((n, r) => n + r.minor, 0);
+      if (simpleTotal > rawTotal) {
+        throw new Error(`simplifying moved MORE money: ${simpleTotal} vs ${rawTotal}`);
+      }
+      if ((await nudge.count()) > 0) {
+        throw new Error("the simplify nudge stayed up after simplify was turned on");
+      }
+
+      // Put the group back the way the seed had it, so no later flow inherits
+      // a toggle this one flipped.
+      await clickNamed(page, "Options");
+      const toggle = page.locator(".setting-toggle input[type=checkbox]");
+      await toggle.waitFor({ timeout: 10_000 });
+      if (!(await toggle.isChecked())) throw new Error("Options did not show simplify as on");
+      // click(), not uncheck(): the write goes to the mirror and then the
+      // server, and the checkbox re-renders from a live query when that lands.
+      // uncheck() asserts the flip on its own schedule and gives up first.
+      await toggle.click();
+      await page
+        .locator(".setting-toggle input[type=checkbox]:not(:checked)")
+        .waitFor({ timeout: 20_000 });
+      await openGroup(page, "Weekend in Tokyo");
+      await page.locator(".settle-list li").nth(4).waitFor({ timeout: 20_000 });
+      const restored = await settleRows(page);
+      if (restored.length !== 5) {
+        throw new Error(`turning simplify back off should restore 5 debts, got ${JSON.stringify(restored)}`);
+      }
+      return `Tokyo showed 5 recorded debts and the nudge; turning simplify on cut them to 3 (${simpleTotal} ≤ ${rawTotal} JPY moved) and removed the nudge; turning it off restored 5.`;
+    },
+  },
+  {
+    id: "F13",
+    title: "A friend with two currencies gets the group page's offer, named as the default currency",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+      await clickNamed(page, "Friends");
+      await clickNamed(page, "Ah Beng");
+      await page.getByText("Between you").waitFor({ timeout: 15_000 });
+
+      const owed = await friendBalanceCard(
+        page,
+        "1200",
+        "Ah Beng's 1200 JPY balance never appeared; reset the smoke db",
+      );
+      requireText(owed, "149.25", "the Ah Beng balance");
+
+      const hint = page.locator(".settle-hints").filter({ hasText: "currencies to settle" });
+      const hintText = (await hint.innerText()).trim();
+      requireText(hintText, "2 currencies to settle separately", "the friend convert nudge");
+      requireText(hintText, "USD, your default currency", "the friend convert nudge");
+
+      await hint.getByRole("button", { name: "Convert the balances" }).click();
+      const convert = dialog(page);
+      await convert.getByRole("heading", { name: "Convert balance" }).waitFor({ timeout: 10_000 });
+      requireText((await convert.innerText()).trim(), "USD is your default currency.", "the convert dialog");
+
+      await convert.locator(".convert-preview-row").first().waitFor({ timeout: 15_000 });
+      const legs = await convert.locator(".convert-preview-row").allInnerTexts();
+      if (legs.length !== 1 || !/1200\s*JPY/.test(legs[0]!) || !/8\.00\s*USD/.test(legs[0]!)) {
+        throw new Error(`expected one leg 1200 JPY → 8.00 USD, got ${JSON.stringify(legs)}`);
+      }
+      // 149.25 already in USD, plus the 8.00 the yen becomes.
+      requireText((await convert.innerText()).trim(), "157.25", "the convert dialog's result line");
+
+      // Cancel: F14 needs this friend's JPY balance intact.
+      await convert.getByRole("button", { name: "Cancel" }).click();
+      await convert.waitFor({ state: "hidden", timeout: 10_000 });
+      return "Ah Beng's page carried the same nudge as a group, naming USD as your default currency; 1200 JPY previewed as 8.00 USD for a 157.25 USD result. Cancelled without writing.";
+    },
+  },
+  {
+    id: "F14",
+    title: "Settling a friend to zero offers to close the groups that now cancel out, and takes no for an answer",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+      await clickNamed(page, "Friends");
+      await clickNamed(page, "Ah Beng");
+      await page.getByText("Between you").waitFor({ timeout: 15_000 });
+      await friendBalanceCard(
+        page,
+        "1200",
+        "F14 needs Ah Beng's 1200 JPY balance; run F13 before it, or reset the smoke db",
+      );
+
+      await page.locator(".page-actions").getByRole("button", { name: "Payment", exact: true }).click();
+      // Anchored on the choice itself, not the picker's intro sentence: the
+      // wording there is presentation and has already been rewritten once,
+      // while "there is a 1200 JPY balance to pick" is what this flow needs.
+      const settleDialog = dialog(page);
+      const jpyChoice = settleDialog.getByRole("button", { name: /1200\s*JPY/ });
+      await jpyChoice.waitFor({ timeout: 15_000 });
+      await jpyChoice.click();
+      await settleDialog.getByRole("button", { name: /^Record / }).click();
+
+      // The follow-up question, on top of the now-settled balance.
+      const cascade = dialog(page);
+      await cascade
+        .getByRole("heading", { name: "Also settle your groups with Ah Beng?" })
+        .waitFor({ timeout: 20_000 });
+      const cascadeText = (await cascade.innerText()).trim();
+      const rows = await cascade.locator(".ledger-row").allInnerTexts();
+      if (rows.length !== 2) {
+        throw new Error(`expected the one-on-one and Tokyo rows, got ${JSON.stringify(rows)}`);
+      }
+      if (!rows.some((r) => r.includes("One-on-one")) || !rows.some((r) => r.includes("Weekend in Tokyo"))) {
+        throw new Error(`cascade rows did not name both buckets: ${JSON.stringify(rows)}`);
+      }
+      for (const row of rows) {
+        if (!/1200\s*JPY/.test(row)) throw new Error(`cascade row was not 1200 JPY: ${JSON.stringify(row)}`);
+      }
+      // The invariant that matters: USD does NOT net to zero between these two,
+      // so no USD transfer may be invented for it.
+      if (/USD/.test(cascadeText)) {
+        throw new Error(`cascade offered a USD transfer for an unsettled currency: ${JSON.stringify(cascadeText)}`);
+      }
+
+      // Declining must write nothing beyond the payment already recorded.
+      await cascade.getByRole("button", { name: "Leave them for now" }).click();
+      await cascade.waitFor({ state: "hidden", timeout: 10_000 });
+      const pending = page.locator(".settle-hints").filter({ hasText: "cancel each other out" });
+      await pending.waitFor({ timeout: 20_000 });
+      const tokyoRow = page.locator(".breakdown-list .list-item").filter({ hasText: "Weekend in Tokyo" });
+      if (!(await tokyoRow.innerText()).includes("1200")) {
+        throw new Error("declining still settled the Tokyo balance");
+      }
+
+      // …and the same offer is still reachable from the page afterwards.
+      await pending.getByRole("button", { name: "Close them out" }).click();
+      const closeOut = dialog(page);
+      await closeOut.getByRole("heading", { name: "Settle all with Ah Beng" }).waitFor({ timeout: 10_000 });
+      await closeOut.getByRole("button", { name: "Settle all" }).click();
+      await closeOut.waitFor({ state: "hidden", timeout: 20_000 });
+      await pending.waitFor({ state: "hidden", timeout: 20_000 });
+
+      const balance = await friendBalanceCard(
+        page,
+        "149.25",
+        "the USD balance vanished along with the yen",
+      );
+      if (/\b1200\b/.test(balance)) throw new Error(`JPY survived the settle-all: ${JSON.stringify(balance)}`);
+      return "Settling 1200 JPY zeroed the friend total and prompted for the two cancelling buckets, USD untouched. Declining left Tokyo at 1200 JPY; the page still offered it, and confirming cleared the yen while leaving 149.25 USD owed.";
+    },
+  },
+  {
+    id: "F15",
+    title: "Admin usage: counts only, search narrows, View carries as_of",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+      await page.goto(`${ctx.base}/app/admin?as_of=2026-08-18`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "Usage" }).waitFor({ timeout: 15_000 });
+      const rows = page.locator("main .admin-user-row");
+      await rows.first().waitFor({ timeout: 15_000 });
+      const before = await rows.count();
+      if (before < 2) throw new Error(`expected several accounts, got ${before}`);
+
+      // The panel is a counter, not a ledger browser: an amount here would be
+      // an operator reading other people's money. The sidebar has balances, so
+      // this can only be asserted inside main.
+      const main = (await page.locator("main").innerText()).replace(/\s+/g, " ");
+      const money = main.match(/-?\d[\d,]*\.\d{2}\b/);
+      if (money) throw new Error(`amount in the usage panel: ${JSON.stringify(money[0])}`);
+
+      const search = page.getByLabel("Search users");
+      await search.fill("Lee");
+      await page.getByText("Lee Jin Jie").filter({ visible: true }).first().waitFor({ timeout: 10_000 });
+      await page.waitForFunction(
+        (n) => document.querySelectorAll("main .admin-user-row").length < n,
+        before,
+        { timeout: 10_000 },
+      );
+      const narrowed = await rows.count();
+
+      await search.fill("nobodyhere");
+      await page.getByText("No accounts match.").waitFor({ timeout: 10_000 });
+
+      await search.fill("Lee");
+      await clickNamed(page, { text: "View", near: "Lee Jin Jie" });
+      await page.getByText("Expenses created").waitFor({ timeout: 15_000 });
+      const url = page.url();
+      if (!/\/admin\/users\/[^/?]+\?as_of=2026-08-18$/.test(url)) {
+        throw new Error(`detail URL dropped the pinned window: ${url}`);
+      }
+      const counts = page.locator("main .admin-counts");
+      const labels = await counts.locator(".eyebrow").allInnerTexts();
+      // The labels are small-caps in CSS, so innerText comes back uppercased.
+      const seen = labels.map((l) => l.trim().toLowerCase());
+      for (const wanted of ["expenses created", "guest links", "ghost placeholders"]) {
+        if (!seen.includes(wanted)) {
+          throw new Error(`counts panel missing ${wanted}: ${JSON.stringify(labels)}`);
+        }
+      }
+      const values = (await counts.locator("strong").allInnerTexts()).map((t) => t.trim());
+      if (!values.every((v) => /^\d+$/.test(v))) {
+        throw new Error(`counts must be plain integers, got ${JSON.stringify(values)}`);
+      }
+
+      // The crumb, not the admin tab of the same name: the tab is a plain link
+      // to /admin, while the crumb is the way back to the window you pinned.
+      await page.locator(".crumbs").getByRole("link", { name: "Usage" }).click();
+      await page.getByLabel("Search users").waitFor({ timeout: 10_000 });
+      if (!page.url().includes("as_of=2026-08-18")) {
+        throw new Error(`crumb back to the list dropped as_of: ${page.url()}`);
+      }
+      return `${before} accounts listed with no amounts anywhere in main; "Lee" narrowed to ${narrowed}, "nobodyhere" to none. View kept as_of=2026-08-18, showed integer counts (${values.join("/")}), and the crumb came back with the window still pinned.`;
+    },
+  },
+  {
+    id: "F16",
+    title: "Admin backups: unconfigured says so, and Back up now records nothing",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+      await page.goto(`${ctx.base}/app/admin`, { waitUntil: "domcontentloaded" });
+      await clickNamed(page, "Backups");
+      await page.getByRole("heading", { name: "Backups" }).waitFor({ timeout: 15_000 });
+      await page.getByText("Total stored").waitFor({ timeout: 15_000 });
+
+      // The smoke server sets no BACKUP_* variables, so this is the
+      // unconfigured panel: it must say why rather than look idle.
+      const status = (await page.locator(".admin-backup-config summary").innerText()).trim();
+      if (!/unconfigured|disabled/i.test(status)) {
+        throw new Error(`expected an unconfigured/disabled config pill, got ${JSON.stringify(status)}`);
+      }
+      await page.getByText("No backup runs recorded yet.").waitFor({ timeout: 10_000 });
+      // The config block is a table too, but only the runs table has a header
+      // row, so this counts runs rather than configuration.
+      if ((await page.locator(".admin-backup-table thead").count()) > 0) {
+        throw new Error("a runs table appeared on a server with no runs");
+      }
+
+      await page.getByRole("button", { name: "Back up now" }).click();
+      await page.locator(".notice").waitFor({ timeout: 15_000 });
+      const notice = (await page.locator(".notice").innerText()).trim();
+      if (!/not configured/i.test(notice)) {
+        throw new Error(`Back up now said ${JSON.stringify(notice)}`);
+      }
+      await page.getByText("No backup runs recorded yet.").waitFor({ timeout: 10_000 });
+
+      await clickNamed(page, "Usage");
+      await page.getByLabel("Search users").waitFor({ timeout: 10_000 });
+      return `Backups tab reported "${status}", offered no runs, and "Back up now" answered "${notice}" without inventing a run. The tabs go back to Usage.`;
+    },
+  },
+  {
+    id: "F17",
+    title: "A non-admin gets no admin tab, no admin page, and a 403 from the API",
+    run: async (page, ctx) => {
+      await signIn(page, "jj", ctx.base);
+      await settle(page);
+      const adminLinks = await page.getByRole("link", { name: "Admin" }).count();
+      if (adminLinks > 0) throw new Error("the sidebar offered Admin to a non-admin");
+
+      await page.goto(`${ctx.base}/app/admin`, { waitUntil: "domcontentloaded" });
+      await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 15_000 });
+      if (/\/admin/.test(new URL(page.url()).pathname)) {
+        throw new Error(`stayed on ${page.url()} instead of being sent to the dashboard`);
+      }
+      if ((await page.getByText("Total stored").count()) > 0) {
+        throw new Error("backups panel rendered for a non-admin");
+      }
+
+      // The gate is cosmetic on its own; the route is what actually protects it.
+      const statuses = await page.evaluate(async () =>
+        Promise.all(
+          ["/api/v1/admin/users", "/api/v1/admin/backups"].map((path) =>
+            fetch(path, { credentials: "include" }).then((r) => r.status),
+          ),
+        ),
+      );
+      if (statuses.some((s) => s !== 403)) {
+        throw new Error(`admin API answered ${statuses.join(", ")} for a non-admin, expected 403s`);
+      }
+      return `JJ saw no Admin link, /app/admin sent them to the dashboard, and /api/v1/admin/{users,backups} answered ${statuses.join(", ")}.`;
+    },
+  },
 ];
 
 export async function runFlows(opts: {
@@ -486,6 +934,10 @@ export async function runFlows(opts: {
       const viewport = VIEWPORTS[flow.viewport ?? "desktop"];
       const context: BrowserContext = await newContext(browser, viewport, CAPTURE_PARAMS);
       const page = await context.newPage();
+      // Every flow, not just the converting ones: a live rate reaching any of
+      // them is a network dependency in a suite whose whole point is that a
+      // red run means the app changed.
+      await stubExchangeRates(page);
       const ctx: FlowCtx = { browser, base: opts.base, shotDir };
       process.stdout.write(`  ${flow.id}  ${flow.title} … `);
       try {

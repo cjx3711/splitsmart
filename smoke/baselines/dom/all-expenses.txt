@@ -3,7 +3,8 @@
     - /url: /app
     - img "SplitSmart"
     - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - navigation "Main":
   - text: Test User
   - link "Settings":
@@ -22,15 +23,15 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
+  - link "Office Lunch Club":
+    - /url: /app/groups/<ULID>
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
-  - link "Hackathon Squad":
-    - /url: /app/groups/<ULID>
   - link "Jess & Marco's Wedding":
     - /url: /app/groups/<ULID>
-  - link "Yosemite Camping":
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -44,9 +45,9 @@
     - /url: /app/friends/<ULID>
   - link "JJ":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
   - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng":
     - /url: /app/friends/<ULID>
   - link "Taro":
     - /url: /app/friends/<ULID>

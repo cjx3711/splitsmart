@@ -1,10 +1,10 @@
 - banner:
   - button "Show menu": ☰
-  - link "SplitSmart SplitSmart":
+  - link "SplitSmart":
     - /url: /app
     - img "SplitSmart"
-    - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - main:
   - heading "Dashboard About these totals" [level=1]:
     - text: Dashboard
@@ -17,10 +17,13 @@
     - button "Add a friend"
   - text: Net position 6000JPY -3836.21USD You owe 3836.21USD You are owed 6000JPY
   - paragraph:
-    - text: "* Converted to USD using"
+    - text: "* Converted to USD, your default currency, using"
     - link "Rates By Exchange Rate API":
       - /url: https://www.exchangerate-api.com
     - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+    - link "Change your default currency":
+      - /url: /app/settings
+    - text: .
   - heading "You owe" [level=2]
   - link "Test User you owe 3836.21USD owes you 1200JPY -3696.21USD ·Apartment 4B -140.00USD ·Ski Trip 2026 1200JPY ·Weekend in Tokyo":
     - /url: /app/friends/<ULID>

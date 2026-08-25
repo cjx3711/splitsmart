@@ -99,6 +99,11 @@ if (!testUser) {
   fail("test@example.com missing — run yarn smoke:reset");
   failed = true;
 } else {
+  // The SEED's net, which is what this file checks. `yarn smoke` runs the
+  // flows before it, and F7 writes a 40.00 USD bill into this very group, so
+  // without excluding what the flows wrote this check reports drift on every
+  // full run and stops meaning anything. Every flow names its writes
+  // "Smoke test …" precisely so they can be told apart from seeded rows.
   const shares = await db
     .selectFrom("expense_users as eu")
     .innerJoin("expenses as e", "e.id", "eu.expense_id")
@@ -106,6 +111,7 @@ if (!testUser) {
     .where("e.group_id", "=", apartment.id)
     .where("e.deleted_at", "is", null)
     .where("eu.user_id", "=", testUser.id)
+    .where("e.description", "not like", "Smoke test%")
     .execute();
 
   let netMinor = 0;

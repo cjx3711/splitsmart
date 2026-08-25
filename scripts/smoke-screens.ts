@@ -194,7 +194,7 @@ const DEFS: ScreenDef[] = [
     id: "add-expense-dialog",
     auth: { kind: "user" },
     path: "/app",
-    click: ["Add Expense"],
+    click: ["Expense"],
     waitForText: "Equally",
   },
   {
@@ -215,6 +215,12 @@ const DEFS: ScreenDef[] = [
     path: "/app/admin?as_of=2026-08-18",
     click: [{ text: "View", near: "Lee Jin Jie" }],
     waitForText: "Expenses created",
+  },
+  {
+    id: "admin-backups",
+    auth: { kind: "user" },
+    path: "/app/admin/backups",
+    waitForText: "Total stored",
   },
   {
     id: "jj-dashboard",

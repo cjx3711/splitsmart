@@ -3,7 +3,8 @@
     - /url: /app
     - img "SplitSmart"
     - text: SplitSmart
-  - button "Add Expense"
+  - button "Payment"
+  - button "Expense"
 - navigation "Main":
   - text: Test User
   - link "Settings":
@@ -22,15 +23,15 @@
     - /url: /app/groups
   - link "+ add":
     - /url: /app/groups/new
-  - link "Weekend in Tokyo":
+  - link "Office Lunch Club":
+    - /url: /app/groups/<ULID>
+  - link "Apartment 4B":
     - /url: /app/groups/<ULID>
   - link "Ski Trip 2026":
     - /url: /app/groups/<ULID>
-  - link "Hackathon Squad":
-    - /url: /app/groups/<ULID>
   - link "Jess & Marco's Wedding":
     - /url: /app/groups/<ULID>
-  - link "Yosemite Camping":
+  - link "Weekend in Tokyo":
     - /url: /app/groups/<ULID>
   - link "Show all":
     - /url: /app/groups
@@ -44,9 +45,9 @@
     - /url: /app/friends/<ULID>
   - link "JJ":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng":
-    - /url: /app/friends/<ULID>
   - link "John":
+    - /url: /app/friends/<ULID>
+  - link "Ah Beng":
     - /url: /app/friends/<ULID>
   - link "Taro":
     - /url: /app/friends/<ULID>
@@ -72,10 +73,13 @@
     - button "Add a friend"
   - text: Net position 1200JPY 3909.36USD You owe 1200JPY 136.10USD You are owed 2400JPY 4045.46USD
   - paragraph:
-    - text: "* Converted to USD using"
+    - text: "* Converted to USD, your default currency, using"
     - link "Rates By Exchange Rate API":
       - /url: https://www.exchangerate-api.com
     - text: ", as of <DATE>. This is an estimate for display only - balances are tracked separately per currency."
+    - link "Change your default currency":
+      - /url: /app/settings
+    - text: .
   - heading "You owe" [level=2]
   - link "Mel you owe 71.10USD":
     - /url: /app/friends/<ULID>
@@ -89,6 +93,8 @@
       - listitem: 3696.21USD ·Apartment 4B
       - listitem: 140.00USD ·Ski Trip 2026
       - listitem: "-1200JPY ·Weekend in Tokyo"
+  - link "John owes you 60.00USD":
+    - /url: /app/friends/<ULID>
   - link "Ah Beng owes you 1200JPY 149.25USD 140.00USD ·Ski Trip 2026 1200JPY ·Weekend in Tokyo 9.25USD ·one-on-one":
     - /url: /app/friends/<ULID>
     - text: Ah Beng owes you 1200JPY 149.25USD
@@ -96,8 +102,6 @@
       - listitem: 140.00USD ·Ski Trip 2026
       - listitem: 1200JPY ·Weekend in Tokyo
       - listitem: 9.25USD ·one-on-one
-  - link "John owes you 60.00USD":
-    - /url: /app/friends/<ULID>
   - link "Hana owes you 1200JPY":
     - /url: /app/friends/<ULID>
 - contentinfo:
