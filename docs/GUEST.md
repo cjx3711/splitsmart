@@ -172,6 +172,13 @@ Logged-in user who is already a member of the group, opening a guest URL:
 `/api/v1/claim/candidates` answers `already_member` and the claim page sends
 them to `/app/groups/:id`. They are not offered a different name to become.
 
+After a friend or member link has been claimed, the same endpoint answers
+`already_claimed` **only** for the account that absorbed the placeholder
+(the success screen). Anyone else presenting that token gets 400 `invalid`
+— not "claimed", not "turned off" — so the URL does not confirm that a real
+account now sits behind it. Guest `/session` still 401s for everyone; the
+guest shell never says "you have an account now".
+
 ---
 
 ## Claim

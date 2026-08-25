@@ -507,12 +507,20 @@ describe("claiming", () => {
       200,
     );
 
-    // The link died with the merge, so the second attempt cannot even resolve.
+    // The claimer can reopen the success screen; they cannot merge again.
+    const againCandidates = await json<{ status: string }>(
+      await as(claimerToken, "/api/v1/claim/candidates", {
+        method: "POST",
+        body: JSON.stringify({ linkToken: `link_${secret}` }),
+      }),
+    );
+    assert.equal(againCandidates.status, "already_claimed");
+
     const again = await as(claimerToken, "/api/v1/claim", {
       method: "POST",
       body: JSON.stringify({ linkToken: `link_${secret}`, userId: ghost }),
     });
-    assert.equal(again.status, 400);
+    assert.equal(again.status, 409);
   });
 
   test("a friend link claim folds the placeholder into the account", async () => {
@@ -556,6 +564,55 @@ describe("claiming", () => {
       .executeTakeFirstOrThrow();
     assert.equal(stub.merged_into_user_id, account.id);
     assert.ok(stub.deleted_at);
+  });
+
+  test("a stranger holding a claimed friend link sees an invalid link, not the success screen", async () => {
+    const ghost = await makeGhost("Pat");
+    const minted = await transaction((trx) =>
+      mintAccessLink(trx, { kind: "friend", userId: ghost, createdBy: ownerId }),
+    );
+    const linkToken = `link_${minted.secret}`;
+
+    assert.equal(
+      (
+        await as(claimerToken, "/api/v1/claim", {
+          method: "POST",
+          body: JSON.stringify({ linkToken, userId: ghost }),
+        })
+      ).status,
+      200,
+    );
+
+    const mine = await json<{ status: string; counterpart: { id: string } | null }>(
+      await as(claimerToken, "/api/v1/claim/candidates", {
+        method: "POST",
+        body: JSON.stringify({ linkToken }),
+      }),
+    );
+    assert.equal(mine.status, "already_claimed");
+    assert.equal(mine.counterpart?.id, ownerId);
+
+    const strangerRes = await as(outsiderToken, "/api/v1/claim/candidates", {
+      method: "POST",
+      body: JSON.stringify({ linkToken }),
+    });
+    assert.equal(strangerRes.status, 400);
+    const stranger = await json<{ reason: string; error: string }>(strangerRes);
+    assert.equal(stranger.reason, "invalid");
+    assert.match(stranger.error, /not valid/i);
+    assert.doesNotMatch(stranger.error, /claimed|account now|turned off/i);
+
+    const steal = await as(outsiderToken, "/api/v1/claim", {
+      method: "POST",
+      body: JSON.stringify({ linkToken, userId: ghost }),
+    });
+    assert.equal(steal.status, 400);
+    assert.match((await json<{ error: string }>(steal)).error, /not valid/i);
+
+    const guest = await app.request("/api/v1/guest/session", {
+      headers: { Authorization: `Bearer ${linkToken}` },
+    });
+    assert.equal(guest.status, 401);
   });
 
   test("two accounts cannot race to claim the same ghost", async () => {

@@ -9,6 +9,9 @@
  *                    without it there is nothing authorising the claim.
  *   already a member they are in this group as themselves. No picker: offering
  *                    to become someone else would be offering to impersonate.
+ *   already claimed  they already absorbed this placeholder. Same success
+ *                    screen as just after confirm; a stranger with the URL
+ *                    sees an invalid link instead.
  *   claimable        pick a placeholder, read what will happen, confirm.
  *   done             merged. Everything now hangs off the account.
  *
@@ -52,6 +55,10 @@ export function Claim() {
     try {
       const result = await api.claimCandidates(`link_${linkToken}`);
       setCandidates(result);
+      if (result.status === "already_claimed") {
+        setDone(true);
+        return;
+      }
       if (result.status === "claimable") {
         const pick = result.candidates.some((p) => p.id === suggested)
           ? suggested
@@ -103,12 +110,11 @@ export function Claim() {
   if (!user) return <SignInFirst linkToken={linkToken} person={suggested} />;
 
   if (done) {
-    const destination =
-      candidates?.status === "claimable" && candidates.group
-        ? { label: candidates.group.name, path: `/groups/${candidates.group.id}` }
-        : candidates?.status === "claimable" && candidates.counterpart
-          ? { label: displayName(candidates.counterpart), path: `/friends/${candidates.counterpart.id}` }
-          : null;
+    const destination = candidates?.group
+      ? { label: candidates.group.name, path: `/groups/${candidates.group.id}` }
+      : candidates?.counterpart
+        ? { label: displayName(candidates.counterpart), path: `/friends/${candidates.counterpart.id}` }
+        : null;
 
     return (
       <div className="auth stack">
@@ -132,8 +138,8 @@ export function Claim() {
   if (error) {
     return (
       <div className="auth stack">
-        <h1>Claim</h1>
-        <p className="error">{error}</p>
+        <h1>This link is not valid</h1>
+        <p className="muted">{error}</p>
       </div>
     );
   }

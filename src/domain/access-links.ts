@@ -293,6 +293,106 @@ export async function resolveAccessLink(
   };
 }
 
+function toLinkRecord(row: {
+  id: string;
+  kind: string;
+  group_id: string | null;
+  user_id: string | null;
+  created_by: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  last_used_at: string | null;
+}): AccessLinkRecord {
+  return {
+    id: row.id,
+    kind: row.kind as LinkKind,
+    groupId: row.group_id,
+    userId: row.user_id,
+    createdBy: row.created_by,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+  };
+}
+
+/**
+ * Claim-page resolution. Guest `resolveAccessLink` is unchanged: a dead
+ * friend link still 401s for everyone, including the claimer.
+ *
+ * Here the caller is logged in, so we can tell the survivor from a
+ * stranger. After a merge the bound links are revoked; the person who
+ * absorbed the ghost still sees `already_claimed` (the success screen).
+ * Anyone else gets `invalid` — not "claimed", not "turned off" — so the
+ * URL does not confirm that a real account now sits behind it.
+ */
+export type ClaimLinkInspection =
+  | { status: "live"; link: AccessLinkRecord }
+  | { status: "already_claimed"; link: AccessLinkRecord }
+  | { status: "failed"; reason: LinkFailure };
+
+export async function inspectClaimLink(
+  bearer: string,
+  authUserId: string,
+): Promise<ClaimLinkInspection> {
+  const secret = secretOf(bearer.trim());
+  if (!secret) return { status: "failed", reason: "invalid" };
+
+  const row = await db
+    .selectFrom("access_links")
+    .select([
+      "id",
+      "kind",
+      "group_id",
+      "user_id",
+      "created_by",
+      "expires_at",
+      "revoked_at",
+      "created_at",
+      "last_used_at",
+    ])
+    .where("token_hash", "=", hashToken(secret))
+    .executeTakeFirst();
+
+  if (!row) return { status: "failed", reason: "invalid" };
+
+  if (row.user_id) {
+    const target = await db
+      .selectFrom("users")
+      .select(["id", "is_ghost", "deleted_at", "merged_into_user_id"])
+      .where("id", "=", row.user_id)
+      .executeTakeFirst();
+    const boundGone = !target || target.deleted_at !== null || target.is_ghost !== 1;
+    const yours =
+      target?.merged_into_user_id === authUserId ||
+      (target != null && target.is_ghost !== 1 && target.deleted_at === null && target.id === authUserId);
+    if (row.revoked_at || boundGone) {
+      return yours
+        ? { status: "already_claimed", link: toLinkRecord(row) }
+        : { status: "failed", reason: "invalid" };
+    }
+  } else if (row.revoked_at) {
+    return { status: "failed", reason: "revoked" };
+  }
+
+  if (row.expires_at && new Date(row.expires_at) < new Date()) {
+    return { status: "failed", reason: "expired" };
+  }
+
+  if (row.group_id) {
+    const group = await db
+      .selectFrom("groups")
+      .select("id")
+      .where("id", "=", row.group_id)
+      .where("deleted_at", "is", null)
+      .executeTakeFirst();
+    if (!group) return { status: "failed", reason: "gone" };
+  }
+
+  return { status: "live", link: toLinkRecord(row) };
+}
+
 export function failureMessage(reason: LinkFailure): string {
   switch (reason) {
     case "claimed":
