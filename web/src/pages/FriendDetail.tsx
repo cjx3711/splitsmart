@@ -29,6 +29,7 @@
  * Read from the mirror and written through the outbox, so both dialogs work with
  * no network. Only the guest-link panel is online-only.
  */
+import { BulkAddButton } from "../BulkAddButton.tsx";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, Link } from "react-router-dom";
 import { displayName, api, type ExpenseQuery, type GroupMember } from "../api.ts";
@@ -74,6 +75,8 @@ import { Breadcrumbs } from "../Breadcrumbs.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { OnlineOnly } from "../OnlineOnly.tsx";
 import { HelpTip } from "../HelpTip.tsx";
+import { ExcludedTotalsNote } from "../ExcludedTotalsNote.tsx";
+import { countedBalances, excludedGroupNames } from "../excludedTotals.ts";
 import { PlusIcon } from "../Icons.tsx";
 import { Skeleton } from "../Skeleton.tsx";
 
@@ -97,6 +100,9 @@ export function FriendDetail() {
     null,
   );
   const [linkRevision, setLinkRevision] = useState(0);
+  // Groups marked as not counting towards totals are out of "Between you"
+  // until this is on. Not remembered; see web/src/ExcludedTotalsNote.tsx.
+  const [showExcluded, setShowExcluded] = useState(false);
   const formatMoney = useFormatMoney();
   const { engine, syncNow, db } = useSync();
 
@@ -107,6 +113,7 @@ export function FriendDetail() {
     pendingCascade.current = [];
     setInviteNotice(null);
     setLinkRevision(0);
+    setShowExcluded(false);
   }, [id]);
 
   const loaded = useFriend(id);
@@ -142,6 +149,18 @@ export function FriendDetail() {
     user.id,
   );
 
+  // Two views of the same money. `friend.balances` and the breakdown that sums
+  // to it stay untouched; `shown` is what "Between you" headlines, and what
+  // closing out or converting a balance from this card operates on. Anything
+  // that RECORDS a payment - the settle-up picker below - keeps working from
+  // the full set: a ledger group you left out of your totals is still a place
+  // you may want to pay into.
+  const activeBreakdown = showExcluded
+    ? friend.breakdown
+    : friend.breakdown.filter((entry) => !entry.excluded);
+  const shown = showExcluded ? friend.balances : countedBalances(friend.breakdown);
+  const excludedNames = excludedGroupNames([friend.breakdown]);
+
   const owed = [...friend.balances].sort(
     (a, b) => Math.abs(b.amountMinor) - Math.abs(a.amountMinor),
   );
@@ -165,7 +184,7 @@ export function FriendDetail() {
   // Simplify-debts can leave "Between you" reading zero while a group and the
   // one-on-one bucket still show opposite, cancelling amounts in the same
   // currency. This is the fix for that specific state, not a general settle-up.
-  const settleAllTransfers = planSettleAll(user.id, friend.id, friend.breakdown);
+  const settleAllTransfers = planSettleAll(user.id, friend.id, activeBreakdown);
   const groupNameForTransfer = (groupId: string | null) =>
     groupId === null ? "One-on-one" : friend.breakdown.find((e) => e.groupId === groupId)?.groupName?.trim() || "Unnamed group";
   const listingGroups = visibleSharedGroups.length > 0 || leftoverGroups.length > 0;
@@ -282,6 +301,7 @@ export function FriendDetail() {
           </div>
         </div>
         <div className="page-actions">
+          <BulkAddButton friendId={friend.id} />
           {friend.is_ghost === 1 && (
             <OnlineOnly what="Editing a placeholder">
               <button className="secondary" onClick={() => setOpenDialog("identity")}>
@@ -357,7 +377,7 @@ export function FriendDetail() {
           // those out would take, but do NOT write it: those payments land in
           // groups with other people in them, so they are offered, not assumed.
           const delta = payment.fromUserId === user.id ? payment.amountMinor : -payment.amountMinor;
-          const projected = friend.breakdown.map((entry) =>
+          const projected = activeBreakdown.map((entry) =>
             entry.groupId === null
               ? { groupId: entry.groupId, balances: applyBalanceDelta(entry.balances, payment.currencyCode, delta) }
               : entry,
@@ -443,7 +463,7 @@ export function FriendDetail() {
         themName={name}
         youId={user.id}
         themId={friend.id}
-        balances={friend.balances}
+        balances={shown}
         preferredCurrency={user.defaultCurrency}
         onClose={() => setOpenDialog(null)}
         onSubmit={async (payments) => {
@@ -476,13 +496,15 @@ export function FriendDetail() {
                 </HelpTip>
               </span>
             </span>
-            {friend.balances.length === 0 ? (
+            {shown.length === 0 ? (
               <p className="muted" style={{ margin: "0.4rem 0 0" }}>
-                You're settled up.
+                {excludedNames.length > 0 && !showExcluded
+                  ? "Nothing counted between you."
+                  : "You're settled up."}
               </p>
             ) : (
               <div className="ledger" style={{ marginTop: "0.4rem" }}>
-                {friend.balances.map((b) => (
+                {shown.map((b) => (
                   <div key={b.currencyCode} className="ledger-row">
                     <span className={b.amountMinor > 0 ? "positive" : "negative"}>
                       {b.amountMinor > 0 ? `${name} owes you ` : `You owe ${name} `}
@@ -492,7 +514,12 @@ export function FriendDetail() {
                 ))}
               </div>
             )}
-            <EstimatedTotal balances={friend.balances} preferredCurrency={user.defaultCurrency} />
+            <EstimatedTotal balances={shown} preferredCurrency={user.defaultCurrency} />
+            <ExcludedTotalsNote
+              names={excludedNames}
+              showing={showExcluded}
+              onToggle={() => setShowExcluded((on) => !on)}
+            />
             {/* The same offer a multi-currency group makes, in the same words:
                 several ledgers between two people is the same problem, and
                 meeting it phrased differently on the two screens reads like two
@@ -500,11 +527,11 @@ export function FriendDetail() {
             {/* Both notes share one block, so the card gets one divider rather
                 than a stack of rules. Read where the puzzle is: the balance
                 just above, not a button under a heading further down. */}
-            {(friend.balances.length > 1 || settleAllTransfers.length > 0) && (
+            {(shown.length > 1 || settleAllTransfers.length > 0) && (
               <div className="settle-hints">
-                {friend.balances.length > 1 && (
+                {shown.length > 1 && (
                   <ConvertBalancesHint
-                    lead={`${friend.balances.length} currencies to settle separately.`}
+                    lead={`${shown.length} currencies to settle separately.`}
                     target={{ code: user.defaultCurrency, label: "your default currency" }}
                     action={
                       <OnlineOnly what="Converting a balance">
@@ -535,7 +562,7 @@ export function FriendDetail() {
               </div>
             )}
             <ConversionFootnote
-              sets={[friend.balances]}
+              sets={[shown]}
               preferredCurrency={user.defaultCurrency}
               settingsHref="/settings"
             />
@@ -567,6 +594,9 @@ export function FriendDetail() {
                           </span>
                         )}
                         {entry?.simplified && <span className="muted">simplified</span>}
+                        {/* The amounts on this row are real and stay put. The
+                            tag explains why "Between you" above is smaller. */}
+                        {entry?.excluded && <span className="tag muted">not counted</span>}
                       </>,
                       entry && entry.balances.length > 0 ? (
                         <Amounts balances={entry.balances} signed />
@@ -594,6 +624,7 @@ export function FriendDetail() {
                           </span>
                         )}
                         {entry.simplified && <span className="muted">simplified</span>}
+                        {entry.excluded && <span className="tag muted">not counted</span>}
                       </>,
                       <Amounts balances={entry.balances} signed />,
                     );

@@ -75,6 +75,45 @@ already has expenses, the script skips.
 
 After `yarn db:reset`, register again and re-run `yarn seed:demo`.
 
+## Bulk add expenses from CSV
+
+Choose **Bulk add** on the dashboard, All expenses, or a friend/group page.
+It is also available at the top of the **Expense** dialog and carries the
+selected group or friend into the import.
+Upload a CSV (up to 500 expenses / 2 MB), or copy the included LLM prompt to
+turn receipt or statement text into the expected format. The prompt includes
+your available people, groups, and categories. You can also paste CSV directly.
+
+```csv
+date,description,amount,currency,paid_by,split_with,group,category,notes
+2026-09-24,Dinner,42,USD,me,me;Alex,,,
+```
+
+`date`, `description`, and `amount` are required columns. Optional fields use
+the defaults shown before upload. People and groups accept IDs or unique names;
+categories accept IDs or unique names/paths. Separate people in `split_with`
+with semicolons. These are the people who owe equal shares; include the payer
+only when they share the cost. For an expense Alex paid entirely for you, use
+`paid_by=Alex` and `split_with=me`.
+
+Review and edit every row before adding. Unrecognized people, invalid dates,
+unsupported currencies, and excess decimal precision must be corrected or
+removed. The reviewed batch is saved atomically to the device and queued for
+normal offline sync. Connection retries reuse expense IDs; uploading the same
+file again intentionally creates new expenses. Unequal splits and multiple
+payers use the regular expense form.
+
+The browser regression covers upload, corrections, offline sync, and batch
+rollback. With the seeded smoke server running, use
+`node scripts/smoke-bulk-add.mjs` (optional arguments: base URL and screenshot
+directory). It creates test expenses in that server's database.
+`node scripts/smoke-sync-recovery.mjs` checks loading failures, retrying sync,
+and entering bulk add from the expense dialog without creating ledger entries.
+
+After updating an existing installation, run `yarn db:migrate` before starting
+the server. Migration 003 adds the group totals setting without resetting data;
+it also handles development databases that already contain the column.
+
 ## Export your Splitwise data first
 
 This is the one step with a deadline. It writes raw, untransformed JSON to

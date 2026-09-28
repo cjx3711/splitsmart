@@ -311,6 +311,7 @@ export async function loadGroups(database: DB, ids: string[]): Promise<SyncGroup
       "group_type",
       "default_currency",
       "simplify_by_default",
+      "excluded_from_totals",
       "created_by",
       "deleted_at",
     ])
@@ -323,6 +324,7 @@ export async function loadGroups(database: DB, ids: string[]): Promise<SyncGroup
     groupType: row.group_type,
     defaultCurrency: row.default_currency,
     simplifyByDefault: row.simplify_by_default === 1,
+    excludedFromTotals: row.excluded_from_totals === 1,
     createdBy: row.created_by,
     deletedAt: row.deleted_at,
   }));

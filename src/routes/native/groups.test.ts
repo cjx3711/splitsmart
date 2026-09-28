@@ -360,3 +360,124 @@ describe("suggested settle-up follows simplify_by_default", () => {
     }
   });
 });
+
+/**
+ * Marking a group as not counting towards totals.
+ *
+ * The flag is presentation only, and these tests are mostly about what it does
+ * NOT do: no balance query reads it, so `friend.balances` stays the full sum
+ * and the breakdown it is made of stays complete. The client subtracts the
+ * excluded buckets itself (web/src/excludedTotals.ts), which is what makes
+ * "Include them" a re-render instead of a second, disagreeing query.
+ */
+describe("groups that do not count towards totals", () => {
+  let ledgerId: string;
+
+  before(async () => {
+    ledgerId = ulid();
+    await db
+      .insertInto("groups")
+      .values({
+        id: ledgerId,
+        name: "Amex",
+        group_type: "other",
+        default_currency: "USD",
+        created_by: ownerId,
+      })
+      .execute();
+    await db
+      .insertInto("group_members")
+      .values([
+        { group_id: ledgerId, user_id: ownerId, role: "owner", joined_via: "creator" },
+        { group_id: ledgerId, user_id: memberId, role: "member", joined_via: "added" },
+      ])
+      .execute();
+
+    const res = await as(ownerToken, `/groups/${ledgerId}/expenses`, {
+      method: "POST",
+      body: JSON.stringify({
+        description: "Card bill",
+        costMinor: 4000,
+        currencyCode: "USD",
+        date: "2026-08-20",
+        splitType: "exact",
+        participants: [
+          { userId: ownerId, paidMinor: 4000, input: 0 },
+          { userId: memberId, paidMinor: 0, input: 4000 },
+        ],
+      }),
+    });
+    assert.equal(res.status, 201);
+  });
+
+  test("defaults to counting, and the patch flips it", async () => {
+    const before = await as(ownerToken, `/groups/${ledgerId}`);
+    const first = (await before.json()) as { group: { excluded_from_totals: number } };
+    assert.equal(first.group.excluded_from_totals, 0);
+
+    const res = await as(ownerToken, `/groups/${ledgerId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ excludedFromTotals: true }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { group: { excluded_from_totals: number } };
+    assert.equal(body.group.excluded_from_totals, 1);
+
+    const list = await as(ownerToken, "/groups");
+    const groups = (await list.json()) as {
+      groups: Array<{ id: string; excluded_from_totals: number }>;
+    };
+    assert.equal(groups.groups.find((g) => g.id === ledgerId)?.excluded_from_totals, 1);
+  });
+
+  test("the friend breakdown flags the bucket but keeps every cent", async () => {
+    const res = await as(ownerToken, "/friends");
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as {
+      friends: Array<{
+        id: string;
+        balances: Array<{ currencyCode: string; amountMinor: number }>;
+        breakdown: Array<{
+          groupId: string | null;
+          excluded: boolean;
+          balances: Array<{ currencyCode: string; amountMinor: number }>;
+        }>;
+      }>;
+    };
+
+    const friend = body.friends.find((f) => f.id === memberId);
+    assert.ok(friend);
+
+    const bucket = friend.breakdown.find((b) => b.groupId === ledgerId);
+    assert.ok(bucket, "the excluded group is still in the breakdown");
+    assert.equal(bucket.excluded, true);
+    assert.deepEqual(bucket.balances, [{ currencyCode: "USD", amountMinor: 4000 }]);
+
+    for (const other of friend.breakdown.filter((b) => b.groupId !== ledgerId)) {
+      assert.equal(other.excluded, false);
+    }
+
+    // The invariant the client's subtraction depends on: the breakdown still
+    // sums to the total, so counted = total - excluded is exact.
+    const summed = new Map<string, number>();
+    for (const entry of friend.breakdown) {
+      for (const b of entry.balances) {
+        summed.set(b.currencyCode, (summed.get(b.currencyCode) ?? 0) + b.amountMinor);
+      }
+    }
+    for (const b of friend.balances) {
+      assert.equal(summed.get(b.currencyCode), b.amountMinor);
+    }
+  });
+
+  test("excluding a group moves no money", async () => {
+    const res = await as(ownerToken, `/groups/${ledgerId}`);
+    const body = (await res.json()) as {
+      balances: Array<{ userId: string; balances: Array<{ amountMinor: number }> }>;
+    };
+    const owner = body.balances.find((b) => b.userId === ownerId);
+    const member = body.balances.find((b) => b.userId === memberId);
+    assert.deepEqual(owner?.balances, [{ currencyCode: "USD", amountMinor: 4000 }]);
+    assert.deepEqual(member?.balances, [{ currencyCode: "USD", amountMinor: -4000 }]);
+  });
+});

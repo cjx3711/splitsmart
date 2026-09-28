@@ -816,6 +816,15 @@ h3 {
   text-decoration: underline;
 }
 
+/* The "not counted here" line under a set of totals. Sits with the ≈ footnote
+   in weight: it explains the number above rather than competing with it. */
+.excluded-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .settle-currency-picker {
   display: flex;
   flex-direction: column;
@@ -1759,6 +1768,8 @@ dialog.modal.modal-wide {
   letter-spacing: 0.04em;
   color: var(--muted);
   vertical-align: 0.1em;
+  /* A two-word tag ("not counted") must not break in half on a list row. */
+  white-space: nowrap;
 }
 
 /* Visible to a screen reader, not on screen. For labels a sighted user reads
@@ -2930,6 +2941,88 @@ button.icon:hover:not(:disabled) {
   background: var(--accent);
   color: var(--accent-ink);
   border-color: var(--accent);
+}
+
+.expense-choices {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.expense-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.expense-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.7rem;
+  justify-content: center;
+  min-height: 3rem;
+  text-align: left;
+  font-size: 0.9rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.expense-choice.is-active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.expense-split-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.expense-date-label {
+  font-weight: 600;
+}
+
+.expense-date-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.expense-date-heading .split-hint {
+  margin: 0;
+}
+
+.expense-date-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.expense-date-buttons button {
+  min-height: 2.5rem;
+}
+
+.expense-date-buttons [aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.expense-more-options > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.expense-more-options[open] > summary {
+  margin-bottom: 0.75rem;
 }
 
 /* --- category ------------------------------------------------------------- */
@@ -4340,6 +4433,7 @@ a.sync-status:hover {
   color: var(--text);
 }
 
+.sync-status-error,
 .sync-status-conflict {
   color: var(--negative);
 }
@@ -5078,3 +5172,34 @@ a.sync-status:hover {
     display: none;
   }
 }
+
+/* CSV bulk add: the review table scrolls within the page on narrow screens. */
+.expense-bulk-entry { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.bulk-main { max-width: none; }
+.bulk-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.bulk-defaults > summary { cursor: pointer; font-weight: 600; }
+.bulk-default-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+.bulk-default-grid > div { min-width: 0; }
+.bulk-default-grid .link { margin-top: 0.5rem; }
+.bulk-people { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); }
+.bulk-people summary { padding: 0.6rem; cursor: pointer; overflow-wrap: anywhere; }
+.bulk-people-list { display: flex; flex-direction: column; max-height: 240px; overflow-y: auto; padding: 0.5rem; gap: 0.5rem; }
+.bulk-people-list label { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.bulk-people-list input { width: auto; flex-shrink: 0; }
+.bulk-example { overflow-x: auto; padding: 0.75rem; background: var(--surface-2); border-radius: var(--radius-sm); }
+.bulk-review-summary, .bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.bulk-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.bulk-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.bulk-table caption { text-align: left; padding: 0.75rem; font-weight: 600; }
+.bulk-table th, .bulk-table td { padding: 0.65rem; text-align: left; vertical-align: top; border-top: 1px solid var(--border); }
+.bulk-table thead { background: var(--surface-2); }
+.bulk-table input, .bulk-table select { min-width: 145px; }
+.bulk-table td:nth-child(3) input, .bulk-table td:nth-child(10) input { min-width: 220px; }
+.bulk-table td:nth-child(4) input { min-width: 110px; width: 110px; }
+.bulk-table td:nth-child(5) select { min-width: 90px; width: 90px; }
+.bulk-table .bulk-people { min-width: 230px; }
+.bulk-table td:last-child { min-width: 250px; }
+.bulk-table td:last-child .link { display: block; margin-top: 0.5rem; }
+.bulk-table ul { margin: 0; padding-left: 1rem; }
+.bulk-row-invalid > th { color: var(--negative); border-left: 3px solid var(--negative); }
+@media (max-width: 600px) { .bulk-default-grid { grid-template-columns: 1fr; } }

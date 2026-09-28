@@ -146,6 +146,8 @@ run *after* the screenshots of the seeded state.
 | F15 | Usage lists accounts with no amount anywhere in `main`; search narrows to one and then to none; View keeps `as_of` and shows integer counts |
 | F16 | The backups panel reports itself unconfigured, lists no runs, and "Back up now" says so instead of recording a run |
 | F17 | JJ gets no Admin link, `/app/admin` sends them to the dashboard, and `/api/v1/admin/*` answers 403 |
+| F18 | Registering while holding a friend guest link lands on a named "Link claimed" screen whose button opens the right friend page |
+| F19 | Apartment 4B marked as not counting cuts JJ's headline from 3836.21 to 140.00 USD and names the group; the breakdown row keeps 3696.21 tagged "not counted"; Include it restores the full sum; the toggle is put back |
 
 `yarn smoke:check` runs last, against whatever F1 / F3 / F7 / F8 / F11 / F14
 wrote, and asks whether `SUM(paid_share) == SUM(owed_share) == cost` still
@@ -169,8 +171,13 @@ prints the resolved database and snapshot directories.
 
 F13 and F14 both read Ah Beng, and F14 spends the JPY balance F13 asserts, so
 F13 comes first and F14 says so if it finds the balance already gone. F12
-restores the simplify toggle it flips, and F11 builds its own mixed-currency
-group in Yosemite Camping rather than borrowing one.
+restores the simplify toggle it flips, F19 restores the counts-towards-totals
+one, and F11 builds its own mixed-currency group in Yosemite Camping rather
+than borrowing one.
+
+F19 is the one that says a display flag stayed a display flag: it asserts the
+smaller headline AND the untouched amount on the same screen, so a change that
+started subtracting from the ledger instead of from the roll-up fails it.
 
 ## Adding a screen or a flow
 

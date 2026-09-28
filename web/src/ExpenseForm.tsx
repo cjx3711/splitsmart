@@ -5,6 +5,10 @@
  * because the alternative was three forms drifting apart. What varies is the
  * pool of people it offers and whether the group is fixed; both are props.
  *
+ * New expenses start with four shortcuts that set both the payer and the split.
+ * The full payer and split editors are available in advanced mode; edits open
+ * there so the stored split is preserved.
+ *
  * It owns the expense's own fields: category, description, amount, currency,
  * date, notes, and who paid. How the cost is divided belongs to SplitEditor,
  * which handles all six split types and previews the result using the server's
@@ -26,7 +30,10 @@ import { CategoryButton, DEFAULT_CATEGORY_ID } from "./categories.tsx";
 import { PeoplePicker, type Person } from "./PeoplePicker.tsx";
 import { PaidByField, type Payment } from "./PaidBy.tsx";
 import { SplitEditor, buildSplit, itemizedTotal, useSplitDraft, type SplitDraftInit } from "./SplitEditor.tsx";
+import { ExpenseDateField } from "./ExpenseDateField.tsx";
+import { localToday } from "./expenseDate.ts";
 import { HelpTip } from "./HelpTip.tsx";
+import { EXPENSE_PRESETS, expensePreset, type ExpensePreset } from "./expensePresets.ts";
 
 /** Kept as the old name so SettleUpForm and friends need no churn. */
 export type Payer = Person;
@@ -103,7 +110,7 @@ export function ExpenseForm({
   const [description, setDescription] = useState(initial?.description ?? "");
   const [amount, setAmount] = useState(initial?.amount ?? "");
   const [currency, setCurrency] = useState(defaultCurrency);
-  const [date, setDate] = useState(initial?.date ?? (() => new Date().toISOString().slice(0, 10)));
+  const [date, setDate] = useState(initial?.date ?? localToday);
   const [categoryId, setCategoryId] = useState<number>(initial?.categoryId ?? DEFAULT_CATEGORY_ID);
   const [notes, setNotes] = useState(initial?.details ?? "");
   const [showNotes, setShowNotes] = useState(Boolean(initial?.details));
@@ -118,6 +125,12 @@ export function ExpenseForm({
   const [error, setError] = useState<string | null>(null);
 
   const draft = useSplitDraft(initial?.split);
+  // Edits retain the stored split, including multiple payers and itemized bills.
+  const [splitChoice, setSplitChoice] = useState<ExpensePreset | "advanced">(
+    initial ? "advanced" : "i-paid",
+  );
+  const [otherPayerId, setOtherPayerId] = useState("");
+  const [basicChoice, setBasicChoice] = useState<ExpensePreset>("i-paid");
 
   const byId = useMemo(() => new Map(candidates.map((p) => [p.id, p])), [candidates]);
   // Participants in the picker's order, minus anyone the pool no longer offers
@@ -126,8 +139,39 @@ export function ExpenseForm({
     .map((id) => byId.get(id))
     .filter((p): p is Person => p !== undefined);
 
+  const others = people.filter((person) => person.id !== currentUserId);
+  const selectedOtherPayer = others.some((person) => person.id === otherPayerId)
+    ? otherPayerId
+    : others[0]?.id ?? "";
+  const simple = splitChoice !== "advanced";
+  const preset = simple
+    ? expensePreset(splitChoice, participantIds, currentUserId, selectedOtherPayer)
+    : null;
+  const activeDraft = preset ? { ...draft, ...preset.split } : draft;
+  const activePayment = preset?.payment ?? payment;
+  const needsOtherPayer = splitChoice === "i-owe" || splitChoice === "they-paid";
+
+  function openAdvanced() {
+    if (preset) {
+      draft.setMode(preset.split.mode);
+      draft.setAllValues(preset.split.values);
+      setPayment(preset.payment.kind === "single" && !preset.payment.payerId
+        ? { kind: "single", payerId: currentUserId }
+        : preset.payment);
+    }
+    setSplitChoice("advanced");
+  }
+
+  function selectPreset(next: ExpensePreset) {
+    if (activeDraft.mode === "itemized") {
+      setAmount(formatMoney(costMinor, decimals ?? 2) ?? "");
+    }
+    setSplitChoice(next);
+    setBasicChoice(next);
+  }
+
   const decimals = decimalsFor(currency);
-  const itemizing = draft.mode === "itemized";
+  const itemizing = activeDraft.mode === "itemized";
 
   // The preview needs the amount as minor units on every keystroke, including
   // the keystrokes where it is not a valid amount yet ("12."). Zero means "no
@@ -173,6 +217,7 @@ export function ExpenseForm({
     setError(null);
 
     if (people.length === 0) return setError("Add at least one person to this expense");
+    if (simple && others.length === 0) return setError("Add someone to share this expense with");
 
     let cost: number;
     if (itemizing) {
@@ -185,6 +230,8 @@ export function ExpenseForm({
       }
     }
 
+    if (!date) return setError("Choose a date for this expense");
+
     if (cost <= 0) return setError("Amount must be greater than zero");
 
     // Everything about how the cost divides comes from the split draft. Building
@@ -192,7 +239,7 @@ export function ExpenseForm({
     // server, which is the only place that decides whether a split is valid.
     let split: ReturnType<typeof buildSplit>;
     try {
-      split = buildSplit(draft, participantIds, cost, payment, currency, parseInCurrency);
+      split = buildSplit(activeDraft, participantIds, cost, activePayment, currency, parseInCurrency);
     } catch (err) {
       return setError(err instanceof Error ? err.message : "Invalid split");
     }
@@ -224,6 +271,8 @@ export function ExpenseForm({
       setCategoryId(DEFAULT_CATEGORY_ID);
       setRepeatInterval(null);
       draft.reset();
+      setSplitChoice("i-paid");
+      setBasicChoice("i-paid");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add expense");
     } finally {
@@ -245,25 +294,6 @@ export function ExpenseForm({
           emptyHint="Search your friends by name"
         />
       </div>
-
-      {groups && (
-        <div>
-          <label htmlFor="expense-group">Group</label>
-          <select
-            id="expense-group"
-            value={groupId ?? ""}
-            onChange={(e) => onGroupChange?.(e.target.value === "" ? null : e.target.value)}
-            disabled={!onGroupChange}
-          >
-            <option value="">No group</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div className="expense-headline">
         <CategoryButton value={categoryId} onChange={setCategoryId} />
@@ -302,82 +332,152 @@ export function ExpenseForm({
         </div>
       </div>
 
-      <div className="form-grid">
-        <div>
-          <label htmlFor="date">Date</label>
-          <input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <section className="stack expense-split-section" aria-label="Expense split">
+        <div className="expense-split-heading">
+          <span>Split</span>
+          <button type="button" className="link" onClick={simple ? openAdvanced : () => selectPreset(basicChoice)}>
+            {simple ? "Advanced split mode" : "Basic split mode"}
+          </button>
         </div>
-        <div>
-          <PaidByField
-            people={people}
-            payment={payment}
-            onChange={setPayment}
-            costMinor={costMinor}
-            currency={currency}
-            parseInCurrency={parseInCurrency}
-          />
-        </div>
-      </div>
-
-      <SplitEditor
-        people={people}
-        draft={draft}
-        costMinor={costMinor}
-        currency={currency}
-        payment={payment}
-      />
-
-      {allowRepeat && (
-        <div>
-          <div className="label-with-help">
-            <label htmlFor="repeat">Repeat</label>
-            {repeatInterval && (
-              <HelpTip label="About repeating">
-                This bill stays as it is. A copy is created{" "}
-                {repeatLabel(repeatInterval).toLowerCase()}, starting one interval after{" "}
-                {date || "its date"}, and each copy is an ordinary expense you can edit or delete
-                on its own.
-              </HelpTip>
+        {simple && (
+          <fieldset className="expense-choices" aria-label="How should this expense work?">
+            <div className="expense-choice-grid">
+              {EXPENSE_PRESETS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`expense-choice${splitChoice === option.id ? " is-active" : ""}`}
+                  aria-pressed={splitChoice === option.id}
+                  onClick={() => selectPreset(option.id)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        {simple && (
+          <div className="expense-simple-summary">
+            {others.length === 0 ? (
+              <p className="split-hint">Add someone above to share this expense with.</p>
+            ) : needsOtherPayer && others.length > 1 ? (
+              <div>
+                <label htmlFor="expense-other-payer">Who paid?</label>
+                <select id="expense-other-payer" value={selectedOtherPayer} onChange={(e) => setOtherPayerId(e.target.value)}>
+                  {others.map((person) => <option key={person.id} value={person.id}>{person.label}</option>)}
+                </select>
+                <p className="split-hint">
+                  {splitChoice === "i-owe" ? "You owe this person the full amount." : "Everyone, including you, shares the cost equally."}
+                </p>
+              </div>
+            ) : (
+              <p className="split-hint">
+                {splitChoice === "i-owe" && `You owe ${others[0]!.label} the full amount.`}
+                {splitChoice === "they-owe" && (others.length === 1
+                  ? `${others[0]!.label} owes you the full amount.`
+                  : "The others owe you the full amount, split equally between them.")}
+                {splitChoice === "i-paid" && "You paid. Everyone, including you, shares the cost equally."}
+                {splitChoice === "they-paid" && `${others[0]!.label} paid. Everyone, including you, shares the cost equally.`}
+              </p>
             )}
           </div>
+        )}
+
+        {!simple && (
+          <div id="expense-advanced" className="stack">
+            <div>
+              <PaidByField
+                people={people}
+                payment={payment}
+                onChange={setPayment}
+                costMinor={costMinor}
+                currency={currency}
+                parseInCurrency={parseInCurrency}
+              />
+            </div>
+            <SplitEditor people={people} draft={draft} costMinor={costMinor} currency={currency} payment={payment} />
+          </div>
+        )}
+      </section>
+
+      <ExpenseDateField value={date} onChange={setDate} />
+
+      <details className="expense-more-options" open={initial?.repeatInterval || initial?.details ? true : undefined}>
+        <summary>More options</summary>
+        <div className="stack">
+          {allowRepeat && (
+            <div>
+              <div className="label-with-help">
+                <label htmlFor="repeat">Repeat</label>
+                {repeatInterval && (
+                  <HelpTip label="About repeating">
+                    This bill stays as it is. A copy is created{" "}
+                    {repeatLabel(repeatInterval).toLowerCase()}, starting one interval after{" "}
+                    {date || "its date"}, and each copy is an ordinary expense you can edit or delete
+                    on its own.
+                  </HelpTip>
+                )}
+              </div>
+              <select
+                id="repeat"
+                value={repeatInterval ?? ""}
+                onChange={(e) =>
+                  setRepeatInterval(e.target.value === "" ? null : (e.target.value as RepeatInterval))
+                }
+              >
+                <option value="">Does not repeat</option>
+                {REPEAT_INTERVALS.map((interval) => (
+                  <option key={interval} value={interval}>
+                    {repeatLabel(interval)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Notes only. There is no image upload in this app and there will not be
+              one without an explicit decision. See CLAUDE.md. */}
+          <div>
+            {showNotes || notes ? (
+              <>
+                <label htmlFor="notes">Notes</label>
+                <textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  maxLength={5000}
+                  placeholder="Anything worth remembering about this one"
+                />
+              </>
+            ) : (
+              <button type="button" className="link" onClick={() => setShowNotes(true)}>
+                + Add notes
+              </button>
+            )}
+          </div>
+
+        </div>
+      </details>
+
+      {groups && (
+        <div>
+          <label htmlFor="expense-group">Group</label>
           <select
-            id="repeat"
-            value={repeatInterval ?? ""}
-            onChange={(e) =>
-              setRepeatInterval(e.target.value === "" ? null : (e.target.value as RepeatInterval))
-            }
+            id="expense-group"
+            value={groupId ?? ""}
+            onChange={(e) => onGroupChange?.(e.target.value === "" ? null : e.target.value)}
+            disabled={!onGroupChange}
           >
-            <option value="">Does not repeat</option>
-            {REPEAT_INTERVALS.map((interval) => (
-              <option key={interval} value={interval}>
-                {repeatLabel(interval)}
+            <option value="">No group</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
               </option>
             ))}
           </select>
         </div>
       )}
-
-      {/* Notes only. There is no image upload in this app and there will not be
-          one without an explicit decision. See CLAUDE.md. */}
-      <div>
-        {showNotes || notes ? (
-          <>
-            <label htmlFor="notes">Notes</label>
-            <textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              maxLength={5000}
-              placeholder="Anything worth remembering about this one"
-            />
-          </>
-        ) : (
-          <button type="button" className="link" onClick={() => setShowNotes(true)}>
-            + Add notes
-          </button>
-        )}
-      </div>
 
       <div className="expense-form-actions">
         {onCancel && (
@@ -385,7 +485,7 @@ export function ExpenseForm({
             Cancel
           </button>
         )}
-        <button type="submit" disabled={busy || people.length === 0} className="inline">
+        <button type="submit" disabled={busy || people.length === 0 || (simple && others.length === 0)} className="inline">
           {busy ? (initial ? "Saving…" : "Adding…") : submitLabel}
         </button>
       </div>

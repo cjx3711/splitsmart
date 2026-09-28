@@ -221,13 +221,22 @@ export function ApiDocs() {
       </Endpoint>
       <Endpoint method="PATCH" path="/api/v1/groups/:id">
         <Code>{`{ "name": "Kyushu 2025", "groupType": "trip",
-  "simplifyByDefault": true }`}</Code>
+  "simplifyByDefault": true, "excludedFromTotals": false }`}</Code>
         <p>
           Any member. Fields are optional; omit one to leave it alone.{" "}
           <code>simplifyByDefault</code> turns Splitwise-style simplify-debts on
           or off for this group&apos;s contribution to friend totals. Nets on
           the group page do not change. New groups and imported Splitwise groups
           default on.
+        </p>
+        <p>
+          <code>excludedFromTotals</code> marks the group as a running ledger
+          that should stay out of headline totals. It is display only and no
+          balance endpoint reads it: <code>totalBalance</code>, a friend&apos;s{" "}
+          <code>balances</code> and every bucket in their{" "}
+          <code>breakdown</code> are unchanged. The breakdown entry carries{" "}
+          <code>excluded</code> so a client can subtract it and still be able to
+          show the full sum.
         </p>
       </Endpoint>
       <Endpoint method="POST" path="/api/v1/groups/:id/members">

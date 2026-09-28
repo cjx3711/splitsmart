@@ -33,7 +33,7 @@ const SHOTS: { file: string; caption: string; alt: string }[] = [
   {
     file: "add-expense-dialog.png",
     caption: "Adding a bill",
-    alt: "Add Expense dialog with description, amount, currency, and split types including equally and itemized.",
+    alt: "Add Expense dialog with a CSV bulk add shortcut, description and amount above four split choices, followed by Today, day-step, and date-picker controls.",
   },
   {
     file: "expense-detail.png",

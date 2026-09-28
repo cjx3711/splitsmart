@@ -208,7 +208,7 @@ const DEFS: ScreenDef[] = [
     auth: { kind: "user" },
     path: "/app",
     click: ["Expense"],
-    waitForText: "Equally",
+    waitForText: "I owe them",
   },
   {
     id: "settings",

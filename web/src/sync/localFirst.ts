@@ -130,6 +130,7 @@ export async function patchGroup(
     groupType?: string;
     defaultCurrency?: string;
     simplifyByDefault?: boolean;
+    excludedFromTotals?: boolean;
   },
 ): Promise<SyncGroup | undefined> {
   const group = await db.groups.get(groupId);
@@ -139,6 +140,9 @@ export async function patchGroup(
     ...(patch.groupType !== undefined ? { groupType: patch.groupType } : {}),
     ...(patch.defaultCurrency !== undefined ? { defaultCurrency: patch.defaultCurrency } : {}),
     ...(patch.simplifyByDefault !== undefined ? { simplifyByDefault: patch.simplifyByDefault } : {}),
+    ...(patch.excludedFromTotals !== undefined
+      ? { excludedFromTotals: patch.excludedFromTotals }
+      : {}),
   });
   return group;
 }
@@ -222,6 +226,8 @@ type WireGroup = {
   defaultCurrency?: string;
   simplify_by_default?: number | boolean;
   simplifyByDefault?: boolean;
+  excluded_from_totals?: number | boolean;
+  excludedFromTotals?: boolean;
 };
 
 export async function ingestCreatedGroup(
@@ -238,6 +244,7 @@ export async function ingestCreatedGroup(
     groupType: group.groupType ?? group.group_type ?? "other",
     defaultCurrency: group.defaultCurrency ?? group.default_currency ?? self.defaultCurrency,
     simplifyByDefault: simplify !== false,
+    excludedFromTotals: Boolean(group.excludedFromTotals ?? group.excluded_from_totals),
     createdBy: self.id,
     deletedAt: null,
   };

@@ -8,7 +8,8 @@
  * and the real ledgers fold underneath. The estimate is dated, display-only,
  * and sourced from Exchange Rate API (cached in the browser for a day).
  */
-import type { ReactNode } from "react";
+import { BulkAddButton } from "../BulkAddButton.tsx";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { displayName, type Friend, type CurrencyAmount } from "../api.ts";
 import { Amount, Amounts, sumByCurrency, useCurrencies } from "../money.tsx";
@@ -21,11 +22,18 @@ import { ConversionFootnote, useConvertedTotal } from "../ConversionNote.tsx";
 import { BalanceDetail } from "../GroupBalances.tsx";
 import { friendDashboardColumn, useExchangeRates } from "../exchangeRates.ts";
 import { HelpTip } from "../HelpTip.tsx";
+import { ExcludedTotalsNote } from "../ExcludedTotalsNote.tsx";
+import { countedBalances, excludedGroupNames } from "../excludedTotals.ts";
 import { Skeleton } from "../Skeleton.tsx";
+import { DataLoading } from "../DataLoading.tsx";
 
 export function Dashboard() {
   const { user } = useAuth();
   const { decimalsFor } = useCurrencies();
+  // Groups marked "doesn't count towards totals" are left out of every figure
+  // on this page until this is on. Per-render on purpose: see
+  // web/src/ExcludedTotalsNote.tsx.
+  const [showExcluded, setShowExcluded] = useState(false);
   // Every figure below is derived here from the shares in the mirror, through the
   // same pure deriveRepayments the server runs. Balances are never replicated:
   // a pairwise net taken from two people's paid/owed on a three-way bill is
@@ -43,10 +51,12 @@ export function Dashboard() {
         <HelpTip label="About these totals">
           Every currency is a separate ledger. A combined figure, when shown, is an estimate.
           Friend totals use simplify-debts inside groups that have it on, matching Splitwise.
-          One-on-one expenses stay between the two of you.
+          One-on-one expenses stay between the two of you. A group marked as not counting
+          towards totals is left out of every figure here; the note under them says which.
         </HelpTip>
       </h1>
       <div className="page-actions">
+        <BulkAddButton />
         <OnlineOnly what="Creating a group">
           <Link to="/groups/new">
             <button className="secondary inline">New group</button>
@@ -65,26 +75,39 @@ export function Dashboard() {
     return (
       <>
         {head}
-        <Skeleton kind="dashboard" />
+        <DataLoading kind="dashboard" />
       </>
     );
   }
 
+  // Every figure below reads `balances` off this list rather than the friend
+  // row, so the excluded groups are dropped in exactly one place: the columns,
+  // the per-person rows, the three tiles and the ≈ estimate cannot disagree
+  // about what is being counted.
+  const counted: Friend[] = showExcluded
+    ? friends
+    : friends.map((f) => ({ ...f, balances: countedBalances(f.breakdown) }));
+  const excludedNames = excludedGroupNames(friends.map((f) => f.breakdown));
+
   const columnOf = (person: Friend) =>
     friendDashboardColumn(person.balances, user.defaultCurrency, rates, decimalsFor);
-  const youOwe = friends.filter((f) => {
+  const youOwe = counted.filter((f) => {
     const column = columnOf(f);
     return column === "owe" || column === "both";
   });
-  const owedToYou = friends.filter((f) => {
+  const owedToYou = counted.filter((f) => {
     const column = columnOf(f);
     return column === "owed" || column === "both";
   });
 
-  const allBalances = friends.flatMap((f) => f.balances);
+  const allBalances = counted.flatMap((f) => f.balances);
   const positives = sumByCurrency(allBalances.filter((b) => b.amountMinor > 0));
   const negatives = sumByCurrency(allBalances.filter((b) => b.amountMinor < 0));
   const net = sumByCurrency(allBalances);
+  // Everything you have is in groups you asked not to count. "All settled" and
+  // "Nothing" would both be false, so the tiles say what is actually going on.
+  const nothingCounted =
+    allBalances.length === 0 && excludedNames.length > 0 && !showExcluded;
 
   return (
     <>
@@ -98,7 +121,7 @@ export function Dashboard() {
           <SummaryLedger
             balances={net}
             preferredCurrency={user.defaultCurrency}
-            empty="All settled"
+            empty={nothingCounted ? "Nothing counted" : "All settled"}
             signed
             showSign
           />
@@ -108,7 +131,7 @@ export function Dashboard() {
           <SummaryLedger
             balances={negatives}
             preferredCurrency={user.defaultCurrency}
-            empty="Nothing"
+            empty={nothingCounted ? "Nothing counted" : "Nothing"}
             tone="negative"
           />
         </div>
@@ -117,14 +140,20 @@ export function Dashboard() {
           <SummaryLedger
             balances={positives}
             preferredCurrency={user.defaultCurrency}
-            empty="Nothing"
+            empty={nothingCounted ? "Nothing counted" : "Nothing"}
             tone="positive"
           />
         </div>
       </div>
 
+      <ExcludedTotalsNote
+        names={excludedNames}
+        showing={showExcluded}
+        onToggle={() => setShowExcluded((on) => !on)}
+      />
+
       <ConversionFootnote
-        sets={[net, ...friends.map((f) => f.balances)]}
+        sets={[net, ...counted.map((f) => f.balances)]}
         preferredCurrency={user.defaultCurrency}
         settingsHref="/settings"
       />

@@ -35,6 +35,32 @@ export async function setGroupSimplify(
   }
 }
 
+/**
+ * Keep a group out of the headline totals, or put it back.
+ *
+ * Same mirror-first shape as the other two, and the same guarantee: this moves
+ * no money and recomputes no balance. It only says how the dashboard and the
+ * friend page should roll this group's bucket up. The amounts stay visible in
+ * the group, on the friend page, and behind "Include them".
+ */
+export async function setGroupExcluded(
+  db: LocalDb,
+  groupId: string,
+  excluded: boolean,
+): Promise<void> {
+  const previous = await patchGroup(db, groupId, { excludedFromTotals: excluded });
+  try {
+    await api.updateGroup(groupId, { excludedFromTotals: excluded });
+  } catch (err) {
+    if (previous) {
+      await patchGroup(db, groupId, {
+        excludedFromTotals: previous.excludedFromTotals === true,
+      });
+    }
+    throw err;
+  }
+}
+
 export async function setGroupCurrency(
   db: LocalDb,
   groupId: string,

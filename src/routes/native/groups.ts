@@ -88,6 +88,7 @@ export const groupRoutes = new Hono<AppEnv>()
     .select([
       "groups.id", "groups.name", "groups.group_type",
       "groups.default_currency", "groups.simplify_by_default",
+      "groups.excluded_from_totals",
     ])
     .where("group_members.user_id", "=", auth.id)
     .where("group_members.left_at", "is", null)
@@ -107,6 +108,7 @@ export const groupRoutes = new Hono<AppEnv>()
       groupType: z.enum(GROUP_TYPES).default("other"),
       defaultCurrency: z.string().length(3).toUpperCase().default("USD"),
       simplifyByDefault: z.boolean().default(true),
+      excludedFromTotals: z.boolean().default(false),
     }),
   ),
   async (c) => {
@@ -129,9 +131,13 @@ export const groupRoutes = new Hono<AppEnv>()
           group_type: input.groupType,
           default_currency: input.defaultCurrency,
           simplify_by_default: input.simplifyByDefault ? 1 : 0,
+          excluded_from_totals: input.excludedFromTotals ? 1 : 0,
           created_by: auth.id,
         })
-          .returning(["id", "name", "group_type", "default_currency", "simplify_by_default"])
+          .returning([
+            "id", "name", "group_type", "default_currency",
+            "simplify_by_default", "excluded_from_totals",
+          ])
         .executeTakeFirstOrThrow();
 
       await trx
@@ -172,7 +178,10 @@ export const groupRoutes = new Hono<AppEnv>()
 
   const group = await db
     .selectFrom("groups")
-    .select(["id", "name", "group_type", "default_currency", "simplify_by_default"])
+    .select([
+      "id", "name", "group_type", "default_currency",
+      "simplify_by_default", "excluded_from_totals",
+    ])
     .where("id", "=", groupId)
     .where("deleted_at", "is", null)
     .executeTakeFirst();
@@ -226,13 +235,15 @@ export const groupRoutes = new Hono<AppEnv>()
         groupType: z.enum(GROUP_TYPES).optional(),
         defaultCurrency: z.string().length(3).toUpperCase().optional(),
         simplifyByDefault: z.boolean().optional(),
+        excludedFromTotals: z.boolean().optional(),
       })
       .refine(
         (body) =>
           body.name !== undefined ||
           body.groupType !== undefined ||
           body.defaultCurrency !== undefined ||
-          body.simplifyByDefault !== undefined,
+          body.simplifyByDefault !== undefined ||
+          body.excludedFromTotals !== undefined,
         { message: "Nothing to update" },
       ),
   ),
@@ -245,7 +256,8 @@ export const groupRoutes = new Hono<AppEnv>()
     return c.json({ error: "Not a member of this group" }, 403);
   }
 
-  const { name, groupType, defaultCurrency, simplifyByDefault } = c.req.valid("json");
+  const { name, groupType, defaultCurrency, simplifyByDefault, excludedFromTotals } =
+    c.req.valid("json");
 
   // Changing the default currency changes what the next bill STARTS in and
   // nothing else: recorded expenses keep the currency they were entered in, and
@@ -264,11 +276,19 @@ export const groupRoutes = new Hono<AppEnv>()
         ...(simplifyByDefault !== undefined
           ? { simplify_by_default: simplifyByDefault ? 1 : 0 }
           : {}),
+        // Display only. Nothing is recomputed here because no balance query
+        // reads this column; see CLAUDE.md, "Groups kept out of the totals".
+        ...(excludedFromTotals !== undefined
+          ? { excluded_from_totals: excludedFromTotals ? 1 : 0 }
+          : {}),
         updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
       })
       .where("id", "=", groupId)
       .where("deleted_at", "is", null)
-      .returning(["id", "name", "group_type", "default_currency", "simplify_by_default"])
+      .returning([
+        "id", "name", "group_type", "default_currency",
+        "simplify_by_default", "excluded_from_totals",
+      ])
       .executeTakeFirst();
 
     if (!updated) return null;

@@ -8,9 +8,37 @@
   - dialog "New expense":
     - heading "New expense" [level=2]
     - button "Close": ✕
+    - text: Adding several expenses from a CSV?
+    - button "Bulk add"
     - text: With you and You
     - textbox "Add someone to this expense":
       - /placeholder: Add someone…
+    - 'button "Category: General. Change it."'
+    - text: Description
+    - textbox "Description":
+      - /placeholder: Dinner
+    - text: Amount
+    - textbox "Amount":
+      - /placeholder: "30.00"
+    - text: Currency
+    - button "Currency": USD · $
+    - region "Expense split":
+      - text: Split
+      - button "Advanced split mode"
+      - group "How should this expense work?":
+        - button "I owe them"
+        - button "They owe me"
+        - button "I paid and split equally" [pressed]
+        - button "They paid and split equally"
+      - paragraph: Add someone above to share this expense with.
+    - group "Expense date":
+      - text: Date
+      - time: Mon, <DATE>
+      - button "<RELDATE>" [pressed]
+      - button "Previous day": −
+      - button "Next day": +
+      - button "Choose date"
+    - group: More options
     - text: Group
     - combobox "Group":
       - option "No group" [selected]
@@ -24,38 +52,8 @@
       - option "Summer BBQ"
       - option "Weekend in Tokyo"
       - option "Yosemite Camping"
-    - 'button "Category: General. Change it."'
-    - text: Description
-    - textbox "Description":
-      - /placeholder: Dinner
-    - text: Amount
-    - textbox "Amount":
-      - /placeholder: "30.00"
-    - text: Currency
-    - button "Currency": USD · $
-    - text: Date
-    - textbox "Date": <DATE>
-    - text: Paid by
-    - button "Paid by": You
-    - text: Split
-    - button "About Equally": "?"
-    - group "How to split this expense":
-      - button "Equally" [pressed]
-      - button "Exact amounts"
-      - button "Percentages"
-      - button "Shares"
-      - button "Adjustment"
-      - button "Itemized"
-    - text: Who owes what You Repeat
-    - combobox "Repeat":
-      - option "Does not repeat" [selected]
-      - option "Weekly"
-      - option "Every 2 weeks"
-      - option "Monthly"
-      - option "Yearly"
-    - button "+ Add notes"
     - button "Cancel"
-    - button "Add expense"
+    - button "Add expense" [disabled]
 - navigation "Main":
   - text: Test User
   - link "Settings":
@@ -66,8 +64,6 @@
     - /url: /app/activity
   - link "All expenses":
     - /url: /app/expenses
-  - link "Usage":
-    - /url: /app/admin
   - link "Get the app":
     - /url: /app/install
   - textbox "Filter groups and friends by name":
@@ -128,17 +124,18 @@
   - heading "Dashboard About these totals" [level=1]:
     - text: Dashboard
     - button "About these totals": "?"
+  - button "Bulk add"
   - link "New group":
     - /url: /app/groups/new
     - button "New group"
   - link "Add a friend":
     - /url: /app/friends/new
     - button "Add a friend"
-  - text: Net position ≈3916.90USD*
+  - text: Net position ≈3916.98USD*
   - group: JPY · USD▼
-  - text: You owe ≈143.64USD*
+  - text: You owe ≈143.72USD*
   - group: JPY · USD▼
-  - text: You are owed ≈4060.54USD*
+  - text: You are owed ≈4060.70USD*
   - group: JPY · USD▼
   - paragraph:
     - text: "* Converted to USD, your default currency, using"
@@ -154,12 +151,12 @@
   - link "Jas you owe 65.00USD":
     - /url: /app/friends/<ULID>
   - heading "You are owed" [level=2]
-  - link "JJ ≈owes you 3828.67USD*":
+  - link "JJ ≈owes you 3828.59USD*":
     - /url: /app/friends/<ULID>
   - group: JPY · USD▼
   - link "John owes you 60.00USD":
     - /url: /app/friends/<ULID>
-  - link "Ah Beng ≈owes you 156.79USD*":
+  - link "Ah Beng ≈owes you 156.87USD*":
     - /url: /app/friends/<ULID>
   - group: JPY · USD▼
   - link "Hana owes you 1200JPY":

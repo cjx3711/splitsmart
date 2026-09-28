@@ -38,6 +38,7 @@ import { AdminBackups } from "./pages/AdminBackups.tsx";
 import { Verify } from "./pages/Verify.tsx";
 import { Reset } from "./pages/Reset.tsx";
 import { EmailVerificationBanner } from "./EmailVerificationBanner.tsx";
+import { BulkAdd } from "./pages/BulkAdd.tsx";
 import { AddExpenseDialog } from "./AddExpenseDialog.tsx";
 import { AddPaymentDialog } from "./AddPaymentDialog.tsx";
 import { PlusIcon } from "./Icons.tsx";
@@ -151,6 +152,7 @@ function Shell() {
       <Route path="/friends" element={<Protected><Friends /></Protected>} />
       <Route path="/friends/new" element={<Protected><NewFriend /></Protected>} />
       <Route path="/friends/:id" element={<Protected><FriendDetail /></Protected>} />
+      <Route path="/bulk-add" element={<Protected><BulkAdd /></Protected>} />
       <Route path="/expenses" element={<Protected><AllExpenses /></Protected>} />
       <Route path="/expenses/:id/series" element={<Protected><Series /></Protected>} />
       <Route path="/expenses/:id" element={<Protected><ExpenseDetail /></Protected>} />
@@ -216,7 +218,7 @@ function Shell() {
             />
           )}
           <Sidebar className={menuOpen ? "rail open" : "rail"} />
-          <main className="main">{routes}</main>
+          <main className={location.pathname === "/bulk-add" ? "main bulk-main" : "main"}>{routes}</main>
         </div>
       ) : (
         <main className="main" style={{ maxWidth: "none" }}>

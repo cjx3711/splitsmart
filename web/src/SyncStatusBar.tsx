@@ -54,6 +54,7 @@ const HEADER_ICONS = {
   offline: LuCloudOff,
   syncing: LuCloud,
   pending: LuCloudUpload,
+  error: LuCloudAlert,
   synced: LuCloud,
 } as const;
 
@@ -96,11 +97,12 @@ export function SyncStatusBar() {
   const unresolved = status.conflicts + status.rejected;
   const offline = !status.online;
   const waiting = status.online && status.pending > 0;
+  const failed = status.online && Boolean(status.lastError);
 
-  if (unresolved === 0 && !offline && !waiting && !reconnecting) return null;
+  if (unresolved === 0 && !offline && !waiting && !failed && !reconnecting) return null;
 
   return (
-    <div className={`syncbar ${unresolved > 0 ? "syncbar-warn" : ""}`.trim()}>
+    <div className={`syncbar ${unresolved > 0 || failed ? "syncbar-warn" : ""}`.trim()}>
       <div className="syncbar-body">
         {unresolved > 0 && (
           <span>
@@ -128,11 +130,17 @@ export function SyncStatusBar() {
             {status.lastError ? `: ${status.lastError}` : "."}
           </span>
         )}
+        {unresolved === 0 && !offline && !reconnecting && !waiting && failed && (
+          <span>
+            {status.bootstrapped ? "Could not refresh your data." : "Could not load your data."}{" "}
+            {status.lastError}
+          </span>
+        )}
       </div>
 
       {!offline && (
         <button className="inline secondary" onClick={syncNow} disabled={status.syncing}>
-          {status.syncing ? "Saving…" : "Sync now"}
+          {status.syncing ? "Syncing…" : "Sync now"}
         </button>
       )}
     </div>

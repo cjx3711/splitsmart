@@ -1,6 +1,6 @@
 /**
  * Group options: name, type (the sidebar icon), default currency, simplify
- * debts, members.
+ * debts, whether the group counts towards totals, members.
  *
  * Any logged-in member can change these. Guest-link holders never reach this
  * page — the guest shell has no settings routes (docs/GUEST.md). Adding,
@@ -23,7 +23,7 @@ import { NeedsConnection, OnlineOnly, useOnline } from "../OnlineOnly.tsx";
 import { PersonIdentityDialog } from "../PersonIdentityDialog.tsx";
 import { useSync } from "../sync/SyncProvider.tsx";
 import { markMemberLeft, patchGroup, patchPerson, restoreMember, revertPerson } from "../sync/localFirst.ts";
-import { setGroupCurrency, setGroupSimplify } from "../groupSettings.ts";
+import { setGroupCurrency, setGroupExcluded, setGroupSimplify } from "../groupSettings.ts";
 import { Skeleton } from "../Skeleton.tsx";
 
 export function GroupOptions() {
@@ -38,6 +38,7 @@ export function GroupOptions() {
   const [busy, setBusy] = useState(false);
   const [simplifyBusy, setSimplifyBusy] = useState(false);
   const [currencyBusy, setCurrencyBusy] = useState(false);
+  const [countsBusy, setCountsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [identityMember, setIdentityMember] = useState<GroupMember | null>(null);
@@ -59,6 +60,7 @@ export function GroupOptions() {
   const current = group;
   const dirty = name.trim() !== current.name || groupType !== current.group_type;
   const simplifyOn = current.simplify_by_default === 1;
+  const countsTowardsTotals = current.excluded_from_totals !== 1;
   const isOwner = view.role === "owner";
 
   async function saveIdentity(event: FormEvent) {
@@ -109,6 +111,19 @@ export function GroupOptions() {
       // setGroupSimplify has already put the mirror back.
     } finally {
       setSimplifyBusy(false);
+    }
+  }
+
+  async function setCounts(on: boolean) {
+    if (!db) return;
+    setCountsBusy(true);
+    try {
+      await setGroupExcluded(db, current.id, !on);
+      syncNow();
+    } catch {
+      // setGroupExcluded has already put the mirror back.
+    } finally {
+      setCountsBusy(false);
     }
   }
 
@@ -204,6 +219,35 @@ export function GroupOptions() {
                   {simplifyOn
                     ? "Friend balances and settle-up in this group are simplified."
                     : "Friend balances and settle-up show the raw who-owes-whom from each bill."}
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div className="card" style={{ marginTop: "1rem" }}>
+            <label className="setting-toggle">
+              <input
+                type="checkbox"
+                checked={countsTowardsTotals}
+                disabled={countsBusy}
+                onChange={(event) => void setCounts(event.target.checked)}
+              />
+              <span>
+                <span className="with-help">
+                  Count towards my totals
+                  <HelpTip label="About counting towards totals">
+                    Turn this off for a group you keep as a running ledger - an account, a float,
+                    a tab - so it stays out of the headline figures on your dashboard and on a
+                    friend page. Nothing moves and nothing is hidden: the group's own balances,
+                    its expenses and its settle-up are unchanged, the amounts still show on the
+                    friend page marked "not counted", and both screens offer to add them back in.
+                    This is your view only; it does not change what anyone else sees.
+                  </HelpTip>
+                </span>
+                <span className="muted" style={{ display: "block", marginTop: "0.15rem" }}>
+                  {countsTowardsTotals
+                    ? "Balances here are part of your overall totals."
+                    : "Balances here are left out of your overall totals."}
                 </span>
               </span>
             </label>

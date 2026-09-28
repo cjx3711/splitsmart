@@ -97,6 +97,8 @@ export interface GroupsTable {
   default_currency: Generated<string>;
   avatar_url: string | null;
   simplify_by_default: Generated<number>;
+  /** 0/1. Display only: keeps this group out of the headline totals. */
+  excluded_from_totals: Generated<number>;
   created_by: string | null;
   created_at: Generated<string>;
   updated_at: Generated<string>;

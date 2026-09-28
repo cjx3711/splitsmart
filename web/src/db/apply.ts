@@ -123,6 +123,9 @@ export async function putGroups(db: LocalDb, groups: SyncGroup[]): Promise<void>
     groups.map((group) => ({
       ...group,
       simplifyByDefault: group.simplifyByDefault !== false,
+      // Missing means counted: a mirror bootstrapped before this field existed
+      // must not start dropping groups out of the dashboard.
+      excludedFromTotals: group.excludedFromTotals === true,
     })),
   );
 }

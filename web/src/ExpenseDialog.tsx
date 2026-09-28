@@ -47,6 +47,7 @@ export function ExpenseDialog({
   submitLabel,
   allowRepeat,
   onSubmit,
+  onBulkAdd,
 }: {
   open: boolean;
   title: string;
@@ -62,6 +63,8 @@ export function ExpenseDialog({
   submitLabel?: string;
   allowRepeat?: boolean;
   onSubmit: (input: ExpenseInput) => Promise<void>;
+  /** Only supplied by the signed-in add flow, never edits or guest links. */
+  onBulkAdd?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   // An edit is seeded from a stored bill. Closing that without saving would
@@ -80,6 +83,12 @@ export function ExpenseDialog({
   return (
     <>
       <Modal open={open} title={title} onClose={requestClose}>
+        {onBulkAdd && (
+          <div className="expense-bulk-entry">
+            <span className="muted">Adding several expenses from a CSV?</span>
+            <button type="button" className="secondary inline" onClick={onBulkAdd}>Bulk add</button>
+          </div>
+        )}
         <ExpenseForm
           className="stack"
           candidates={candidates}

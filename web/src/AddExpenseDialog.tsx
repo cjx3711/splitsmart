@@ -20,6 +20,7 @@
  * trip with people you have already added.
  */
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ExpenseDialog, expensePeople } from "./ExpenseDialog.tsx";
 import { useAuth } from "./App.tsx";
 import { useGroups, useGroupView, useRelatedPeople } from "./localData.ts";
@@ -46,6 +47,7 @@ export function AddExpenseDialog({
   const { user } = useAuth();
   const { engine } = useSync();
   const online = useOnline();
+  const navigate = useNavigate();
 
   const [groupId, setGroupId] = useState<string | null>(initialGroupId);
 
@@ -84,6 +86,13 @@ export function AddExpenseDialog({
       groups={groups}
       groupId={groupId}
       onGroupChange={setGroupId}
+      onBulkAdd={() => {
+        const params = new URLSearchParams();
+        if (groupId) params.set("group", groupId);
+        else if (initialFriendId) params.set("friend", initialFriendId);
+        onClose();
+        navigate(`/bulk-add${params.size ? `?${params}` : ""}`);
+      }}
       // Repeat is online-only: the scheduler owns next_repeat. Offline this
       // is off, so the form omits the field and an existing series is left
       // alone. The guest dialog never offers it at all.

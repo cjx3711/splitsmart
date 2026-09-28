@@ -151,6 +151,8 @@ export interface SyncGroup {
   groupType: string;
   defaultCurrency: string;
   simplifyByDefault: boolean;
+  /** Display only: this group stays out of the viewer's headline totals. */
+  excludedFromTotals: boolean;
   createdBy: string | null;
   deletedAt: string | null;
 }

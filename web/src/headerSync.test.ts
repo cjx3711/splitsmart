@@ -124,3 +124,18 @@ test("an online push error surfaces in the hint, not the label", () => {
 test("nothing has synced yet is said plainly", () => {
   assert.equal(view({ lastSyncedAt: null }).detail, "Nothing has synced yet.");
 });
+
+test("failed reads with no queued writes never claim to be synced", () => {
+  const failed = view({ pending: 0, lastError: "Missing database column", bootstrapped: false });
+  assert.equal(failed.kind, "error");
+  assert.equal(failed.label, "Sync failed");
+  assert.equal(failed.detail, "Missing database column");
+  assert.equal(view({ lastError: "Server unavailable", bootstrapped: true }).kind, "error");
+});
+
+test("initial loading and retrying failed syncs cannot appear as Synced", () => {
+  assert.equal(view({ bootstrapped: false }).label, "Waiting to load");
+  assert.equal(view({ bootstrapped: false, syncing: true, phase: "idle" }).kind, "syncing");
+  assert.equal(view({ lastError: "Server unavailable", syncing: true, phase: "pull" }).label, "Retrying…");
+  assert.equal(view({ bootstrapped: true, lastError: null }).label, "Synced");
+});

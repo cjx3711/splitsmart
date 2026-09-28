@@ -93,7 +93,7 @@ const MAX_PAGES = 50;
  * those rows again (import writes no sync_log), so `hydrateGroupDocs` stamps
  * them once from GET /groups.
  */
-const GROUP_SHAPE = 1;
+const GROUP_SHAPE = 2;
 
 /**
  * Expense document shape this client knows how to read. Existing mirrors that
@@ -384,6 +384,7 @@ export class SyncEngine {
             groupType: g.group_type,
             defaultCurrency: g.default_currency,
             simplifyByDefault: g.simplify_by_default === 1,
+            excludedFromTotals: g.excluded_from_totals === 1,
             createdBy: prev?.createdBy ?? null,
             deletedAt: prev?.deletedAt ?? null,
           };
@@ -779,6 +780,27 @@ export class SyncEngine {
 
     this.announce();
     // Best-effort: offline this fails and the queue simply waits.
+    void this.sync();
+  }
+
+  /** Queue an entire CSV review atomically; a failed row cannot leave a partial import. */
+  async enqueueExpenses(writes: Array<Extract<LocalWrite, { kind: "expense.create" }>>): Promise<void> {
+    const queuedAt = new Date().toISOString();
+    await this.db.transaction("rw", this.db.outbox, this.db.expenses, this.db.users, async () => {
+      for (const write of writes) {
+        if (await this.db.expenses.get(write.id)) throw new Error("This expense has already been added.");
+        const decision = reduceOutbox(undefined, write, queuedAt);
+        if (decision.action !== "insert") throw new Error("Could not queue this expense.");
+        await this.db.outbox.add(decision.entry as OutboxOp);
+        await this.applyLocally(write, false);
+      }
+    });
+    // The batch is committed. A recency-cache failure must not invite a duplicate retry.
+    try {
+      const rows = await this.db.expenses.bulkGet(writes.map((write) => write.id));
+      await rememberFriendRecency(this.db, this.selfId, rows.filter((row): row is LocalExpense => row !== undefined));
+    } catch { /* The ledger and durable outbox are already saved. */ }
+    this.announce();
     void this.sync();
   }
 

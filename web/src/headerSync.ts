@@ -6,7 +6,7 @@
  * SyncStatusBar.tsx only picks the icon and the click target.
  */
 
-export type HeaderSyncKind = "conflict" | "offline" | "syncing" | "pending" | "synced";
+export type HeaderSyncKind = "conflict" | "offline" | "syncing" | "pending" | "error" | "synced";
 
 export type HeaderSyncInput = {
   online: boolean;
@@ -20,6 +20,7 @@ export type HeaderSyncInput = {
   localCursor?: number;
   cloudSeq?: number | null;
   phase?: "idle" | "bootstrap" | "hydrate" | "pull" | "push";
+  bootstrapped?: boolean;
 };
 
 export type HeaderSyncView = {
@@ -73,6 +74,9 @@ export function headerSyncView(
       if (status.phase === "hydrate") {
         return { kind: "syncing", label: "Updating…", count: 0, detail };
       }
+      if (status.lastError || status.bootstrapped === false) {
+        return { kind: "syncing", label: "Retrying…", count: 0, detail };
+      }
       return { kind: "synced", label: "Synced", count: 0, detail };
     }
     return {
@@ -97,6 +101,12 @@ export function headerSyncView(
       count: status.pending,
       detail,
     };
+  }
+  if (status.lastError) {
+    return { kind: "error", label: "Sync failed", count: 0, detail };
+  }
+  if (status.bootstrapped === false) {
+    return { kind: "pending", label: "Waiting to load", count: 0, detail };
   }
   return { kind: "synced", label: "Synced", count: 0, detail };
 }

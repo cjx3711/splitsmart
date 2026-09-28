@@ -166,6 +166,7 @@ export interface MetaValues {
    * Shape of group documents in this mirror. Bumped when a field is added that
    * existing rows will not have (pull does not rewrite unchanged groups).
    * 1 = `simplifyByDefault` has been stamped from the server.
+   * 2 = `excludedFromTotals` too.
    */
   groupShape: number;
   /**

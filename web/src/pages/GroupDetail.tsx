@@ -12,6 +12,7 @@
  * expense list can start higher. Narrow screens stack them, with balances still
  * above the expenses.
  */
+import { BulkAddButton } from "../BulkAddButton.tsx";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { displayName, type ExpenseQuery } from "../api.ts";
@@ -156,6 +157,7 @@ export function GroupDetail() {
           </div>
         </div>
         <div className="page-actions">
+          <BulkAddButton groupId={group.id} />
           <button
             type="button"
             className="secondary"

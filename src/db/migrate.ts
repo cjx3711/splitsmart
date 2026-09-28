@@ -66,16 +66,21 @@ export function migrate(databasePath: string = env.DATABASE_PATH): number {
 
     const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
     const selfManaged = /^\s*--\s*migrate:no-transaction\s*$/m.test(sql);
+    // A forward migration may adopt a column shipped in an earlier development
+    // schema. Check inside the transaction and still record the migration, so
+    // both older databases and those development copies have the same history.
+    const existingColumn = /^-- migrate:skip-if-column-exists ([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*$/m.exec(sql);
+    const apply = () => {
+      const alreadyPresent = existingColumn && db
+        .prepare("SELECT name FROM pragma_table_info(?) WHERE name = ?")
+        .get(existingColumn[1], existingColumn[2]);
+      if (!alreadyPresent) db.exec(sql);
+      db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
+    };
 
     const run = selfManaged
-      ? () => {
-          db.exec(sql);
-          db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
-        }
-      : db.transaction(() => {
-          db.exec(sql);
-          db.prepare("INSERT INTO schema_migrations (name) VALUES (?)").run(file);
-        });
+      ? apply
+      : db.transaction(apply);
 
     try {
       run();

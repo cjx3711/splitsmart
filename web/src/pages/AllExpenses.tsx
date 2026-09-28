@@ -8,6 +8,7 @@
  * fetched page - the cap that used to make local filtering dishonest is gone
  * along with the fetch. The rules are the server's own (docs/OFFLINE.md).
  */
+import { BulkAddButton } from "../BulkAddButton.tsx";
 import { useState } from "react";
 import { type ExpenseQuery } from "../api.ts";
 import { ExpenseList, makeLookup } from "../ExpenseList.tsx";
@@ -35,6 +36,7 @@ export function AllExpenses() {
     <>
       <div className="page-head">
         <h1>All expenses</h1>
+        <BulkAddButton />
       </div>
 
       <ExpenseFilters

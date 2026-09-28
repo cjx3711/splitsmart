@@ -546,19 +546,46 @@ export async function localGroups(
   return { groups, totalBalance: [] };
 }
 
-function toApiGroup(group: { id: string; name: string; groupType: string; defaultCurrency: string; simplifyByDefault?: boolean }): Group {
+function toApiGroup(group: { id: string; name: string; groupType: string; defaultCurrency: string; simplifyByDefault?: boolean; excludedFromTotals?: boolean }): Group {
   return {
     id: group.id,
     name: group.name,
     group_type: group.groupType,
     default_currency: group.defaultCurrency,
     simplify_by_default: groupSimplifies(group.simplifyByDefault) ? 1 : 0,
+    excluded_from_totals: group.excludedFromTotals === true ? 1 : 0,
   };
 }
 
 /** Missing means on: Splitwise's default, and what a mirror bootstrapped before the field existed would otherwise treat as off. */
 function groupSimplifies(flag: boolean | undefined): boolean {
   return flag !== false;
+}
+
+/**
+ * Missing means counted. The opposite of `groupSimplifies`, and deliberately
+ * so: a mirror that bootstrapped before the field existed must not start
+ * silently dropping a group out of someone's totals.
+ */
+function groupCounts(flag: boolean | undefined): boolean {
+  return flag !== true;
+}
+
+/**
+ * Which groups the viewer has kept out of their headline totals.
+ *
+ * Unlike simplify, an unknown group is NOT assumed excluded: a group the
+ * mirror has not stored yet would otherwise vanish from the dashboard until
+ * the next pull.
+ */
+function excludedFlags(
+  groups: Array<{ id: string; deletedAt: string | null; excludedFromTotals?: boolean }>,
+): Map<string, boolean> {
+  return new Map(
+    groups
+      .filter((g) => g.deletedAt === null)
+      .map((g) => [g.id, !groupCounts(g.excludedFromTotals)]),
+  );
 }
 
 function simplifyFlagsForMoves(
@@ -710,7 +737,9 @@ export async function localFriends(
 
   const expenses = await liveExpenses(db);
   const moves = movements(expenses);
-  const simplifyByGroupId = simplifyFlagsForMoves(await db.groups.toArray(), moves);
+  const storedGroups = await db.groups.toArray();
+  const simplifyByGroupId = simplifyFlagsForMoves(storedGroups, moves);
+  const excludedByGroupId = excludedFlags(storedGroups);
   const { balances, breakdowns } = viewerPairwise(moves, selfId, simplifyByGroupId);
   const lastByUser = lastSharedExpenseIdByUser(expenses, selfId);
 
@@ -739,6 +768,7 @@ export async function localFriends(
         explicit,
         groupNames,
         simplifyByGroupId,
+        excludedByGroupId,
       ),
     );
 
@@ -757,7 +787,9 @@ export async function localFriend(
   if (!user || user.deletedAt !== null) return null;
 
   const moves = movements(await liveExpenses(db));
-  const simplifyByGroupId = simplifyFlagsForMoves(await db.groups.toArray(), moves);
+  const storedGroups = await db.groups.toArray();
+  const simplifyByGroupId = simplifyFlagsForMoves(storedGroups, moves);
+  const excludedByGroupId = excludedFlags(storedGroups);
   const { balances, breakdowns } = viewerPairwise(moves, selfId, simplifyByGroupId);
   const explicit = new Set(
     (await db.friendships.toArray()).map((f) =>
@@ -774,6 +806,7 @@ export async function localFriend(
       explicit,
       groupNames,
       simplifyByGroupId,
+      excludedByGroupId,
     ),
   };
 }
@@ -785,6 +818,7 @@ function toApiFriend(
   explicit: Set<string>,
   groupNames: Map<string, string>,
   simplifyByGroupId: Map<string, boolean>,
+  excludedByGroupId: Map<string, boolean>,
 ): Friend {
   const breakdown: FriendBreakdown[] = (breakdowns.get(user.id) ?? [])
     .map((entry) => ({
@@ -793,6 +827,9 @@ function toApiFriend(
       // the server does not invent a pseudo-group and neither does this.
       groupName: entry.groupId === null ? null : (groupNames.get(entry.groupId) ?? null),
       simplified: entry.groupId !== null && simplifyByGroupId.get(entry.groupId) !== false,
+      // Same shape as the server's: the bucket keeps its real amounts and only
+      // says how it should be rolled up. See src/routes/native/friends.ts.
+      excluded: entry.groupId !== null && excludedByGroupId.get(entry.groupId) === true,
       balances: entry.balances,
     }))
     .sort(byGroupName);

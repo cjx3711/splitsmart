@@ -147,6 +147,7 @@ async function loadGroups(database: DB, userId: string): Promise<string> {
       "groups.group_type",
       "groups.default_currency",
       "groups.simplify_by_default",
+      "groups.excluded_from_totals",
     ])
     .where("group_members.user_id", "=", userId)
     .where("group_members.left_at", "is", null)
@@ -154,7 +155,9 @@ async function loadGroups(database: DB, userId: string): Promise<string> {
     .orderBy("groups.name")
     .execute();
 
-  const header = csvRow(["name", "type", "currency", "simplify_debts", "members"]);
+  const header = csvRow([
+    "name", "type", "currency", "simplify_debts", "counts_towards_totals", "members",
+  ]);
   if (groups.length === 0) return `${header}\n`;
 
   const members = await collectIdChunks(
@@ -182,6 +185,7 @@ async function loadGroups(database: DB, userId: string): Promise<string> {
       group.group_type,
       group.default_currency,
       group.simplify_by_default === 1 ? "yes" : "no",
+      group.excluded_from_totals === 1 ? "no" : "yes",
       (membersByGroup.get(group.id) ?? []).sort().join("; "),
     ]),
   );

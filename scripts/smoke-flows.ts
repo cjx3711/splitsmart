@@ -11,7 +11,7 @@
  * Usage:
  *   yarn smoke:flows -- --out <run-dir> [--base http://localhost:5644] [--only F1,F7]
  */
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CAPTURE_PARAMS, STABILISE_CSS, VIEWPORTS } from "./smoke-screens.ts";
@@ -157,6 +157,26 @@ async function addGroupExpense(
  * while the balances are still arriving. Reading innerText in that beat is a
  * flake that looks exactly like a missing balance.
  */
+/**
+ * One of Group options' checkboxes, picked by the label beside it.
+ *
+ * There are two now - simplify debts, and whether the group counts towards
+ * totals - so a bare `.setting-toggle input` is a strict-mode violation.
+ */
+function optionToggle(page: Page, label: string) {
+  return page
+    .locator(".setting-toggle")
+    .filter({ hasText: label })
+    .locator("input[type=checkbox]");
+}
+
+/** The same checkbox, matched only while it is off. For waiting on a flip. */
+function optionToggleOff(page: Page, label: string) {
+  return page.locator(
+    `.setting-toggle:has-text("${label}") input[type=checkbox]:not(:checked)`,
+  );
+}
+
 async function friendBalanceCard(page: Page, showing: string, whenMissing: string): Promise<string> {
   const card = page.locator(".friend-aside .card").first();
   try {
@@ -165,6 +185,28 @@ async function friendBalanceCard(page: Page, showing: string, whenMissing: strin
     throw new Error(whenMissing);
   }
   return (await card.innerText()).trim();
+}
+
+/**
+ * Every USD figure in a block of rendered text, summed, in minor units.
+ *
+ * Signed: "-71.10USD" is a debt. Used by F19, which asserts an arithmetic
+ * relationship between a headline and a row rather than pinning either to a
+ * number an earlier flow may have moved.
+ */
+function usdMinor(text: string): number {
+  let total = 0;
+  for (const match of text.matchAll(/(-?)([\d,]+)\.(\d{2})\s*USD/g)) {
+    const minor = Number(match[2]!.replace(/,/g, "")) * 100 + Number(match[3]);
+    total += match[1] === "-" ? -minor : minor;
+  }
+  return total;
+}
+
+/** The USD in a locator's text, or 0 when it is not on the page at all. */
+async function usdIn(locator: Locator): Promise<number> {
+  if ((await locator.count()) === 0) return 0;
+  return usdMinor((await locator.innerText()).trim());
 }
 
 function requireText(actual: string, needle: string, label: string): void {
@@ -190,6 +232,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await openGroupExpense(page, "Book Club");
       await dialog(page).getByLabel("Description").fill("Smoke test lunch");
       await dialog(page).getByLabel("Amount").fill("31.00");
+      await dialog(page).getByRole("button", { name: "Advanced split mode" }).click();
       await dialog(page).getByText("Who owes what").waitFor();
       const owed = await dialog(page).locator(".split-row-owed").allInnerTexts();
       const minors = parseMoney(owed.filter((t) => t.trim() !== ""));
@@ -218,6 +261,7 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       await openGroupExpense(page, "Book Club");
       await dialog(page).getByLabel("Description").fill("Will not save");
       await dialog(page).getByLabel("Amount").fill("100.00");
+      await dialog(page).getByRole("button", { name: "Advanced split mode" }).click();
       await dialog(page).getByRole("button", { name: "Percentages" }).click();
 
       await dialog(page).getByLabel("You: percentage").fill("50");
@@ -656,16 +700,14 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       // Put the group back the way the seed had it, so no later flow inherits
       // a toggle this one flipped.
       await clickNamed(page, "Options");
-      const toggle = page.locator(".setting-toggle input[type=checkbox]");
+      const toggle = optionToggle(page, "Simplify debts");
       await toggle.waitFor({ timeout: 10_000 });
       if (!(await toggle.isChecked())) throw new Error("Options did not show simplify as on");
       // click(), not uncheck(): the write goes to the mirror and then the
       // server, and the checkbox re-renders from a live query when that lands.
       // uncheck() asserts the flip on its own schedule and gives up first.
       await toggle.click();
-      await page
-        .locator(".setting-toggle input[type=checkbox]:not(:checked)")
-        .waitFor({ timeout: 20_000 });
+      await optionToggleOff(page, "Simplify debts").waitFor({ timeout: 20_000 });
       await openGroup(page, "Weekend in Tokyo");
       await page.locator(".settle-list li").nth(4).waitFor({ timeout: 20_000 });
       const restored = await settleRows(page);
@@ -944,6 +986,103 @@ const FLOWS: Array<{ id: string; title: string; viewport?: "desktop" | "mobile";
       }
 
       return "Registering from a friend link's \"Make it mine\" banner reached a named \"Link claimed\" screen with an \"Open Test User\" button, which opened the right friend page.";
+    },
+  },
+  {
+    id: "F19",
+    title: "A group kept out of the totals leaves the headline but keeps every cent on the page",
+    run: async (page, ctx) => {
+      await signIn(page, "user", ctx.base);
+      await settle(page);
+
+      // Read the figures rather than pin them: F19 runs last, and F1 / F7 /
+      // F14 have all written to this ledger by now. What is being asserted is
+      // the ARITHMETIC - headline = total - excluded bucket - which holds
+      // whatever the seed and the earlier flows left behind.
+      await clickNamed(page, "Friends");
+      await clickNamed(page, "JJ");
+      const card = page.locator(".friend-aside .card").first();
+      // The ledger rows only. The card also carries an ≈ estimate in USD and a
+      // nudge that names USD, and summing those would make the arithmetic below
+      // agree with itself for the wrong reason.
+      const ledger = card.locator(".ledger");
+      await page.getByText("Between you").waitFor({ timeout: 15_000 });
+      const before = await usdIn(ledger);
+
+      const row = page.locator(".breakdown-list .list-item").filter({ hasText: "Apartment 4B" });
+      const rowBefore = (await row.innerText()).trim();
+      const bucket = await usdIn(row.locator(".list-item-figures"));
+      if (bucket === 0) {
+        throw new Error(`Apartment 4B held no USD balance with JJ: ${JSON.stringify(rowBefore)}`);
+      }
+
+      await openGroup(page, "Apartment 4B");
+      await clickNamed(page, "Options");
+      const counts = optionToggle(page, "Count towards my totals");
+      await counts.waitFor({ timeout: 10_000 });
+      if (!(await counts.isChecked())) {
+        throw new Error("Options did not show Apartment 4B as counting towards totals");
+      }
+      // click(), not uncheck(): the write lands in the mirror first and the
+      // checkbox re-renders from a live query. Same reason as F12.
+      await counts.click();
+      await optionToggleOff(page, "Count towards my totals").waitFor({ timeout: 20_000 });
+
+      await clickNamed(page, "Friends");
+      await clickNamed(page, "JJ");
+      await card.filter({ hasText: "not counted here" }).waitFor({ timeout: 20_000 });
+      const excludedText = (await card.innerText()).trim();
+      requireText(excludedText, "Apartment 4B is not counted here", "the excluded-totals note");
+
+      const after = await usdIn(ledger);
+      if (after !== before - bucket) {
+        throw new Error(
+          `headline should be total minus the excluded bucket: ${before} - ${bucket} != ${after}`,
+        );
+      }
+
+      // The money is not hidden, only uncounted: the group's own row keeps its
+      // real amount, which is what stops the smaller headline reading as a bug.
+      const rowAfter = (await row.innerText()).trim();
+      if ((await usdIn(row.locator(".list-item-figures"))) !== bucket) {
+        throw new Error(`the excluded group's own row moved: ${JSON.stringify(rowAfter)}`);
+      }
+      // Uppercased by CSS, and innerText hands back what is rendered.
+      requireText(rowAfter, "NOT COUNTED", "the Apartment 4B breakdown row");
+
+      // The full sum is one click away, and it is the number we started with.
+      await page.getByRole("button", { name: "Include it" }).click();
+      await card.filter({ hasText: "Counting Apartment 4B" }).waitFor({ timeout: 15_000 });
+      const included = await usdIn(ledger);
+      if (included !== before) {
+        throw new Error(`"Include it" did not restore the full total: ${included} != ${before}`);
+      }
+
+      // The dashboard mounts fresh, so it is excluding again: the click above
+      // is per-screen and deliberately not remembered.
+      await clickNamed(page, "Dashboard");
+      // Wait for the dashboard itself: reading `.excluded-note` too early finds
+      // the friend page's copy, which is still showing "Counting…" from the
+      // click above - and that would quietly assert the opposite of the point.
+      await page.getByRole("heading", { name: "Dashboard" }).waitFor({ timeout: 15_000 });
+      const note = page.locator(".summary ~ .excluded-note, .excluded-note");
+      await note.first().waitFor({ timeout: 15_000 });
+      requireText(
+        (await note.first().innerText()).trim(),
+        "Apartment 4B is not counted here",
+        "the dashboard note",
+      );
+
+      // Put the group back the way the seed had it, so no later flow inherits
+      // a toggle this one flipped.
+      await openGroup(page, "Apartment 4B");
+      await clickNamed(page, "Options");
+      await optionToggle(page, "Count towards my totals").click();
+      await page
+        .locator('.setting-toggle:has-text("Count towards my totals") input[type=checkbox]:checked')
+        .waitFor({ timeout: 20_000 });
+
+      return `Excluding Apartment 4B cut JJ's headline from ${before} to ${after} USD minor units, exactly the ${bucket} that group held; the breakdown row kept ${bucket} tagged "not counted", "Include it" restored ${before}, and the dashboard carried the same note.`;
     },
   },
 ];

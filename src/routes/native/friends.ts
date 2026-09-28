@@ -60,6 +60,15 @@ interface FriendBreakdown {
   groupName: string | null;
   /** True when this bucket used simplify-debts rather than the raw edges. */
   simplified: boolean;
+  /**
+   * True when the group is marked as not counting towards headline totals.
+   *
+   * The bucket is still here, with its real amounts: this flag says how a
+   * client should roll it up, not whether the money exists. Nothing on the
+   * server subtracts it - `getPairwiseBalances` stays the honest full sum, and
+   * the breakdown continues to add up to it exactly.
+   */
+  excluded: boolean;
   balances: CurrencyAmount[];
 }
 
@@ -77,10 +86,11 @@ async function breakdownByUser(
 
   const groupIds = [...new Set(rows.map((r) => r.groupId).filter((id): id is string => id !== null))];
   const groups = groupIds.length
-    ? await db.selectFrom("groups").select(["id", "name", "simplify_by_default"]).where("id", "in", groupIds).execute()
+    ? await db.selectFrom("groups").select(["id", "name", "simplify_by_default", "excluded_from_totals"]).where("id", "in", groupIds).execute()
     : [];
   const nameById = new Map(groups.map((g) => [g.id, g.name]));
   const simplifyById = new Map(groups.map((g) => [g.id, g.simplify_by_default === 1]));
+  const excludedById = new Map(groups.map((g) => [g.id, g.excluded_from_totals === 1]));
 
   const byUser = new Map<string, FriendBreakdown[]>();
   for (const row of rows) {
@@ -89,6 +99,7 @@ async function breakdownByUser(
       groupId: row.groupId,
       groupName: row.groupId === null ? null : (nameById.get(row.groupId) ?? null),
       simplified: row.groupId !== null && (simplifyById.get(row.groupId) ?? false),
+      excluded: row.groupId !== null && (excludedById.get(row.groupId) ?? false),
       balances: row.balances,
     });
     byUser.set(row.otherUserId, list);

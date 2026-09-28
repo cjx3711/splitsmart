@@ -198,6 +198,52 @@ options and the shortcut under the payment list), so the mirror-first,
 roll-back-on-refusal shape cannot drift between them. `default_currency` is
 written from the same module for the same reason.
 
+## Groups kept out of the totals
+
+`groups.excluded_from_totals` marks a group as a running ledger - an account, a
+float, a tab - whose balances are real but are not a debt to a friend that the
+headline figures should carry. It is display only, like `simplify_by_default`,
+and narrower: it moves no money, converts nothing, and changes no edge.
+
+**No balance query reads the column.** `getPairwiseBalances`, its per-group
+twin and `getTotalBalance` stay the honest full sum, and the friend breakdown
+keeps every bucket with its real amounts - it just labels the excluded ones
+(`excluded: true`, next to `simplified`). The subtraction happens in the
+browser, in `web/src/excludedTotals.ts`, over the breakdown that already sums
+to the total exactly (integer minor units, so it is lossless).
+
+That split is the point. With both numbers already on the client, "Include
+them" is a re-render rather than a second query that could disagree with the
+first, and an API consumer or `yarn db:check` sees an unchanged ledger.
+
+Two screens subtract, and both must explain themselves:
+
+- **The dashboard** - the three tiles, the ≈ estimate, the owe/owed columns and
+  the per-person rows all read one `counted` list, so they cannot disagree
+  about what is being counted.
+- **A friend page** - "Between you", its estimate, and the convert / close-out
+  offers that act on that balance. The group's own row stays in Shared groups
+  with its real amounts and a `not counted` tag, because a total that silently
+  disagrees with the rows under it reads as a bug in a ledger.
+
+`ExcludedTotalsNote` is the one sentence both use. It **names the groups** (you
+chose them; "some balances are excluded" sends you hunting) and offers the full
+sum. That toggle is deliberately **not remembered**: persisting it would quietly
+make the full sum the normal view again, and nothing would suggest the headline
+had drifted back.
+
+**Anything that records money keeps everything.** The settle-up picker on a
+friend page still lists every balance, excluded groups included: a ledger you
+left out of your totals is still somewhere you may want to record a payment.
+Only totals and headlines subtract.
+
+Written from `web/src/groupSettings.ts` like the other two group flags, and
+toggled in Group options. Off by default at every layer - the column, the API
+create schema, and the mirror's assumption for a group it has not stored yet -
+because a group counts unless someone says otherwise, and a mirror that
+bootstrapped before the field existed must not start dropping groups silently
+(`groupShape` is bumped to 2 for exactly that).
+
 ## A group's default currency is settable, and moves no money
 
 It decides two presentational things: what currency a new expense in the group
@@ -327,6 +373,9 @@ web/                 React frontend (Vite)
     guest/           The guest shell. No Dexie, no sync, no logged-in router
     Avatar.tsx           Letters/emoji on a hashed or stored chord-band pattern
     PersonIdentityForm.tsx  Name, nickname, pattern editor, letters, emoji
+    excludedTotals.ts    Sums the buckets that count. Pure; the flag never
+                     reaches a balance query
+    ExcludedTotalsNote.tsx  "Amex is not counted here. Include it"
     Sidebar.tsx      Owns the group/friend lists shown on every screen
     ExpenseForm.tsx      The one add-expense form (group, friend, or neither)
     ExpenseDialog.tsx    ExpenseForm in a modal. Shared by both shells
@@ -914,9 +963,7 @@ untrusted bytes, so it needs an explicit decision, not an incidental one.
   Put `-- migrate:no-transaction` on its own line to opt out and drive your own
   BEGIN/COMMIT (see `src/db/migrate.ts` for the mechanics). Get the pragma
   wrong and `ALTER TABLE ... RENAME` silently repoints every other table's
-  foreign keys at your temporary table. Not needed today: there is only one
-  migration, and it creates the tables fresh, but it will be the day a second
-  one exists.
+  foreign keys at your temporary table.
 - **Rounding must be deterministic.** `splitEvenly` gives leftover minor units to
   the earliest participants, and participants are sorted by `userId` before
   allocation. `userId` is a ULID; sort with `<`, not numeric coerce or
@@ -936,11 +983,13 @@ yarn typecheck && yarn test && yarn db:check
 If you touched anything under `src/domain/`, the tests in `split.test.ts` are
 the ones that matter. They are fast.
 
-**`migrations/001` is still folded, not layered.** Anything that changed the
-schema means `yarn db:reset` (destructive) on every local database, including
-whatever the dev server is holding open. Comments gained `kind`, and expenses
-gained `repeat_interval` / `next_repeat` / `repeat_of`, so a database created
-before those exist will fail every query that selects them.
+**Existing databases upgrade with forward migrations.** Add a new numbered
+SQL file and run `yarn db:migrate`; do not fold changes into `001` or reset
+someone's ledger to add a column. `003` adopts `excluded_from_totals` on both
+older databases and development copies where it was already present. Its
+`migrate:skip-if-column-exists table.column` directive skips the SQL when that
+column exists, but still records the migration. Test upgrades with existing
+rows as well as fresh databases.
 
 ## Splitwise export (time-sensitive)
 
