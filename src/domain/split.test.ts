@@ -58,9 +58,21 @@ describe("money", () => {
   });
 
   test("rejects junk input", () => {
-    for (const bad of ["", "abc", "1.2.3", "$5", "1,000"]) {
+    for (const bad of ["", "abc", "1.2.3", "$5", "-", "-.", "12,50", "1,23,456", "1,234 567", "1,,000", "1.23,4"]) {
       assert.throws(() => parseAmount(bad), MoneyError, `should reject ${bad}`);
     }
+  });
+
+  test("accepts grouped amounts without changing their currency precision", () => {
+    for (const separator of [",", " ", "\u00a0", "\u202f", "\u2009", "'"]) {
+      assert.equal(parseAmount(`3${separator}742`, 0), 3742);
+      assert.equal(parseAmount(`  -3${separator}742.50  `, 2), -374250);
+      assert.equal(parseAmount(`1${separator}234${separator}567.890`, 3), 1234567890);
+      assert.equal(parseAmount(`3${separator}742.00`, 0), 3742);
+      assert.throws(() => parseAmount(`3${separator}742.50`, 0), MoneyError);
+      assert.throws(() => parseAmount(`3${separator}742.501`, 2), MoneyError);
+    }
+    assert.throws(() => parseAmount("90,071,992,547,409.92", 2), /safe integer range/);
   });
 
   test("round-trips through format and parse", () => {

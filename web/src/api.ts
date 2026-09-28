@@ -17,6 +17,7 @@
 import { hc } from "hono/client";
 import type { InferRequestType, InferResponseType } from "hono/client";
 import { displayName as personDisplayName } from "../../src/domain/person.ts";
+import { parseAmount } from "../../src/domain/money.ts";
 import type { SplitItem, SplitType } from "../../src/domain/split.ts";
 import type { RepeatInterval } from "../../src/domain/recurring.ts";
 import type {
@@ -682,20 +683,9 @@ export function formatMoney(minor: number, decimalPlaces: number): string {
   return `${negative ? "-" : ""}${body}`;
 }
 
-/** Display string -> minor units. Throws on excess precision, like the server. */
+/** Share amount parsing with CSV imports and the server, including grouped digits. */
 export function parseMoney(input: string, decimalPlaces: number): number {
-  const raw = input.trim();
-  if (!/^-?\d*(\.\d*)?$/.test(raw) || raw === "" || raw === ".") {
-    throw new Error(`Not a valid amount: ${input}`);
-  }
-  const negative = raw.startsWith("-");
-  const [whole = "0", fraction = ""] = (negative ? raw.slice(1) : raw).split(".");
-  if (fraction.length > decimalPlaces) {
-    throw new Error("Too many decimal places for this currency");
-  }
-  const minor =
-    Number(whole) * 10 ** decimalPlaces + Number(fraction.padEnd(decimalPlaces, "0") || "0");
-  return negative ? -minor : minor;
+  return parseAmount(input, decimalPlaces);
 }
 
 /** Nickname if set, otherwise the name. */

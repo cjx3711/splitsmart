@@ -45,9 +45,15 @@ export function parseAmountRounded(
   input: string | number,
   decimalPlaces = DEFAULT_DECIMAL_PLACES,
 ): RoundedAmount {
-  const raw = typeof input === "number" ? String(input) : input.trim();
+  let raw = typeof input === "number" ? String(input) : input.trim();
+  // Accept common pasted thousands separators, but only in complete groups of
+  // three. Blindly stripping punctuation would turn a decimal comma or typo
+  // such as "12,50" into a different amount. Keep the decimal point unchanged.
+  if (/^-?\d{1,3}([, '\u00a0\u202f\u2009])\d{3}(?:\1\d{3})*(?:\.\d*)?$/.test(raw)) {
+    raw = raw.replace(/[, '\u00a0\u202f\u2009]/g, "");
+  }
 
-  if (!/^-?\d*(\.\d*)?$/.test(raw) || raw === "" || raw === "." || raw === "-") {
+  if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw)) {
     throw new MoneyError(`Not a valid amount: ${JSON.stringify(input)}`);
   }
 
