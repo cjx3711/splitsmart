@@ -23,8 +23,10 @@
  * component renders a row per person it is given. Two controls editing one list
  * is how a person ends up on the chips but not in the split.
  */
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { computeSplit, type SplitItem, type SplitType } from "../../src/domain/split.ts";
+import { formatAmount } from "../../src/domain/money.ts";
+import { exactSplitHints } from "./exactSplitHints.ts";
 import { Amount, useCurrencies, useParseMoney } from "./money.tsx";
 import { resolvePayments, type Payment } from "./PaidBy.tsx";
 import type { Person } from "./PeoplePicker.tsx";
@@ -356,7 +358,11 @@ export function SplitEditor({
   const { decimalsFor } = useCurrencies();
   const parseInCurrency = useParseMoney();
   const decimals = decimalsFor(currency);
+  const exactHintId = useId();
   const participantIds = people.map((p) => p.id);
+  const exactHint = draft.mode === "exact" && decimals !== null
+    ? exactSplitHints(costMinor, participantIds, draft.values, decimals)
+    : null;
   // The caller rebuilds `people` on every render, so the identity of the array
   // is worthless as a dependency; the ids are what the split actually reads.
   const idKey = participantIds.join(",");
@@ -440,9 +446,18 @@ export function SplitEditor({
         currency={currency}
         decimals={decimals}
         shares={shares}
+        exactSuggestions={exactHint?.suggestions}
+        hintId={exactHint ? exactHintId : undefined}
       />
 
-      {problem && <p className="split-problem">{problem}</p>}
+      {exactHint && <p id={exactHintId} className={exactHint.remainingMinor < 0 ? "split-problem" : "muted"} role="status">
+        {exactHint.remainingMinor < 0 ? <><Amount minor={-exactHint.remainingMinor} currency={currency} /> over the total. Reduce the amounts above.</>
+          : exactHint.remainingMinor === 0 ? "Fully allocated."
+          : <><Amount minor={exactHint.remainingMinor} currency={currency} /> left to allocate{exactHint.emptyCount
+            ? ` between ${exactHint.emptyCount} ${exactHint.emptyCount === 1 ? "person" : "people"}. Suggested amounts appear in empty fields; enter them to apply.`
+            : ". Adjust the amounts above."}</>}
+      </p>}
+      {problem && !(exactHint && problem.startsWith("Exact shares add up to ")) && <p className="split-problem">{problem}</p>}
     </div>
   );
 }
@@ -460,12 +475,16 @@ function PersonRows({
   currency,
   decimals,
   shares,
+  exactSuggestions,
+  hintId,
 }: {
   people: Person[];
   draft: SplitDraft;
   currency: string;
   decimals: number | null;
   shares: Map<string, number> | null;
+  exactSuggestions?: Map<string, number>;
+  hintId?: string;
 }) {
   const needsValue = draft.mode !== "equal" && draft.mode !== "itemized";
 
@@ -475,6 +494,7 @@ function PersonRows({
       <div className="split-rows">
         {people.map((person) => {
           const owed = shares?.get(person.id);
+          const suggested = exactSuggestions?.get(person.id);
 
           return (
             <div key={person.id} className="split-row">
@@ -485,9 +505,10 @@ function PersonRows({
                   <input
                     value={draft.values[person.id] ?? ""}
                     onChange={(e) => draft.setValue(person.id, e.target.value)}
-                    placeholder={valuePlaceholder(draft.mode, decimals)}
+                    placeholder={suggested !== undefined && decimals !== null ? formatAmount(suggested, decimals) : valuePlaceholder(draft.mode, decimals)}
                     inputMode="decimal"
                     aria-label={`${person.label}: ${valueLabel(draft.mode)}`}
+                    aria-describedby={hintId}
                   />
                   <span className="split-row-unit">{valueUnit(draft.mode)}</span>
                 </span>
@@ -644,6 +665,7 @@ function valuePlaceholder(mode: SplitType, decimals: number | null): string {
     case "shares":
       return "1";
     case "exact":
+      return "";
     case "adjustment":
       return decimals === 0 ? "1000" : `10.${"0".repeat(decimals ?? 2)}`;
     default:
