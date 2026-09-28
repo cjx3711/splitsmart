@@ -14,6 +14,17 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    version: "0.2.4",
+    date: "29 September 2026",
+    items: [
+      "Bulk add expenses from CSV, with a copyable LLM prompt and an editable review table before saving. Available on group and friend pages and inside the Expense dialog.",
+      "Four shortcuts for common expense splits, with advanced splits available when needed. Quickly choose today or step the expense date forward and back.",
+      "Keep selected groups out of dashboard and friend headline totals while retaining their full balances and expense history.",
+      "Fix loading and group creation on existing databases by applying the missing group-settings migration without resetting data.",
+      "Failed syncs show an error and retry action instead of claiming to be synced or leaving an endless loading screen.",
+    ],
+  },
+  {
     version: "0.2.3",
     date: "26 August 2026",
     items: [
