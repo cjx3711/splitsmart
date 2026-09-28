@@ -3,4 +3,4 @@
  * and `/health`. Bump this when you prepend a changelog entry, and keep
  * `package.json` in step — `version.test.ts` checks they match.
  */
-export const APP_VERSION = "0.2.4";
+export const APP_VERSION = "0.2.5";

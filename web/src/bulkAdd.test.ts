@@ -79,3 +79,83 @@ describe("CSV bulk add", () => {
     assert.match(prompt, /Never convert currencies/);
   });
 });
+
+describe("compact bulk prompts", () => {
+  const self = "01M0TEV4HAN92758Y0SELF0001";
+  const bob = "01M0TEV4HAN92758Y0FRIEND02";
+  const other = "01M0TEV4HAN92758Y0OTHER003";
+  const group = "01M0TEV4HAN92758Y0GROUP001";
+  const scoped: BulkContext = {
+    ...context, selfId: self,
+    people: [{ id: self, name: "Alice" }, { id: bob, name: "Bob" }, { id: other, name: "Unrelated person" }],
+    groups: [
+      { id: group, name: "Japan trip", memberIds: [self, bob], defaultCurrency: "JPY" },
+      { id: "01M0TEV4HAN92758Y0GROUP002", name: "Unrelated group", memberIds: [self, other] },
+    ],
+  };
+  const selected: BulkDefaults = { payer: self, splitWith: [self, bob], group, currency: "JPY" };
+
+  it("explains expense sharing and includes only selected people, group and currency", () => {
+    const prompt = bulkPrompt(scoped, selected);
+    assert.match(prompt, /expense-sharing service.*who owes whom/);
+    assert.match(prompt, /SELF0001: "Alice"/);
+    assert.match(prompt, /FRIEND02: "Bob"/);
+    assert.match(prompt, /Group: "Japan trip".*GROUP001/);
+    assert.match(prompt, /JPY \(0 decimal places\)/);
+    for (const absent of [self, bob, group, "Unrelated person", "Unrelated group", "OTHER003", "GROUP002", "USD", "KWD"])
+      assert.ok(!prompt.includes(absent), `${absent} should not be included`);
+  });
+
+  it("narrows to a selected subset while retaining a payer who does not owe a share", () => {
+    const largerGroup = { ...scoped, groups: [{ ...scoped.groups[0]!, memberIds: [self, bob, other] }] };
+    const prompt = bulkPrompt(largerGroup, { ...selected, splitWith: [bob] });
+    assert.match(prompt, /SELF0001: "Alice"/);
+    assert.match(prompt, /Default split_with: FRIEND02/);
+    assert.ok(!prompt.includes("Unrelated person"));
+  });
+
+  it("keeps friend and unselected imports from dumping the whole account", () => {
+    const prompt = bulkPrompt(scoped, { ...selected, group: "" });
+    assert.match(prompt, /FRIEND02: "Bob"/);
+    assert.match(prompt, /No group selected/);
+    assert.ok(!prompt.includes("Japan trip"));
+    assert.ok(!prompt.includes("Unrelated person"));
+    const empty = bulkPrompt(scoped, { ...selected, group: "", splitWith: [] });
+    assert.ok(!empty.includes("Bob"));
+    assert.match(empty, /Default split_with: REVIEW_REQUIRED/);
+  });
+
+  it("round trips prompt short IDs into full ledger IDs, including group IDs", () => {
+    const [parsed] = parseBulkCsv("date,description,amount,paid_by,split_with,group\n2026-09-29,Dinner,1200,FRIEND02,SELF0001;FRIEND02,GROUP001", scoped, selected);
+    assert.equal(parsed!.group, group);
+    assert.equal(parsed!.payer, bob);
+    assert.deepEqual(parsed!.splitWith, [self, bob]);
+    assert.equal(parsed!.currency, "JPY");
+    assert.equal(validateBulkRow(parsed!, scoped).input!.costMinor, 1200);
+  });
+
+  it("extends colliding suffixes across the whole account and refuses ambiguous input", () => {
+    const collision = "01M0TEV4HAN92758Z0FRIEND02";
+    const withCollision = { ...scoped, people: [...scoped.people, { id: collision, name: "Outside group" }] };
+    const prompt = bulkPrompt(withCollision, selected);
+    assert.match(prompt, /Y0FRIEND02: "Bob"/);
+    assert.ok(!prompt.includes("Outside group"));
+    const csv = (payer: string) => `date,description,amount,paid_by\n2026-09-29,Dinner,1200,${payer}`;
+    const [ambiguous] = parseBulkCsv(csv("FRIEND02"), withCollision, selected);
+    assert.equal(ambiguous!.payer, "FRIEND02");
+    assert.equal(validateBulkRow(ambiguous!, withCollision).input, undefined);
+    const [resolved] = parseBulkCsv(csv("Y0FRIEND02"), withCollision, selected);
+    assert.equal(resolved!.payer, bob);
+    assert.ok(validateBulkRow(resolved!, withCollision).input);
+  });
+
+  it("does not confuse an ID suffix with another person's name or an out-of-group person", () => {
+    const withName = { ...scoped, people: [...scoped.people, { id: "01M0TEV4HAN92758Y0NAMED004", name: "FRIEND02" }] };
+    assert.match(bulkPrompt(withName, selected), /0FRIEND02: "Bob"/);
+    const [ambiguous] = parseBulkCsv("date,description,amount,paid_by\n2026-09-29,Dinner,1200,FRIEND02", withName, selected);
+    assert.equal(validateBulkRow(ambiguous!, withName).input, undefined);
+    const [outside] = parseBulkCsv("date,description,amount,paid_by\n2026-09-29,Dinner,1200,OTHER003", scoped, selected);
+    assert.equal(outside!.payer, other);
+    assert.equal(validateBulkRow(outside!, scoped).input, undefined);
+  });
+});

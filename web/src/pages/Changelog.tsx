@@ -14,6 +14,14 @@ type Entry = {
 
 const ENTRIES: Entry[] = [
   {
+    version: "0.2.5",
+    date: "29 September 2026",
+    items: [
+      "Bulk-add LLM prompts explain expense sharing and include only the selected people, group, and currency. Short IDs keep the prompt compact and resolve to the correct people and group during CSV review.",
+      "Switching the bulk-add group selects its members and default currency.",
+    ],
+  },
+  {
     version: "0.2.4",
     date: "29 September 2026",
     items: [

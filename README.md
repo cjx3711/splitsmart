@@ -81,8 +81,12 @@ Choose **Bulk add** on the dashboard, All expenses, or a friend/group page.
 It is also available at the top of the **Expense** dialog and carries the
 selected group or friend into the import.
 Upload a CSV (up to 500 expenses / 2 MB), or copy the included LLM prompt to
-turn receipt or statement text into the expected format. The prompt includes
-your available people, groups, and categories. You can also paste CSV directly.
+turn receipt or statement text into the expected format. Choose the group,
+payer, and people to split between first: the prompt includes only those people
+and you, the selected group and currency, and the available categories. Switching
+groups selects that group's members and default currency. IDs in the prompt use
+their last eight characters, extended when needed to avoid ambiguity. You can
+also paste CSV directly.
 
 ```csv
 date,description,amount,currency,paid_by,split_with,group,category,notes
@@ -90,7 +94,8 @@ date,description,amount,currency,paid_by,split_with,group,category,notes
 ```
 
 `date`, `description`, and `amount` are required columns. Optional fields use
-the defaults shown before upload. People and groups accept IDs or unique names;
+the defaults shown before upload. People and groups accept full IDs, unique ID
+suffixes of at least eight characters, or unique names;
 categories accept IDs or unique names/paths. Separate people in `split_with`
 with semicolons. These are the people who owe equal shares; include the payer
 only when they share the cost. For an expense Alex paid entirely for you, use

@@ -6,7 +6,7 @@ export const MAX_BULK_ROWS = 500;
 export const MAX_CSV_BYTES = 2 * 1024 * 1024;
 export const BULK_COLUMNS = ["date", "description", "amount", "currency", "paid_by", "split_with", "group", "category", "notes"];
 export interface BulkPerson { id: string; name: string; nickname?: string | null; email?: string | null }
-export interface BulkGroup { id: string; name: string; memberIds: string[] }
+export interface BulkGroup { id: string; name: string; memberIds: string[]; defaultCurrency?: string | null }
 export interface BulkCategory { id: number; name: string; path: string }
 export interface BulkContext {
   selfId: string;
@@ -62,14 +62,29 @@ export function readCsv(text: string): string[][] {
 }
 
 const normal = (s: string) => s.trim().toLowerCase();
-function resolve(value: string, choices: Array<{ id: string; names: string[] }>): string {
+type Choice = { id: string; names: string[] };
+function resolve(value: string, choices: Choice[], shortIds = false): string {
   if (choices.some((c) => c.id === value)) return value;
-  const matches = choices.filter((c) => c.names.some((name) => normal(name) === normal(value)));
+  const matches = choices.filter((c) => c.names.some((name) => normal(name) === normal(value))
+    || (shortIds && value.length >= 8 && normal(c.id).endsWith(normal(value))));
   return matches.length === 1 ? matches[0]!.id : value;
+}
+const personChoices = (context: BulkContext): Choice[] => context.people.map((p) => ({
+  id: p.id, names: [p.name, p.nickname ?? "", p.email ?? ""].filter(Boolean),
+}));
+
+/** Match against the whole account so a short ID never points to another person. */
+function shortId(id: string, choices: Choice[]): string {
+  for (let length = 8; length < id.length; length++) {
+    const suffix = id.slice(-length);
+    if (!choices.some((c) => c.id !== id && (normal(c.id).endsWith(normal(suffix))
+      || c.names.some((name) => normal(name) === normal(suffix))))) return suffix;
+  }
+  return id;
 }
 export function resolvePerson(value: string, context: BulkContext): string {
   if (["me", "you"].includes(normal(value))) return context.selfId;
-  return resolve(value, context.people.map((p) => ({ id: p.id, names: [p.name, p.nickname ?? "", p.email ?? ""].filter(Boolean) })));
+  return resolve(value, personChoices(context), true);
 }
 
 export function parseBulkCsv(text: string, context: BulkContext, defaults: BulkDefaults): BulkRow[] {
@@ -87,7 +102,7 @@ export function parseBulkCsv(text: string, context: BulkContext, defaults: BulkD
   return records.map((cells, i) => {
     if (cells.length !== headers.length) throw new Error(`Record ${i + 2} has ${cells.length} fields; expected ${headers.length}. Quote fields containing commas.`);
     const get = (name: string) => cells[headers.indexOf(name)] ?? "";
-    const group = get("group") ? resolve(get("group"), context.groups.map((g) => ({ id: g.id, names: [g.name] }))) : defaults.group;
+    const group = get("group") ? resolve(get("group"), context.groups.map((g) => ({ id: g.id, names: [g.name] })), true) : defaults.group;
     const splitWith = get("split_with")
       ? get("split_with").split(";").map((v) => resolvePerson(v.trim(), context))
       : group !== defaults.group ? context.groups.find((g) => g.id === group)?.memberIds ?? [] : defaults.splitWith;
@@ -140,28 +155,32 @@ export function validateBulkRow(row: BulkRow, context: BulkContext): { errors: s
 }
 
 export function bulkPrompt(context: BulkContext, defaults: BulkDefaults): string {
-  return `Convert my expense data into a CSV file for SplitSmart. Output ONLY CSV with a header; no Markdown fences or explanations.
+  const group = context.groups.find((g) => g.id === defaults.group);
+  const selected = new Set([context.selfId, defaults.payer, ...defaults.splitWith]);
+  const people = context.people.filter((p) => selected.has(p.id) && (!group || group.memberIds.includes(p.id)));
+  const choices = personChoices(context);
+  const personId = (id: string) => people.some((p) => p.id === id) ? shortId(id, choices) : "REVIEW_REQUIRED";
+  const groupId = group ? shortId(group.id, context.groups.map((g) => ({ id: g.id, names: [g.name] }))) : "";
+  const currency = context.currencies.find((c) => c.code === defaults.currency);
+  return `SplitSmart is an expense-sharing service that tracks who paid, who shares each cost, and who owes whom. Convert my receipts or expense notes into expenses to import into SplitSmart.
+Output ONLY CSV with a header; no Markdown fences or explanations.
 Columns: ${BULK_COLUMNS.join(",")}
 Rules:
 - One expense per row. date is YYYY-MM-DD; description is a short label.
-- amount is a positive decimal in major currency units, without currency symbols or thousands separators. Never convert currencies or round amounts. Respect the currency's decimal places (JPY has 0).
-- currency is a supported currency code. If missing, use ${defaults.currency}.
-- paid_by is the ID of the person who paid the whole expense. Default: ${defaults.payer}.
-- split_with is the semicolon-separated IDs of the people who OWE a share, split equally. Include the payer only if they share the cost. For “I owe them everything”, paid_by is them and split_with is me. For “they owe me everything”, paid_by is me and split_with is them. My ID is ${context.selfId}.
-- Default split_with: ${defaults.splitWith.join(";") || "leave blank if unclear; I will choose during review"}.
-- group is a group ID, or blank for the default (${defaults.group || "No group"}). Group expenses may only include that group's members.
+- amount is a positive decimal in major currency units, without currency symbols or thousands separators. Never convert currencies or round amounts.
+- Default currency: ${defaults.currency}${currency ? ` (${currency.decimal_places} decimal places)` : ""}. Use this unless the source explicitly states another currency; preserve that currency's ISO code and precision.
+- paid_by is the short ID of the person who paid the whole expense. Default: ${personId(defaults.payer)}.
+- split_with is the semicolon-separated short IDs of the people who OWE a share, split equally. Include the payer only if they share the cost. For “I owe them everything”, paid_by is them and split_with is me. For “they owe me everything”, paid_by is me and split_with is them. My short ID is ${personId(context.selfId)}.
+- Default split_with: ${defaults.splitWith.map(personId).join(";") || "REVIEW_REQUIRED (choose people during review)"}.
+- ${group ? `Group: ${JSON.stringify(group.name)}. Set group to ${groupId}, or leave blank to use this group.` : "No group selected. Leave group blank."}
 - category is a category ID from the list, or blank if uncertain. notes is optional text.
 - Do not invent people, dates, currencies, or unequal splits. For uncertain people or unequal splits, put REVIEW_REQUIRED in split_with to block saving until I correct or remove the row. Describe an unequal split in notes so I can handle that expense separately. Leave uncertain dates blank for review.
 - Quote fields containing commas, quotes or newlines, and double any quotes inside quoted fields.
 - Maximum ${MAX_BULK_ROWS} expenses per file.
-People (name and ID):
-${JSON.stringify(context.people.map((p) => ({ name: p.nickname || p.name, id: p.id })))}
-Groups and member IDs:
-${JSON.stringify(context.groups)}
-Categories:
-${JSON.stringify(context.categories.map((c) => ({ id: c.id, name: c.path })))}
-Supported currencies (code and decimal places):
-${context.currencies.map((c) => `${c.code}: ${c.decimal_places}`).join(", ")}
+People for this import (short ID: name; use only these people):
+${people.map((p) => `${personId(p.id)}: ${JSON.stringify(p.nickname || p.name)}`).join("\n")}
+Categories (ID: name):
+${context.categories.map((c) => `${c.id}: ${JSON.stringify(c.path)}`).join("\n")}
 
 My expense data:
 [Paste your receipts, statements, or expense notes here]`;

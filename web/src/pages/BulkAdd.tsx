@@ -25,7 +25,7 @@ export function BulkAdd() {
   const context: BulkContext = {
     selfId: user.id,
     people: [...new Map([user, ...related.people, ...[...members.values()].flat()].map((p) => [p.id, p])).values()],
-    groups: groups.map((g) => ({ id: g.id, name: g.name, memberIds: (members.get(g.id) ?? []).map((m) => m.id) })),
+    groups: groups.map((g) => ({ id: g.id, name: g.name, memberIds: (members.get(g.id) ?? []).map((m) => m.id), defaultCurrency: g.default_currency })),
     categories: categories.map((c) => ({ id: c.id, name: c.name, path: categoryPath(categories, c.id) ?? c.name })),
     currencies,
   };
@@ -127,7 +127,10 @@ function BulkAddForm({ context, initial }: { context: BulkContext; initial: Bulk
       <details className="card bulk-defaults" open={!reviewing || undefined}>
         <summary>{reviewing ? "Apply corrections to all rows" : "Defaults for missing CSV fields"}</summary>
         <div className="bulk-default-grid">
-          <div><label htmlFor="bulk-group">Group</label><select id="bulk-group" value={defaults.group} onChange={(e) => setDefaults({ ...defaults, group: e.target.value, splitWith: context.groups.find((g) => g.id === e.target.value)?.memberIds ?? [], payer: context.selfId })}>{groupOptions(defaults.group)}</select>{reviewing && <button className="link" onClick={() => setRows(rows.map((row) => ({ ...row, group: defaults.group })))}>Apply group to all</button>}</div>
+          <div><label htmlFor="bulk-group">Group</label><select id="bulk-group" value={defaults.group} onChange={(e) => {
+            const group = context.groups.find((g) => g.id === e.target.value);
+            setDefaults({ ...defaults, group: e.target.value, splitWith: group?.memberIds ?? [], payer: context.selfId, currency: group?.defaultCurrency ?? defaults.currency });
+          }}>{groupOptions(defaults.group)}</select>{reviewing && <button className="link" onClick={() => setRows(rows.map((row) => ({ ...row, group: defaults.group })))}>Apply group to all</button>}</div>
           <div><label htmlFor="bulk-currency">Currency</label><select id="bulk-currency" value={defaults.currency} onChange={(e) => setDefaults({ ...defaults, currency: e.target.value })}>{currencyOptions(defaults.currency)}</select>{reviewing && <button className="link" onClick={() => setRows(rows.map((row) => ({ ...row, currency: defaults.currency })))}>Apply currency to all</button>}</div>
           <div><label htmlFor="bulk-payer">Paid by</label><select id="bulk-payer" value={defaults.payer} onChange={(e) => setDefaults({ ...defaults, payer: e.target.value })}>{payerOptions(defaults.payer, defaults.group)}</select>{reviewing && <button className="link" onClick={() => setRows(rows.map((row) => ({ ...row, payer: defaults.payer })))}>Apply payer to all</button>}</div>
           <div><label>Split between (equally)</label><PeopleSelect label="Default split between" value={defaults.splitWith} onChange={(splitWith) => setDefaults({ ...defaults, splitWith })} people={peopleFor(defaults.group)} context={context} />{reviewing && <button className="link" onClick={() => setRows(rows.map((row) => ({ ...row, splitWith: defaults.splitWith })))}>Apply people to all</button>}</div>
@@ -137,7 +140,7 @@ function BulkAddForm({ context, initial }: { context: BulkContext; initial: Bulk
       {!reviewing ? <>
         <details className="card stack">
           <summary>LLM prompt</summary>
-          <p>Copy this prompt into your LLM of choice, then append your receipts or expense notes. It includes the people, groups, and categories shown in this account.</p>
+          <p>Choose the group, payer, and people to split between above, then copy this prompt into your LLM and append your receipts or expense notes. It includes only those people, you, the selected group, and the selected currency, with short IDs for importing.</p>
           <label htmlFor="bulk-prompt">Prompt to copy</label>
           <textarea id="bulk-prompt" rows={10} readOnly value={prompt} onFocus={(e) => e.target.select()} />
           <button className="secondary inline" onClick={async () => {
@@ -149,7 +152,7 @@ function BulkAddForm({ context, initial }: { context: BulkContext; initial: Bulk
           <label htmlFor="bulk-file">CSV file</label><input id="bulk-file" type="file" accept=".csv,text/csv" onChange={(e) => void readFile(e.target.files?.[0])} />
           <p className="muted">{filename ? `${filename} · ` : ""}Up to {MAX_BULK_ROWS} expenses, 2 MB. Nothing is added until you finish reviewing.</p>
           <label htmlFor="bulk-csv">Or paste CSV</label><textarea id="bulk-csv" rows={8} value={csv} disabled={reading} onChange={(e) => { setCsv(e.target.value); setFilename(""); }} placeholder={BULK_COLUMNS.join(",")} spellCheck={false} />
-          <details><summary>CSV format and example</summary><p>Required: date, description, amount. Other columns are optional. Use names or IDs for people and groups; separate people with semicolons. Unknown or ambiguous names must be corrected in review.</p><pre className="bulk-example">{BULK_COLUMNS.join(",")}{"\n"}2026-09-24,Dinner,42,USD,me,me;Alex,,,{"\n"}2026-09-24,Taxi,1800,JPY,Alex,me,,,Airport ride</pre><p>Shares are equal between the selected people. For unequal splits or multiple payers, add that expense with the regular expense form.</p></details>
+          <details><summary>CSV format and example</summary><p>Required: date, description, amount. Other columns are optional. Use names, full IDs, or the short IDs in the prompt for people and groups; separate people with semicolons. Unknown or ambiguous matches must be corrected in review.</p><pre className="bulk-example">{BULK_COLUMNS.join(",")}{"\n"}2026-09-24,Dinner,42,USD,me,me;Alex,,,{"\n"}2026-09-24,Taxi,1800,JPY,Alex,me,,,Airport ride</pre><p>Shares are equal between the selected people. For unequal splits or multiple payers, add that expense with the regular expense form.</p></details>
           <button className="inline" disabled={reading || !csv.trim()} onClick={review}>{reading ? "Reading…" : "Review expenses"}</button>
         </div>
       </> : <>
