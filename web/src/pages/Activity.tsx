@@ -24,6 +24,8 @@ const VERBS: Record<string, string> = {
   "comment.created": "commented on",
   "comment.deleted": "deleted a comment on",
   "import.completed": "imported from Splitwise",
+  "user.merged": "merged duplicate people",
+  "expenses.transferred": "transferred expenses between people",
   "user.claimed": "claimed a placeholder person",
 };
 

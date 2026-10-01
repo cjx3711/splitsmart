@@ -438,6 +438,12 @@ export const api = {
 
   listActivity: () => call(client.activity.$get, client.activity.$get()),
 
+  previewFriendTransfer: (id: string, input: InferRequestType<typeof client.friends[":id"]["transfer"]["preview"]["$post"]>["json"]) =>
+    call(client.friends[":id"].transfer.preview.$post, client.friends[":id"].transfer.preview.$post({ param: { id }, json: input })),
+
+  transferFriend: (id: string, input: InferRequestType<typeof client.friends[":id"]["transfer"]["$post"]>["json"]) =>
+    call(client.friends[":id"].transfer.$post, client.friends[":id"].transfer.$post({ param: { id }, json: input })),
+
   listFriends: () => call(client.friends.$get, client.friends.$get()),
 
   getFriend: (id: string) =>

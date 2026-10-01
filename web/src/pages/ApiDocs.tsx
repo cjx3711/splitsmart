@@ -325,6 +325,27 @@ export function ApiDocs() {
           <code>they_paid</code>.
         </p>
       </Endpoint>
+      <Endpoint method="POST" path="/api/v1/friends/:id/transfer/preview">
+        <Code>{`{ "targetId": "<person ULID>", "mode": "transfer", "scope": "all" }`}</Code>
+        <p>
+          Preview a destructive merge or expense transfer. Use <code>mode: "merge"</code> to
+          remove a duplicate placeholder and move all its history, or <code>"transfer"</code> to
+          keep the original friend. Transfer scope is <code>"all"</code> (your groups and personal
+          expenses), <code>"personal"</code>, or <code>"group"</code> with a <code>groupId</code>.
+          Full merges require <code>"all"</code>, a placeholder source, and access to all affected history.
+          Returns expense, overlap and deleted counts, groups the target will join, and a <code>fingerprint</code>.
+        </p>
+      </Endpoint>
+      <Endpoint method="POST" path="/api/v1/friends/:id/transfer">
+        <p>
+          Submit the same fields plus the preview&apos;s <code>fingerprint</code> and <code>confirmed: true</code>.
+          Changes are atomic. A changed preview returns <code>409</code>; review again before retrying.
+          Shares are added together and stored as exact amounts. Payments, recurring templates and deleted
+          expenses are included. Transfer keeps the original friend and adds the target to affected groups
+          where needed. Full merge also combines memberships and friendships and revokes the source&apos;s guest links.
+          This cannot be undone.
+        </p>
+      </Endpoint>
       <Endpoint method="DELETE" path="/api/v1/friends/:id">
         <p>
           Removes an explicit friendship only. Response includes{" "}

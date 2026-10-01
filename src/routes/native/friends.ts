@@ -18,6 +18,7 @@
  * The invite is a guest link (`/guest/l/<secret>`), not a recovery code. It is
  * revocable, it expires if the owner says so, and it needs no transcription.
  */
+import { friendTransferRoutes } from "./friend-transfer.ts";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -182,6 +183,7 @@ const addFriendSchema = z.object({
 });
 
 export const friendRoutes = new Hono<AppEnv>()
+  .route("/", friendTransferRoutes)
   .use("*", requireAuth)
   .get("/", async (c) => {
   const auth = c.get("user");

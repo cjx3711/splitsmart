@@ -2,8 +2,8 @@
  * Merging one person into another.
  *
  * This is what "claim" does: a real account says "that placeholder is me", and
- * the ghost is consumed. The survivor is ALWAYS the logged-in account, because
- * it is the row with a stable session, an email, and a future offline identity.
+ * the ghost is consumed. Friend management also uses this to combine duplicate
+ * placeholders after checking access to the entire affected history.
  *
  * The whole point is that no money moves. Every balance in the app is derived
  * from `expense_repayments`, which is derived from `expense_users`. So the rule
@@ -153,6 +153,7 @@ export async function mergeExpenseParticipants(
   expenseId: string,
   fromUserId: string,
   toUserId: string,
+  options: { actorId?: string; preserveAuthorship?: boolean } = {},
 ): Promise<void> {
   if (fromUserId === toUserId) {
     throw new MergeError("Cannot merge a participant into themselves");
@@ -259,19 +260,21 @@ export async function mergeExpenseParticipants(
       .execute();
   }
 
-  await trx
-    .updateTable("expenses")
-    .set({ created_by: toUserId })
-    .where("id", "=", expenseId)
-    .where("created_by", "=", fromUserId)
-    .execute();
+  if (!options.preserveAuthorship) {
+    await trx
+      .updateTable("expenses")
+      .set({ created_by: toUserId })
+      .where("id", "=", expenseId)
+      .where("created_by", "=", fromUserId)
+      .execute();
 
-  await trx
-    .updateTable("expenses")
-    .set({ updated_by: toUserId })
-    .where("id", "=", expenseId)
-    .where("updated_by", "=", fromUserId)
-    .execute();
+    await trx
+      .updateTable("expenses")
+      .set({ updated_by: toUserId })
+      .where("id", "=", expenseId)
+      .where("updated_by", "=", fromUserId)
+      .execute();
+  }
 
   // The shares on this bill are different now, so every device that holds it
   // needs the new row. Whole-entity upsert, as always: the client must NOT add
@@ -288,7 +291,7 @@ export async function mergeExpenseParticipants(
     entityId: expenseId,
     op: "upsert",
     groupId: group?.group_id ?? null,
-    actorUserId: toUserId,
+    actorUserId: options.actorId ?? toUserId,
   });
 }
 
@@ -316,12 +319,16 @@ export interface MergeResult {
 export async function mergeUsers(
   fromUserId: string,
   toUserId: string,
+  options: { actorId?: string; validate?: (trx: DB) => Promise<void> } = {},
 ): Promise<MergeResult> {
   if (fromUserId === toUserId) {
     throw new MergeError("Cannot merge a user into themselves");
   }
-
+  const actorId = options.actorId ?? toUserId;
   return transaction(async (trx) => {
+    // Friend management validates its preview and permissions in this same
+    // transaction, before any merge writes. Claim callers keep their flow.
+    await options.validate?.(trx);
     const [from, to] = await Promise.all([
       trx
         .selectFrom("users")
@@ -371,7 +378,7 @@ export async function mergeUsers(
         entityId: fromUserId,
         otherUserId: toUserId,
         op: "merge" as const,
-        actorUserId: toUserId,
+        actorUserId: actorId,
         audienceUserId: userId,
       })),
     );
@@ -399,7 +406,7 @@ export async function mergeUsers(
 
     let combined = 0;
     for (const expenseId of expenseIds) {
-      await mergeExpenseParticipants(trx, expenseId, fromUserId, toUserId);
+      await mergeExpenseParticipants(trx, expenseId, fromUserId, toUserId, { actorId });
       if (overlapping.has(expenseId)) combined++;
     }
 
@@ -462,7 +469,7 @@ export async function mergeUsers(
           entity: "group_member",
           entityId: toUserId,
           groupId: membership.group_id,
-          actorUserId: toUserId,
+          actorUserId: actorId,
         });
         continue;
       }
@@ -497,7 +504,7 @@ export async function mergeUsers(
         entity: "group_member",
         entityId: toUserId,
         groupId: membership.group_id,
-        actorUserId: toUserId,
+        actorUserId: actorId,
       });
 
       groupsMerged++;
@@ -534,7 +541,7 @@ export async function mergeUsers(
         entityId: row.user_a_id,
         otherUserId: row.user_b_id,
         op: "delete",
-        actorUserId: toUserId,
+        actorUserId: actorId,
       });
 
       // The owner who created the placeholder is very often already a friend
@@ -554,7 +561,7 @@ export async function mergeUsers(
         entityId: userAId,
         otherUserId: userBId,
         op: "upsert",
-        actorUserId: toUserId,
+        actorUserId: actorId,
       });
     }
 
@@ -633,8 +640,8 @@ export async function mergeUsers(
       .insertInto("activity")
       .values({
         id: ulid(),
-        user_id: toUserId,
-        action: "user.claimed",
+        user_id: actorId,
+        action: actorId === toUserId ? "user.claimed" : "user.merged",
         payload: JSON.stringify({ mergedUserId: fromUserId }),
       })
       .execute();

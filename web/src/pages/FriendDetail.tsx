@@ -29,6 +29,7 @@
  * Read from the mirror and written through the outbox, so both dialogs work with
  * no network. Only the guest-link panel is online-only.
  */
+import { FriendTransferDialog } from "../FriendTransferDialog.tsx";
 import { BulkAddButton } from "../BulkAddButton.tsx";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useParams, Link } from "react-router-dom";
@@ -85,7 +86,7 @@ export function FriendDetail() {
   const { user } = useAuth();
 
   const [openDialog, setOpenDialog] = useState<
-    "expense" | "settle" | "convert" | "settleAll" | "cascade" | "identity" | null
+    "expense" | "settle" | "convert" | "settleAll" | "cascade" | "identity" | "transfer" | null
   >(null);
   // Filled by the settle-up dialog's submit and read by its close, which run
   // back to back in the same tick - so this is a ref, not state. A `useState`
@@ -300,8 +301,11 @@ export function FriendDetail() {
             </p>
           </div>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ flexWrap: "wrap" }}>
           <BulkAddButton friendId={friend.id} />
+          <OnlineOnly what="Merging or transferring expenses">
+            <button className="secondary" onClick={() => setOpenDialog("transfer")}>Merge / transfer</button>
+          </OnlineOnly>
           {friend.is_ghost === 1 && (
             <OnlineOnly what="Editing a placeholder">
               <button className="secondary" onClick={() => setOpenDialog("identity")}>
@@ -321,6 +325,8 @@ export function FriendDetail() {
       {inviteNotice && (
         <p className={inviteNotice.kind === "error" ? "error" : "notice"}>{inviteNotice.text}</p>
       )}
+
+      {openDialog === "transfer" && <FriendTransferDialog friend={friend} onClose={() => setOpenDialog(null)} />}
 
       <AddExpenseDialog
         open={openDialog === "expense"}

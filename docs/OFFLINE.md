@@ -49,7 +49,7 @@ must show a clear "needs connection" state rather than queueing.
 | Edit an expense (including a template's amount / description) | **Starting or changing a repeat schedule** |
 | Delete an expense (soft) | Guest links: mint / rotate / revoke |
 | Restore an expense | Splitwise import (including comments) |
-| Record a payment / settle up | Email verification, API tokens, **claiming** |
+| Record a payment / settle up | Email verification, API tokens, **claiming, merging people, transferring expenses** |
 | Settle-up suggestions (derived locally) | **Adding a group member** |
 | Read and write **user** comments on an expense you can see | Login, register |
 | Search / filter the local ledger (and build the same CSV from it) | **Anything a guest-link visitor does** |
